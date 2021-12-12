@@ -1,0 +1,55 @@
+[package]
+name = "fuso-support"
+version = "0.1.0"
+authors = ["UINB Tech"]
+edition = "2018"
+license = "Apache-2.0"
+homepage = "https://www.fusotao.org"
+repository = "https://github.com/uinb/fusotao"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dev-dependencies.serde]
+version = '1.0.119'
+
+[dependencies.codec]
+default-features = false
+features = ['derive']
+package = 'parity-scale-codec'
+version = '2.0.0'
+
+[dependencies.sp-core]
+default-features = false
+version = '3.0.0'
+
+[dependencies.bit-vec]
+version = "0.6"
+default-features = false
+
+[dependencies.byteorder]
+version = "1"
+default-features = false
+
+[dependencies.sp-io]
+default-features = false
+version = '3.0.0'
+
+[dependencies.sp-runtime]
+default-features = false
+version = '3.0.0'
+
+[dependencies.frame-system]
+default-features = false
+version = '3.0.0'
+
+[dependencies.frame-support]
+default-features = false
+version = '3.0.0'
+
+[dependencies.sp-std]
+default-features = false
+version = '3.0.0'
+
+[dev-dependencies.hex-literal]
+version = "0.3.3"
