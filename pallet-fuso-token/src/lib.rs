@@ -25,6 +25,7 @@ pub mod pallet {
 	use frame_support::traits::{BalanceStatus, Currency};
 	use frame_system::pallet_prelude::*;
 	use sp_std::{fmt::Debug, vec::Vec};
+	use scale_info::TypeInfo;
 
 	use sp_runtime::traits::{
 		AtLeast32BitUnsigned, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Member, One,
@@ -39,13 +40,13 @@ pub mod pallet {
 
 	// pub type UniBalance<T> = <T as pallet_balances::Config>::Balance;
 
-	#[derive(Encode, Decode, Clone, PartialEq, Eq, Default, Debug)]
+	#[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
 	pub struct TokenAccountData<Balance> {
 		pub free: Balance,
 		pub reserved: Balance,
 	}
 
-	#[derive(Encode, Decode, Clone, PartialEq, Eq, Default, Debug)]
+	#[derive(Encode, Decode, Clone, PartialEq, Eq, Default, Debug, TypeInfo)]
 	pub struct TokenInfo<Balance> {
 		pub total: Balance,
 		pub symbol: Vec<u8>,
