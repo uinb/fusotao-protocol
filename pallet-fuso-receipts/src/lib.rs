@@ -49,7 +49,7 @@ pub mod pallet {
     //     <T as frame_system::Config>::AccountId,
     // >>::NegativeImbalance;
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
         pub key: Vec<u8>,
         pub old_v: [u8; 32],
@@ -124,7 +124,7 @@ pub mod pallet {
         }
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub enum Command {
         // price, amounnt, maker_fee, taker_fee, base, quote
         AskLimit(
