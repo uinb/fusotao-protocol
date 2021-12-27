@@ -3,8 +3,8 @@ panic = 'unwind'
 
 [workspace]
 members = [
-    #'pallet-fuso-token',
-    #'pallet-fuso-receipts',
+    'pallet-fuso-token',
+    'pallet-fuso-receipts',
     'pallet-fuso-foundation',
-   # 'fuso-support',
+    'fuso-support',
 ]
