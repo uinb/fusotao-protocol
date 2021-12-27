@@ -195,7 +195,7 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         T::AccountId,
-        Receipt<UniBalance<T>, T::BlockNumber>,
+        Receipt<UniBalance, T::BlockNumber>,
         OptionQuery,
     >;
 
@@ -247,8 +247,10 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T>
     where
-        AmountOfCoin<T>: Copy,
-        AmountOfToken<T>: Copy,
+        AmountOfCoin<T>: Copy + From<u128>,
+        AmountOfToken<T>: Copy + From<u128>,
+        u128: From<AmountOfToken<T>> + From<AmountOfCoin<T>>,
+        u32: From<TokenId<T>>
     {
         // TODO pledge amount config?
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
@@ -317,7 +319,7 @@ pub mod pallet {
             Receipts::<T>::insert(
                 dominator.clone(),
                 fund_owner.clone(),
-                Receipt::Authorize(UniBalance::Coin(amount), block_number),
+                Receipt::Authorize(UniBalance::Coin(amount.into()), block_number),
             );
             Self::deposit_event(Event::CoinHosted(fund_owner, dominator, amount));
             Ok(().into())
@@ -340,7 +342,7 @@ pub mod pallet {
                 !Receipts::<T>::contains_key(&dominator, &fund_owner),
                 Error::<T>::ReceiptAlreadyExists,
             );
-            let balance = UniBalance::Coin(amount);
+            let balance = UniBalance::Coin(amount.into());
             ensure!(
                 Self::has_enough_reserved(&fund_owner, &balance),
                 Error::<T>::InsufficientBalance
@@ -381,7 +383,7 @@ pub mod pallet {
             Receipts::<T>::insert(
                 dominator.clone(),
                 fund_owner.clone(),
-                Receipt::Authorize(UniBalance::Token(token_id, amount), block_number),
+                Receipt::Authorize(UniBalance::Token(token_id.into(), amount.into()), block_number),
             );
             Self::deposit_event(Event::TokenHosted(fund_owner, dominator, token_id, amount));
             Ok(().into())
@@ -404,7 +406,7 @@ pub mod pallet {
                 !Receipts::<T>::contains_key(&dominator, &fund_owner),
                 Error::<T>::ReceiptAlreadyExists,
             );
-            let balance = UniBalance::Token(token_id, amount);
+            let balance = UniBalance::Token(token_id.into(), amount.into());
             ensure!(
                 // fuso_pallet_token::Pallet::<T>::can_unreserve(&token_id, &fund_owner, amount),
                 Self::has_enough_reserved(&fund_owner, &balance),
@@ -422,29 +424,21 @@ pub mod pallet {
     }
 
     #[derive(Encode, Decode, Eq, PartialEq, Clone, RuntimeDebug, TypeInfo)]
-    pub enum UniBalance<T: Config> {
-        Token(TokenId<T>, AmountOfToken<T>),
-        Coin(AmountOfCoin<T>),
+    pub enum UniBalance{
+        Token(u32, u128),
+        Coin(u128),
     }
 
-    impl<T: Config> TryFrom<(u32, u128)> for UniBalance<T> {
-        type Error = Error<T>;
-
+    impl TryFrom<(u32, u128)> for UniBalance{
+        type Error = DispatchError;
         fn try_from((token, value): (u32, u128)) -> Result<Self, Self::Error> {
-            match token {
+            match token.clone() {
                 0 => {
-                    let value: AmountOfCoin<T> = value
-                        .try_into()
-                        .map_err(|_| Error::<T>::IllegalParameters)?;
-                    Ok(UniBalance::<T>::Coin(value))
+                    Ok(UniBalance::Coin(value))
                 }
                 id => {
-                    let value: AmountOfToken<T> = value
-                        .try_into()
-                        .map_err(|_| Error::<T>::IllegalParameters)?;
-                    let id: TokenId<T> =
-                        id.try_into().map_err(|_| Error::<T>::IllegalParameters)?;
-                    Ok(UniBalance::<T>::Token(id, value))
+
+                    Ok(UniBalance::Token(token, value))
                 }
             }
         }
@@ -453,17 +447,22 @@ pub mod pallet {
     #[derive(Clone)]
     struct AssetsAlternate<T: Config> {
         // account, base, quote
-        pub alternates: Vec<(T::AccountId, UniBalance<T>, UniBalance<T>)>,
-        pub base_fee: UniBalance<T>,
-        pub quote_fee: UniBalance<T>,
+        pub alternates: Vec<(T::AccountId, UniBalance, UniBalance)>,
+        pub base_fee: UniBalance,
+        pub quote_fee: UniBalance,
     }
 
-    impl<T: Config> Pallet<T> {
+    impl<T: Config> Pallet<T> where AmountOfCoin<T>: Copy + From<u128>,
+                                    AmountOfToken<T>: Copy + From<u128>,
+                                    TokenId<T>: From<u32>{
         fn verify_and_update(
             dominator: &T::AccountId,
             ex: &Dominator<AmountOfCoin<T>, T::BlockNumber>,
             proof: Proof<T::AccountId>,
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResultWithPostInfo
+            where AmountOfCoin<T>: Copy + From<u128>,
+                  AmountOfToken<T>: Copy + From<u128>,
+                  TokenId<T>: From<u32>{
             let p0 = smt::CompiledMerkleProof(proof.proof_of_exists.clone());
             let old = proof
                 .leaves
@@ -543,7 +542,7 @@ pub mod pallet {
                 }
                 Command::TransferOut(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance<T> = (currency, amount).try_into()?;
+                    let balance: UniBalance = (currency, amount).try_into()?;
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -557,7 +556,7 @@ pub mod pallet {
                 }
                 Command::TransferIn(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance<T> = (currency, amount).try_into()?;
+                    let balance: UniBalance = (currency, amount).try_into()?;
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -570,7 +569,7 @@ pub mod pallet {
                 }
                 Command::RejectTransferOut(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance<T> = (currency, amount).try_into()?;
+                    let balance: UniBalance = (currency, amount).try_into()?;
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -910,49 +909,51 @@ pub mod pallet {
             Ok(())
         }
 
-        fn has_enough_reserved(who: &T::AccountId, balance: &UniBalance<T>) -> bool {
+        fn has_enough_reserved(who: &T::AccountId, balance: &UniBalance) -> bool {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::reserved_balance(who) >= *value
+                    pallet_balances::Pallet::<T>::reserved_balance(who) >= (*value).into()
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::reserved_balance(&id, who) >= *value
+                    pallet_fuso_token::Pallet::<T>::reserved_balance(&(*id).into(), who) >= (*value).into()
                 }
             }
         }
 
-        fn mutate_to(who: &T::AccountId, balance: &UniBalance<T>) {
+        fn mutate_to(who: &T::AccountId, balance: &UniBalance) {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved = *value);
+                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved = (*value).into());
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::mutate_account(id, who, |a| {
-                        a.reserved = *value
+                    pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
+                        a.reserved = (*value).into()
                     });
                 }
             }
         }
 
-        fn unreserve(who: &T::AccountId, balance: UniBalance<T>) {
+        fn unreserve(who: &T::AccountId, balance: UniBalance) {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::unreserve(who, value);
+                    pallet_balances::Pallet::<T>::unreserve(who, value.into());
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::unreserve(&id, who, value);
+                    pallet_fuso_token::Pallet::<T>::unreserve(&id.into(), who, value.into());
                 }
             }
         }
 
-        fn charge(who: &T::AccountId, balance: &UniBalance<T>) {
+        fn charge(who: &T::AccountId, balance: &UniBalance) where AmountOfCoin<T>: Copy + From<u128>,
+                                                                  TokenId<T>: From<u32>,
+                                                                  AmountOfToken<T>: Copy + From<u128> {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved += *value);
+                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved += (*value).into());
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::mutate_account(id, who, |a| {
-                        a.reserved += *value
+                    pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
+                        a.reserved += (*value).into()
                     });
                 }
             }
