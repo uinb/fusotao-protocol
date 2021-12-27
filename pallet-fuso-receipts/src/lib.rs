@@ -30,7 +30,7 @@ pub mod pallet {
     use sp_io::hashing::sha2_256;
     use sp_runtime::{traits::StaticLookup, Permill, Perquintill, RuntimeDebug};
     use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
-
+    use scale_info::TypeInfo;
     pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
 
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
@@ -150,7 +150,7 @@ pub mod pallet {
         RejectTransferOut(Compact<u32>, Compact<u128>),
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct Proof<AccountId> {
         pub event_id: u64,
         pub user_id: AccountId,
@@ -163,13 +163,13 @@ pub mod pallet {
         pub root: [u8; 32],
     }
 
-    #[derive(Clone, Encode, Decode, RuntimeDebug, Eq, PartialEq)]
+    #[derive(Clone, Encode, Decode, RuntimeDebug, Eq, PartialEq, TypeInfo)]
     pub enum Receipt<Balance, BlockNumber> {
         Authorize(Balance, BlockNumber),
         Revoke(Balance, BlockNumber),
     }
 
-    #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+    #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
     pub struct Dominator<Balance, BlockNumber> {
         pub merkle_root: [u8; 32],
         pub pledged: Balance,
@@ -484,7 +484,7 @@ pub mod pallet {
                 .verify::<smt::sha256::Sha256Hasher>(&proof.root.into(), new)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
-            debug::debug!("{:?}", proof.cmd);
+            //debug::debug!("{:?}", proof.cmd);
             match proof.cmd {
                 Command::AskLimit(price, amount, maker_fee, taker_fee, base, quote) => {
                     let (n, f): (u64, u64) = (price.0.into(), price.1.into());
@@ -610,7 +610,7 @@ pub mod pallet {
             ensure!(leaves.len() >= 3, Error::<T>::ProofsUnsatisfied);
             let maker_count = leaves.len() - 3;
             ensure!(maker_count % 2 == 0, Error::<T>::ProofsUnsatisfied);
-            debug::debug!("ask-limit with number of maker accounts is odd");
+            //debug::debug!("ask-limit with number of maker accounts is odd");
             let (ask0, bid0) = leaves[0].split_old_to_u128();
             let (ask1, bid1) = leaves[0].split_new_to_u128();
             // 0 or remain
@@ -646,7 +646,7 @@ pub mod pallet {
             } else {
                 ensure!(tbf0 == tbf1, Error::<T>::ProofsUnsatisfied);
             }
-            debug::debug!("ask-limit taker base frozen account == cmd");
+            //debug::debug!("ask-limit taker base frozen account == cmd");
             ensure!(bid_delta == tb_delta, Error::<T>::ProofsUnsatisfied);
             let mut mb_delta = 0u128;
             let mut mq_delta = 0u128;
@@ -679,14 +679,14 @@ pub mod pallet {
                     (quote, mq1).try_into()?,
                 ));
             }
-            debug::debug!("ask-limit all makers ok");
+            //debug::debug!("ask-limit all makers ok");
             // FIXME ceil
             let base_charged = maker_fee.mul_ceil(tb_delta);
             ensure!(
                 mb_delta + base_charged == tb_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            debug::debug!("ask-limit traded_base == base_fee + sum_of_maker_base_delta");
+            //debug::debug!("ask-limit traded_base == base_fee + sum_of_maker_base_delta");
             // FIXME ceil
             let quote_charged = taker_fee.mul_ceil(mq_delta);
             ensure!(
@@ -698,7 +698,7 @@ pub mod pallet {
                 (base, tba1 + tbf1).try_into()?,
                 (quote, tqa1 + tqf1).try_into()?,
             ));
-            debug::debug!("ask-limit taker_quote_available_delta + quote_fee == sum_of_maker_quote_frozen_delta");
+            //debug::debug!("ask-limit taker_quote_available_delta + quote_fee == sum_of_maker_quote_frozen_delta");
             Ok(AssetsAlternate {
                 alternates: delta,
                 base_fee: (base, base_charged).try_into()?,
@@ -718,7 +718,7 @@ pub mod pallet {
             ensure!(leaves.len() >= 3, Error::<T>::ProofsUnsatisfied);
             let maker_count = leaves.len() - 3;
             ensure!(maker_count % 2 == 0, Error::<T>::ProofsUnsatisfied);
-            debug::debug!("bid-limit with number of maker accounts is odd");
+            //debug::debug!("bid-limit with number of maker accounts is odd");
             let (ask0, bid0) = leaves[0].split_old_to_u128();
             let (ask1, bid1) = leaves[0].split_new_to_u128();
             let ask_delta = ask0 - ask1;
@@ -784,23 +784,23 @@ pub mod pallet {
                     (quote, mq1).try_into()?,
                 ));
             }
-            debug::debug!("bid-limit makers ok");
+            //debug::debug!("bid-limit makers ok");
             // FIXME ceil
             let quote_charged = maker_fee.mul_ceil(tq_delta);
             ensure!(
                 mq_delta + quote_charged == tq_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            debug::debug!("bid-limit maker_quote_delta + quote_charged == traded_quote");
+            //debug::debug!("bid-limit maker_quote_delta + quote_charged == traded_quote");
             // FIXME ceil
             let base_charged = taker_fee.mul_ceil(mb_delta);
             ensure!(
                 tb_delta + base_charged == mb_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            debug::debug!("bid-limit taker_base_available_delta + base_charged == traded_base");
+            //debug::debug!("bid-limit taker_base_available_delta + base_charged == traded_base");
             ensure!(ask_delta == mb_delta, Error::<T>::ProofsUnsatisfied);
-            debug::debug!("bid-limit orderbook_ask_size_delta == traded_base");
+            //debug::debug!("bid-limit orderbook_ask_size_delta == traded_base");
             if bid_delta != 0 {
                 ensure!(
                     bid_delta == amount - mb_delta,
@@ -809,7 +809,7 @@ pub mod pallet {
             } else {
                 // TODO to avoid divide
             }
-            debug::debug!("bid-limit orderbook_bid_size_delta == untraded_base");
+            //debug::debug!("bid-limit orderbook_bid_size_delta == untraded_base");
             delta.push((
                 taker_b_id,
                 (base, tba1 + tbf1).try_into()?,
