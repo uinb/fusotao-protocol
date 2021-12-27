@@ -25,6 +25,7 @@ sp-core = { default-features = false, git = "https://github.com/octopus-network/
 sp-io = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
 sp-runtime = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
 pallet-balances = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
+scale-info = { version = "1.0", default-features = false, features = ["derive"] }
 
 [features]
 default = ['std']
