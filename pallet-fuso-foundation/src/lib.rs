@@ -14,8 +14,6 @@
 // limitations under the License.
 
 pub use pallet::*;
-
-
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::{
@@ -38,6 +36,7 @@ pub mod pallet {
 		type UnlockDelay: Get<Self::BlockNumber>;
 
 		type UnlockPeriod: Get<Self::BlockNumber>;
+
 	}
 
 	pub const RESERVABLE_IDENTIFIER: [u8;8] = *b"foundati";
