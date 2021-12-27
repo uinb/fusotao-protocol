@@ -421,7 +421,7 @@ pub mod pallet {
         }
     }
 
-    #[derive(Encode, Decode, Eq, PartialEq, Clone, RuntimeDebug)]
+    #[derive(Encode, Decode, Eq, PartialEq, Clone, RuntimeDebug, TypeInfo)]
     pub enum UniBalance<T: Config> {
         Token(TokenId<T>, AmountOfToken<T>),
         Coin(AmountOfCoin<T>),
