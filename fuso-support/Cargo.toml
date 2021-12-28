@@ -21,7 +21,8 @@ version = '2.0.0'
 
 [dependencies.sp-core]
 default-features = false
-version = '3.0.0'
+git = "https://github.com/octopus-network/substrate.git"
+branch = "polkadot-v0.9.12"
 
 [dependencies.bit-vec]
 version = "0.6"
@@ -33,23 +34,28 @@ default-features = false
 
 [dependencies.sp-io]
 default-features = false
-version = '3.0.0'
+git = "https://github.com/octopus-network/substrate.git"
+branch = "polkadot-v0.9.12"
 
 [dependencies.sp-runtime]
 default-features = false
-version = '3.0.0'
+git = "https://github.com/octopus-network/substrate.git"
+branch = "polkadot-v0.9.12"
 
 [dependencies.frame-system]
 default-features = false
-version = '3.0.0'
+git = "https://github.com/octopus-network/substrate.git"
+branch = "polkadot-v0.9.12"
 
 [dependencies.frame-support]
 default-features = false
-version = '3.0.0'
+git = "https://github.com/octopus-network/substrate.git"
+branch = "polkadot-v0.9.12"
 
 [dependencies.sp-std]
 default-features = false
-version = '3.0.0'
+git = "https://github.com/octopus-network/substrate.git"
+branch = "polkadot-v0.9.12"
 
 [dev-dependencies.hex-literal]
 version = "0.3.3"

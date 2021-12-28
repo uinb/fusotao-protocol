@@ -14,6 +14,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "256"]
+
 pub use pallet::*;
 
 //mod tests;
@@ -26,10 +27,12 @@ pub mod pallet {
         traits::{BalanceStatus, Currency, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
-    use fuso_support::traits::{ReservableToken, Token};
+    use scale_info::TypeInfo;
     use sp_io::hashing::sha2_256;
-    use sp_runtime::{traits::StaticLookup, Permill, Perquintill, RuntimeDebug};
+    use sp_runtime::{Permill, Perquintill, RuntimeDebug, traits::StaticLookup};
     use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
+
+    use fuso_support::traits::{ReservableToken, Token};
 
     pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
 
@@ -49,7 +52,7 @@ pub mod pallet {
     //     <T as frame_system::Config>::AccountId,
     // >>::NegativeImbalance;
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
         pub key: Vec<u8>,
         pub old_v: [u8; 32],
@@ -124,7 +127,7 @@ pub mod pallet {
         }
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub enum Command {
         // price, amounnt, maker_fee, taker_fee, base, quote
         AskLimit(
@@ -150,7 +153,7 @@ pub mod pallet {
         RejectTransferOut(Compact<u32>, Compact<u128>),
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct Proof<AccountId> {
         pub event_id: u64,
         pub user_id: AccountId,
@@ -163,13 +166,13 @@ pub mod pallet {
         pub root: [u8; 32],
     }
 
-    #[derive(Clone, Encode, Decode, RuntimeDebug, Eq, PartialEq)]
+    #[derive(Clone, Encode, Decode, RuntimeDebug, Eq, PartialEq, TypeInfo)]
     pub enum Receipt<Balance, BlockNumber> {
         Authorize(Balance, BlockNumber),
         Revoke(Balance, BlockNumber),
     }
 
-    #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+    #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
     pub struct Dominator<Balance, BlockNumber> {
         pub merkle_root: [u8; 32],
         pub pledged: Balance,
@@ -178,7 +181,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config:
-        frame_system::Config + pallet_balances::Config + pallet_fuso_token::Config
+    frame_system::Config + pallet_balances::Config + pallet_fuso_token::Config
     {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
@@ -195,7 +198,7 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         T::AccountId,
-        Receipt<UniBalance<T>, T::BlockNumber>,
+        Receipt<UniBalance, T::BlockNumber>,
         OptionQuery,
     >;
 
@@ -246,9 +249,11 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T>
-    where
-        AmountOfCoin<T>: Copy,
-        AmountOfToken<T>: Copy,
+        where
+            AmountOfCoin<T>: Copy + From<u128>,
+            AmountOfToken<T>: Copy + From<u128>,
+            u128: From<AmountOfToken<T>> + From<AmountOfCoin<T>>,
+            u32: From<TokenId<T>>
     {
         // TODO pledge amount config?
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
@@ -290,7 +295,6 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // TODO
         #[pallet::weight(1_000_000_000_000)]
         pub fn authorize_coin(
             origin: OriginFor<T>,
@@ -317,7 +321,7 @@ pub mod pallet {
             Receipts::<T>::insert(
                 dominator.clone(),
                 fund_owner.clone(),
-                Receipt::Authorize(UniBalance::Coin(amount), block_number),
+                Receipt::Authorize(UniBalance::Coin(amount.into()), block_number),
             );
             Self::deposit_event(Event::CoinHosted(fund_owner, dominator, amount));
             Ok(().into())
@@ -340,7 +344,7 @@ pub mod pallet {
                 !Receipts::<T>::contains_key(&dominator, &fund_owner),
                 Error::<T>::ReceiptAlreadyExists,
             );
-            let balance = UniBalance::Coin(amount);
+            let balance = UniBalance::Coin(amount.into());
             ensure!(
                 Self::has_enough_reserved(&fund_owner, &balance),
                 Error::<T>::InsufficientBalance
@@ -381,7 +385,7 @@ pub mod pallet {
             Receipts::<T>::insert(
                 dominator.clone(),
                 fund_owner.clone(),
-                Receipt::Authorize(UniBalance::Token(token_id, amount), block_number),
+                Receipt::Authorize(UniBalance::Token(token_id.into(), amount.into()), block_number),
             );
             Self::deposit_event(Event::TokenHosted(fund_owner, dominator, token_id, amount));
             Ok(().into())
@@ -404,7 +408,7 @@ pub mod pallet {
                 !Receipts::<T>::contains_key(&dominator, &fund_owner),
                 Error::<T>::ReceiptAlreadyExists,
             );
-            let balance = UniBalance::Token(token_id, amount);
+            let balance = UniBalance::Token(token_id.into(), amount.into());
             ensure!(
                 // fuso_pallet_token::Pallet::<T>::can_unreserve(&token_id, &fund_owner, amount),
                 Self::has_enough_reserved(&fund_owner, &balance),
@@ -421,30 +425,21 @@ pub mod pallet {
         }
     }
 
-    #[derive(Encode, Decode, Eq, PartialEq, Clone, RuntimeDebug)]
-    pub enum UniBalance<T: Config> {
-        Token(TokenId<T>, AmountOfToken<T>),
-        Coin(AmountOfCoin<T>),
+    #[derive(Encode, Decode, Eq, PartialEq, Clone, RuntimeDebug, TypeInfo)]
+    pub enum UniBalance {
+        Token(u32, u128),
+        Coin(u128),
     }
 
-    impl<T: Config> TryFrom<(u32, u128)> for UniBalance<T> {
-        type Error = Error<T>;
-
+    impl TryFrom<(u32, u128)> for UniBalance {
+        type Error = DispatchError;
         fn try_from((token, value): (u32, u128)) -> Result<Self, Self::Error> {
-            match token {
+            match token.clone() {
                 0 => {
-                    let value: AmountOfCoin<T> = value
-                        .try_into()
-                        .map_err(|_| Error::<T>::IllegalParameters)?;
-                    Ok(UniBalance::<T>::Coin(value))
+                    Ok(UniBalance::Coin(value))
                 }
                 id => {
-                    let value: AmountOfToken<T> = value
-                        .try_into()
-                        .map_err(|_| Error::<T>::IllegalParameters)?;
-                    let id: TokenId<T> =
-                        id.try_into().map_err(|_| Error::<T>::IllegalParameters)?;
-                    Ok(UniBalance::<T>::Token(id, value))
+                    Ok(UniBalance::Token(token, value))
                 }
             }
         }
@@ -453,17 +448,22 @@ pub mod pallet {
     #[derive(Clone)]
     struct AssetsAlternate<T: Config> {
         // account, base, quote
-        pub alternates: Vec<(T::AccountId, UniBalance<T>, UniBalance<T>)>,
-        pub base_fee: UniBalance<T>,
-        pub quote_fee: UniBalance<T>,
+        pub alternates: Vec<(T::AccountId, UniBalance, UniBalance)>,
+        pub base_fee: UniBalance,
+        pub quote_fee: UniBalance,
     }
 
-    impl<T: Config> Pallet<T> {
+    impl<T: Config> Pallet<T> where AmountOfCoin<T>: Copy + From<u128>,
+                                    AmountOfToken<T>: Copy + From<u128>,
+                                    TokenId<T>: From<u32> {
         fn verify_and_update(
             dominator: &T::AccountId,
             ex: &Dominator<AmountOfCoin<T>, T::BlockNumber>,
             proof: Proof<T::AccountId>,
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResultWithPostInfo
+            where AmountOfCoin<T>: Copy + From<u128>,
+                  AmountOfToken<T>: Copy + From<u128>,
+                  TokenId<T>: From<u32> {
             let p0 = smt::CompiledMerkleProof(proof.proof_of_exists.clone());
             let old = proof
                 .leaves
@@ -484,7 +484,7 @@ pub mod pallet {
                 .verify::<smt::sha256::Sha256Hasher>(&proof.root.into(), new)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
-            debug::debug!("{:?}", proof.cmd);
+            //debug::debug!("{:?}", proof.cmd);
             match proof.cmd {
                 Command::AskLimit(price, amount, maker_fee, taker_fee, base, quote) => {
                     let (n, f): (u64, u64) = (price.0.into(), price.1.into());
@@ -543,7 +543,7 @@ pub mod pallet {
                 }
                 Command::TransferOut(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance<T> = (currency, amount).try_into()?;
+                    let balance: UniBalance = (currency, amount).try_into()?;
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -557,7 +557,7 @@ pub mod pallet {
                 }
                 Command::TransferIn(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance<T> = (currency, amount).try_into()?;
+                    let balance: UniBalance = (currency, amount).try_into()?;
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -570,7 +570,7 @@ pub mod pallet {
                 }
                 Command::RejectTransferOut(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance<T> = (currency, amount).try_into()?;
+                    let balance: UniBalance = (currency, amount).try_into()?;
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -610,7 +610,7 @@ pub mod pallet {
             ensure!(leaves.len() >= 3, Error::<T>::ProofsUnsatisfied);
             let maker_count = leaves.len() - 3;
             ensure!(maker_count % 2 == 0, Error::<T>::ProofsUnsatisfied);
-            debug::debug!("ask-limit with number of maker accounts is odd");
+            //debug::debug!("ask-limit with number of maker accounts is odd");
             let (ask0, bid0) = leaves[0].split_old_to_u128();
             let (ask1, bid1) = leaves[0].split_new_to_u128();
             // 0 or remain
@@ -646,7 +646,7 @@ pub mod pallet {
             } else {
                 ensure!(tbf0 == tbf1, Error::<T>::ProofsUnsatisfied);
             }
-            debug::debug!("ask-limit taker base frozen account == cmd");
+            //debug::debug!("ask-limit taker base frozen account == cmd");
             ensure!(bid_delta == tb_delta, Error::<T>::ProofsUnsatisfied);
             let mut mb_delta = 0u128;
             let mut mq_delta = 0u128;
@@ -679,14 +679,14 @@ pub mod pallet {
                     (quote, mq1).try_into()?,
                 ));
             }
-            debug::debug!("ask-limit all makers ok");
+            //debug::debug!("ask-limit all makers ok");
             // FIXME ceil
             let base_charged = maker_fee.mul_ceil(tb_delta);
             ensure!(
                 mb_delta + base_charged == tb_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            debug::debug!("ask-limit traded_base == base_fee + sum_of_maker_base_delta");
+            //debug::debug!("ask-limit traded_base == base_fee + sum_of_maker_base_delta");
             // FIXME ceil
             let quote_charged = taker_fee.mul_ceil(mq_delta);
             ensure!(
@@ -698,7 +698,7 @@ pub mod pallet {
                 (base, tba1 + tbf1).try_into()?,
                 (quote, tqa1 + tqf1).try_into()?,
             ));
-            debug::debug!("ask-limit taker_quote_available_delta + quote_fee == sum_of_maker_quote_frozen_delta");
+            //debug::debug!("ask-limit taker_quote_available_delta + quote_fee == sum_of_maker_quote_frozen_delta");
             Ok(AssetsAlternate {
                 alternates: delta,
                 base_fee: (base, base_charged).try_into()?,
@@ -718,7 +718,7 @@ pub mod pallet {
             ensure!(leaves.len() >= 3, Error::<T>::ProofsUnsatisfied);
             let maker_count = leaves.len() - 3;
             ensure!(maker_count % 2 == 0, Error::<T>::ProofsUnsatisfied);
-            debug::debug!("bid-limit with number of maker accounts is odd");
+            //debug::debug!("bid-limit with number of maker accounts is odd");
             let (ask0, bid0) = leaves[0].split_old_to_u128();
             let (ask1, bid1) = leaves[0].split_new_to_u128();
             let ask_delta = ask0 - ask1;
@@ -784,23 +784,23 @@ pub mod pallet {
                     (quote, mq1).try_into()?,
                 ));
             }
-            debug::debug!("bid-limit makers ok");
+            //debug::debug!("bid-limit makers ok");
             // FIXME ceil
             let quote_charged = maker_fee.mul_ceil(tq_delta);
             ensure!(
                 mq_delta + quote_charged == tq_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            debug::debug!("bid-limit maker_quote_delta + quote_charged == traded_quote");
+            //debug::debug!("bid-limit maker_quote_delta + quote_charged == traded_quote");
             // FIXME ceil
             let base_charged = taker_fee.mul_ceil(mb_delta);
             ensure!(
                 tb_delta + base_charged == mb_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            debug::debug!("bid-limit taker_base_available_delta + base_charged == traded_base");
+            //debug::debug!("bid-limit taker_base_available_delta + base_charged == traded_base");
             ensure!(ask_delta == mb_delta, Error::<T>::ProofsUnsatisfied);
-            debug::debug!("bid-limit orderbook_ask_size_delta == traded_base");
+            //debug::debug!("bid-limit orderbook_ask_size_delta == traded_base");
             if bid_delta != 0 {
                 ensure!(
                     bid_delta == amount - mb_delta,
@@ -809,7 +809,7 @@ pub mod pallet {
             } else {
                 // TODO to avoid divide
             }
-            debug::debug!("bid-limit orderbook_bid_size_delta == untraded_base");
+            //debug::debug!("bid-limit orderbook_bid_size_delta == untraded_base");
             delta.push((
                 taker_b_id,
                 (base, tba1 + tbf1).try_into()?,
@@ -910,49 +910,51 @@ pub mod pallet {
             Ok(())
         }
 
-        fn has_enough_reserved(who: &T::AccountId, balance: &UniBalance<T>) -> bool {
+        fn has_enough_reserved(who: &T::AccountId, balance: &UniBalance) -> bool {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::reserved_balance(who) >= *value
+                    pallet_balances::Pallet::<T>::reserved_balance(who) >= (*value).into()
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::reserved_balance(&id, who) >= *value
+                    pallet_fuso_token::Pallet::<T>::reserved_balance(&(*id).into(), who) >= (*value).into()
                 }
             }
         }
 
-        fn mutate_to(who: &T::AccountId, balance: &UniBalance<T>) {
+        fn mutate_to(who: &T::AccountId, balance: &UniBalance) {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved = *value);
+                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved = (*value).into());
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::mutate_account(id, who, |a| {
-                        a.reserved = *value
+                    pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
+                        a.reserved = (*value).into()
                     });
                 }
             }
         }
 
-        fn unreserve(who: &T::AccountId, balance: UniBalance<T>) {
+        fn unreserve(who: &T::AccountId, balance: UniBalance) {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::unreserve(who, value);
+                    pallet_balances::Pallet::<T>::unreserve(who, value.into());
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::unreserve(&id, who, value);
+                    pallet_fuso_token::Pallet::<T>::unreserve(&id.into(), who, value.into());
                 }
             }
         }
 
-        fn charge(who: &T::AccountId, balance: &UniBalance<T>) {
+        fn charge(who: &T::AccountId, balance: &UniBalance) where AmountOfCoin<T>: Copy + From<u128>,
+                                                                  TokenId<T>: From<u32>,
+                                                                  AmountOfToken<T>: Copy + From<u128> {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved += *value);
+                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved += (*value).into());
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::mutate_account(id, who, |a| {
-                        a.reserved += *value
+                    pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
+                        a.reserved += (*value).into()
                     });
                 }
             }
