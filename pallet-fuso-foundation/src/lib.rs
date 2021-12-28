@@ -115,7 +115,7 @@ pub mod pallet {
             let mut weight: Weight = 0u64;
             for item in Foundation::<T>::iter() {
                 let account = item.0;
-                let balance: (u16, BalanceOf<T>) = Self::foundation(&account).unwrap();
+				let balance: (u16, BalanceOf<T>) = item.1;
                 if balance.0 > 0 {
                     <pallet_balances::Pallet<T>>::unreserve_named(&(RESERVABLE_IDENTIFIER.into()), &account, balance.1);
                     Self::deposit_event(Event::PreLockedFundUnlocked(account.clone(), balance.1));
