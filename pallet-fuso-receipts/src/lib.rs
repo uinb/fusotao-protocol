@@ -292,7 +292,6 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // TODO
         #[pallet::weight(1_000_000_000_000)]
         pub fn authorize_coin(
             origin: OriginFor<T>,
