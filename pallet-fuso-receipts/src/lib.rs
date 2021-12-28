@@ -14,6 +14,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "256"]
+
 pub use pallet::*;
 
 //mod tests;
@@ -26,11 +27,13 @@ pub mod pallet {
         traits::{BalanceStatus, Currency, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
-    use fuso_support::traits::{ReservableToken, Token};
-    use sp_io::hashing::sha2_256;
-    use sp_runtime::{traits::StaticLookup, Permill, Perquintill, RuntimeDebug};
-    use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
     use scale_info::TypeInfo;
+    use sp_io::hashing::sha2_256;
+    use sp_runtime::{Permill, Perquintill, RuntimeDebug, traits::StaticLookup};
+    use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
+
+    use fuso_support::traits::{ReservableToken, Token};
+
     pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
 
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
@@ -178,7 +181,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config:
-        frame_system::Config + pallet_balances::Config + pallet_fuso_token::Config
+    frame_system::Config + pallet_balances::Config + pallet_fuso_token::Config
     {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
@@ -246,11 +249,11 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T>
-    where
-        AmountOfCoin<T>: Copy + From<u128>,
-        AmountOfToken<T>: Copy + From<u128>,
-        u128: From<AmountOfToken<T>> + From<AmountOfCoin<T>>,
-        u32: From<TokenId<T>>
+        where
+            AmountOfCoin<T>: Copy + From<u128>,
+            AmountOfToken<T>: Copy + From<u128>,
+            u128: From<AmountOfToken<T>> + From<AmountOfCoin<T>>,
+            u32: From<TokenId<T>>
     {
         // TODO pledge amount config?
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
@@ -423,12 +426,12 @@ pub mod pallet {
     }
 
     #[derive(Encode, Decode, Eq, PartialEq, Clone, RuntimeDebug, TypeInfo)]
-    pub enum UniBalance{
+    pub enum UniBalance {
         Token(u32, u128),
         Coin(u128),
     }
 
-    impl TryFrom<(u32, u128)> for UniBalance{
+    impl TryFrom<(u32, u128)> for UniBalance {
         type Error = DispatchError;
         fn try_from((token, value): (u32, u128)) -> Result<Self, Self::Error> {
             match token.clone() {
@@ -436,7 +439,6 @@ pub mod pallet {
                     Ok(UniBalance::Coin(value))
                 }
                 id => {
-
                     Ok(UniBalance::Token(token, value))
                 }
             }
@@ -453,7 +455,7 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T> where AmountOfCoin<T>: Copy + From<u128>,
                                     AmountOfToken<T>: Copy + From<u128>,
-                                    TokenId<T>: From<u32>{
+                                    TokenId<T>: From<u32> {
         fn verify_and_update(
             dominator: &T::AccountId,
             ex: &Dominator<AmountOfCoin<T>, T::BlockNumber>,
@@ -461,7 +463,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo
             where AmountOfCoin<T>: Copy + From<u128>,
                   AmountOfToken<T>: Copy + From<u128>,
-                  TokenId<T>: From<u32>{
+                  TokenId<T>: From<u32> {
             let p0 = smt::CompiledMerkleProof(proof.proof_of_exists.clone());
             let old = proof
                 .leaves
