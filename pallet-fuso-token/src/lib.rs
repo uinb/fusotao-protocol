@@ -218,12 +218,6 @@ pub mod pallet {
 			Balances::<T>::try_mutate((token, who), |account| -> Result<R, ()> { Ok(f(account)) })
 		}
 
-
-		/// Increases the asset `id` balance of `beneficiary` by `amount`.
-        ///
-        /// This alters the registered supply of the asset and emits an event.
-        ///
-        /// Will return an error or will increase the amount by exactly `amount`.
 		pub fn do_mint(
 			token: T::TokenId,
 			beneficiary: &T::AccountId,
@@ -240,7 +234,6 @@ pub mod pallet {
 					.checked_add(&amount)
 					.ok_or(Error::<T>::Overflow)?;
 				to.replace(account);
-
 				<Tokens<T>>::try_mutate_exists(&token, |tokenInfo| -> DispatchResult {
 					ensure!(tokenInfo.is_some(), Error::<T>::BalanceZero);
 					let mut info  = tokenInfo.take().unwrap();
@@ -261,7 +254,6 @@ pub mod pallet {
 			amount: T::Balance,
 			maybe_check_admin: Option<T::AccountId>,
 		) -> Result<T::Balance, DispatchError> {
-
 			ensure!(!amount.is_zero(), Error::<T>::AmountZero);
 			<Balances<T>>::try_mutate_exists((&token, target), |from| -> DispatchResult {
 				ensure!(from.is_some(), Error::<T>::BalanceZero);
@@ -276,7 +268,6 @@ pub mod pallet {
 						from.replace(account);
 					}
 				}
-
 				<Tokens<T>>::try_mutate_exists(&token, |tokenInfo| -> DispatchResult {
 					ensure!(tokenInfo.is_some(), Error::<T>::BalanceZero);
 					let mut info  = tokenInfo.take().unwrap();
@@ -284,16 +275,12 @@ pub mod pallet {
 					tokenInfo.replace(info);
 					Ok(())
 				});
-
 				Ok(())
 			})?;
 			Self::deposit_event(Event::TokenBurned(token, target.clone(), amount));
 			Ok(T::Balance::default())
 		}
-
 	}
-
-
 
 	impl<T: Config> fungibles::Inspect<T::AccountId> for Pallet<T> {
 		type AssetId = T::TokenId;
