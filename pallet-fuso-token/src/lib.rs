@@ -37,6 +37,7 @@ pub mod pallet {
 
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
+	use frame_support::traits::tokens::{fungibles, DepositConsequence, WithdrawConsequence};
 
 	// pub type UniBalance<T> = <T as pallet_balances::Config>::Balance;
 
@@ -216,7 +217,158 @@ pub mod pallet {
 		) -> Result<R, ()> {
 			Balances::<T>::try_mutate((token, who), |account| -> Result<R, ()> { Ok(f(account)) })
 		}
+
+
+		/// Increases the asset `id` balance of `beneficiary` by `amount`.
+        ///
+        /// This alters the registered supply of the asset and emits an event.
+        ///
+        /// Will return an error or will increase the amount by exactly `amount`.
+		pub fn do_mint(
+			token: T::TokenId,
+			beneficiary: &T::AccountId,
+			amount: T::Balance,
+			maybe_check_issuer: Option<T::AccountId>,
+		) -> DispatchResult {
+			<Balances<T>>::try_mutate_exists((&token, beneficiary), |to| -> DispatchResult {
+				let mut account = to.take().unwrap_or(TokenAccountData {
+					free: Zero::zero(),
+					reserved: Zero::zero(),
+				});
+				account.free = account
+					.free
+					.checked_add(&amount)
+					.ok_or(Error::<T>::Overflow)?;
+				to.replace(account);
+
+				<Tokens<T>>::try_mutate_exists(&token, |tokenInfo| -> DispatchResult {
+					ensure!(tokenInfo.is_some(), Error::<T>::BalanceZero);
+					let mut info  = tokenInfo.take().unwrap();
+					info.total = info.total.checked_add(&amount).ok_or(Error::<T>::InsufficientBalance)?;
+					tokenInfo.replace(info);
+					Ok(())
+				});
+
+				Ok(())
+			})?;
+			Self::deposit_event(Event::TokenIssued(token, beneficiary.clone(), amount));
+			Ok(())
+		}
+
+		pub fn do_burn(
+			token: T::TokenId,
+			target: &T::AccountId,
+			amount: T::Balance,
+			maybe_check_admin: Option<T::AccountId>,
+		) -> Result<T::Balance, DispatchError> {
+
+			ensure!(!amount.is_zero(), Error::<T>::AmountZero);
+			<Balances<T>>::try_mutate_exists((&token, target), |from| -> DispatchResult {
+				ensure!(from.is_some(), Error::<T>::BalanceZero);
+				let mut account = from.take().unwrap();
+				account.free = account
+					.free
+					.checked_sub(&amount)
+					.ok_or(Error::<T>::InsufficientBalance)?;
+				match account.free == Zero::zero() && account.reserved == Zero::zero() {
+					true => {}
+					false => {
+						from.replace(account);
+					}
+				}
+
+				<Tokens<T>>::try_mutate_exists(&token, |tokenInfo| -> DispatchResult {
+					ensure!(tokenInfo.is_some(), Error::<T>::BalanceZero);
+					let mut info  = tokenInfo.take().unwrap();
+					info.total = info.total.checked_sub(&amount).ok_or(Error::<T>::InsufficientBalance)?;
+					tokenInfo.replace(info);
+					Ok(())
+				});
+
+				Ok(())
+			})?;
+			Self::deposit_event(Event::TokenBurned(token, target.clone(), amount));
+			Ok(T::Balance::default())
+		}
+
 	}
+
+
+
+	impl<T: Config> fungibles::Inspect<T::AccountId> for Pallet<T> {
+		type AssetId = T::TokenId;
+		type Balance = T::Balance;
+
+		fn total_issuance(asset: Self::AssetId) -> Self::Balance {
+			//Asset::<T, I>::get(asset).map(|x| x.supply).unwrap_or_else(Zero::zero)
+			Self::Balance::default()
+		}
+
+		fn minimum_balance(asset: Self::AssetId) -> Self::Balance {
+			//Asset::<T, I>::get(asset).map(|x| x.min_balance).unwrap_or_else(Zero::zero)
+			Self::Balance::default()
+		}
+
+		fn balance(asset: Self::AssetId, who: &T::AccountId) -> Self::Balance {
+			//Pallet::<T, I>::balance(asset, who)
+			Self::Balance::default()
+		}
+
+		fn reducible_balance(
+			asset: Self::AssetId,
+			who: &T::AccountId,
+			keep_alive: bool,
+		) -> Self::Balance {
+			//Pallet::<T, I>::reducible_balance(asset, who, keep_alive).unwrap_or(Zero::zero())
+			Self::Balance::default()
+		}
+
+		fn can_deposit(
+			asset: Self::AssetId,
+			who: &T::AccountId,
+			amount: Self::Balance,
+		) -> DepositConsequence {
+			//Pallet::<T, I>::can_increase(asset, who, amount)
+			DepositConsequence::Success
+		}
+
+		fn can_withdraw(
+			asset: Self::AssetId,
+			who: &T::AccountId,
+			amount: Self::Balance,
+		) -> WithdrawConsequence<Self::Balance> {
+			//Pallet::<T, I>::can_decrease(asset, who, amount, false)
+			WithdrawConsequence::Success
+		}
+	}
+
+
+	impl<T: Config> fungibles::Mutate<T::AccountId> for Pallet<T> {
+		fn mint_into(
+			asset: Self::AssetId,
+			who: &T::AccountId,
+			amount: Self::Balance,
+		) -> DispatchResult {
+			Self::do_mint(asset, who, amount, None)
+		}
+
+		fn burn_from(
+			asset: Self::AssetId,
+			who: &T::AccountId,
+			amount: Self::Balance,
+		) -> Result<Self::Balance, DispatchError> {
+			Self::do_burn(asset, who, amount, None)
+		}
+
+		fn slash(
+			asset: Self::AssetId,
+			who: &T::AccountId,
+			amount: Self::Balance,
+		) -> Result<Self::Balance, DispatchError> {
+			Self::do_burn(asset, who, amount, None)
+		}
+	}
+
 
 	impl<T: Config> Token<T::AccountId> for Pallet<T> {
 		type Balance = T::Balance;
@@ -294,8 +446,6 @@ pub mod pallet {
 					Ok(value)
 				},
 			)
-			// Self::deposit_event(Event::TokenUnreserved(token.clone(), who.clone(), value));
-			// r
 		}
 
 		fn reserved_balance(token: &Self::TokenId, who: &T::AccountId) -> Self::Balance {
