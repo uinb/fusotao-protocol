@@ -52,7 +52,7 @@ pub mod pallet {
 	#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
 	pub enum XToken<TokenId, Balance> {
 		//symbol, nep141 contract name
-		NEP141_TOKEN(TokenId, Vec<u8>, Vec<u8>, Balance, u8),
+		NEP141(TokenId, Vec<u8>, Vec<u8>, Balance, u8),
 	}
 
 	#[pallet::config]
@@ -233,7 +233,7 @@ pub mod pallet {
 		fn create_token(name: &[u8]) -> T::TokenId {
 			let token_id = Self::next_token_id();
 			let name = name.as_ref().to_vec();
-			let token = XToken::<T::TokenId, T::Balance>::NEP141_TOKEN(token_id, name.clone(), name.clone(), Zero::zero(), 18u8);
+			let token = XToken::<T::TokenId, T::Balance>::NEP141(token_id, name.clone(), name.clone(), Zero::zero(), 18u8);
 			TokenByName::<T>::insert(name, token.clone());
 			TokenById::<T>::insert(token_id, token.clone());
 			token_id
@@ -520,7 +520,7 @@ pub mod pallet {
 			let name = name.as_ref();
 			let tokenResult  = Self:: get_token_by_name(name.clone().to_vec());
 			let token_id = match tokenResult {
-				Some(XToken::NEP141_TOKEN(token_id, _,_,_,_)) => token_id,
+				Some(XToken::NEP141(token_id, _, _, _, _)) => token_id,
 				_ => {
 					Self::create_token(name)
 				}
@@ -531,7 +531,7 @@ pub mod pallet {
 		fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
 			let tokenResult = Self::get_token_by_id(token_id);
 			match tokenResult {
-				Some(XToken::NEP141_TOKEN(_,_,name, _,_)) => Ok(name),
+				Some(XToken::NEP141(_, _, name, _, _)) => Ok(name),
 				_ => Err(())
 			}
 		}
