@@ -113,17 +113,6 @@ pub mod pallet {
 
         fn unlock_fund() -> Weight {
             let mut weight: Weight = 0u64;
-/*			Foundation::<T>::translate_values( |o| ->Option<(u16,BalanceOf<T>)> {
-				if o.0 > 0 {
-					<pallet_balances::Pallet<T>>::unreserve_named(&(RESERVABLE_IDENTIFIER.into()), &account, balance.1);
-					Self::deposit_event(Event::PreLockedFundUnlocked(account.clone(), balance.1));
-					let b = (balance.0 - 1, balance.1);
-					weight = weight + 100_000;
-					Option::Some(b)
-				}else {
-					Option::Some(o)
-				}
-			});*/
             for item in Foundation::<T>::iter() {
                 let account = item.0;
 				let balance: (u16, BalanceOf<T>) = item.1;
