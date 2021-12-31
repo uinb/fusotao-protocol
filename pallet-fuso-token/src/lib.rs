@@ -1,5 +1,4 @@
 // Copyright 2021 UINB Technologies Pte. Ltd.
-
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,10 +21,11 @@ pub mod pallet {
 	use codec::Codec;
 	use codec::{Decode, Encode};
 	use frame_support::pallet_prelude::*;
-	use frame_support::traits::{BalanceStatus, Currency};
+	use frame_support::traits::BalanceStatus;
 	use frame_system::pallet_prelude::*;
 	use sp_std::{fmt::Debug, vec::Vec};
 	use scale_info::TypeInfo;
+	use pallet_octopus_support::traits::AssetIdAndNameProvider;
 
 	use sp_runtime::traits::{
 		AtLeast32BitUnsigned, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Member, One,
@@ -39,8 +39,6 @@ pub mod pallet {
 	use frame_system::pallet_prelude::*;
 	use frame_support::traits::tokens::{fungibles, DepositConsequence, WithdrawConsequence};
 
-	// pub type UniBalance<T> = <T as pallet_balances::Config>::Balance;
-
 	#[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
 	pub struct TokenAccountData<Balance> {
 		pub free: Balance,
@@ -51,6 +49,12 @@ pub mod pallet {
 	pub struct TokenInfo<Balance> {
 		pub total: Balance,
 		pub symbol: Vec<u8>,
+	}
+
+	#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
+	pub enum XToken<TokenId, Balance> {
+		//symbol, nep141 contract name
+		NEP141_TOKEN(TokenId, Vec<u8>, Vec<u8>, Balance, u8),
 	}
 
 	#[pallet::config]
@@ -105,6 +109,16 @@ pub mod pallet {
 	#[pallet::getter(fn get_token_info)]
 	pub type Tokens<T: Config> =
 		StorageMap<_, Twox64Concat, T::TokenId, TokenInfo<T::Balance>, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn get_token_by_id)]
+	pub type TokenById<T: Config> =
+	StorageMap<_, Twox64Concat, T::TokenId, XToken<T::TokenId, T::Balance>, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn get_token_by_name)]
+	pub type TokenByName<T: Config> =
+	StorageMap<_, Twox64Concat, Vec<u8>, XToken<T::TokenId, T::Balance>, OptionQuery>;
 
 	#[pallet::type_value]
 	pub fn DefaultNextTokenId<T: Config>() -> T::TokenId {
@@ -218,6 +232,15 @@ pub mod pallet {
 			Balances::<T>::try_mutate((token, who), |account| -> Result<R, ()> { Ok(f(account)) })
 		}
 
+		fn create_token(name: &[u8]) -> T::TokenId {
+			let token_id = Self::next_token_id();
+			let n = name.as_ref().to_vec();
+			let t = XToken::<T::TokenId, T::Balance>::NEP141_TOKEN(token_id, n.clone(), n.clone(), Zero::zero(),18u8 );
+			TokenByName::<T>::insert(n, t.clone());
+			TokenById::<T>::insert(token_id,t.clone());
+			token_id
+		}
+
 		pub fn do_mint(
 			token: T::TokenId,
 			beneficiary: &T::AccountId,
@@ -292,12 +315,10 @@ pub mod pallet {
 		}
 
 		fn minimum_balance(asset: Self::AssetId) -> Self::Balance {
-			//Asset::<T, I>::get(asset).map(|x| x.min_balance).unwrap_or_else(Zero::zero)
 			Self::Balance::default()
 		}
 
 		fn balance(asset: Self::AssetId, who: &T::AccountId) -> Self::Balance {
-			//Pallet::<T, I>::balance(asset, who)
 			Self::Balance::default()
 		}
 
@@ -306,7 +327,6 @@ pub mod pallet {
 			who: &T::AccountId,
 			keep_alive: bool,
 		) -> Self::Balance {
-			//Pallet::<T, I>::reducible_balance(asset, who, keep_alive).unwrap_or(Zero::zero())
 			Self::Balance::default()
 		}
 
@@ -315,7 +335,6 @@ pub mod pallet {
 			who: &T::AccountId,
 			amount: Self::Balance,
 		) -> DepositConsequence {
-			//Pallet::<T, I>::can_increase(asset, who, amount)
 			DepositConsequence::Success
 		}
 
@@ -328,7 +347,6 @@ pub mod pallet {
 			WithdrawConsequence::Success
 		}
 	}
-
 
 	impl<T: Config> fungibles::Mutate<T::AccountId> for Pallet<T> {
 		fn mint_into(
@@ -355,7 +373,6 @@ pub mod pallet {
 			Self::do_burn(asset, who, amount, None)
 		}
 	}
-
 
 	impl<T: Config> Token<T::AccountId> for Pallet<T> {
 		type Balance = T::Balance;
@@ -497,6 +514,30 @@ pub mod pallet {
 				value,
 			));
 			Ok(value)
+		}
+	}
+
+	impl<T: Config> AssetIdAndNameProvider<T::TokenId> for Pallet<T> {
+		type Err = ();
+
+		fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
+			let name = name.as_ref();
+			let tokenResult  = Self:: get_token_by_name(name.clone().to_vec());
+			let token_id = match tokenResult {
+				Some(XToken::NEP141_TOKEN(token_id, _,_,_,_)) => token_id,
+				_ => {
+					Self::create_token(name)
+				}
+			};
+			Ok(token_id)
+		}
+
+		fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
+			let tokenResult = Self::get_token_by_id(token_id);
+			match tokenResult {
+				Some(XToken::NEP141_TOKEN(_,_,name, _,_)) => Ok(name),
+				_ => Err(())
+			}
 		}
 	}
 }
