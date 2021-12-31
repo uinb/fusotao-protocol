@@ -18,26 +18,24 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
 	use ascii::AsciiStr;
-	use codec::Codec;
 	use codec::{Decode, Encode};
+	use codec::Codec;
+	use frame_support::pallet_prelude::*;
 	use frame_support::pallet_prelude::*;
 	use frame_support::traits::BalanceStatus;
+	use frame_support::traits::tokens::{DepositConsequence, fungibles, WithdrawConsequence};
 	use frame_system::pallet_prelude::*;
-	use sp_std::{fmt::Debug, vec::Vec};
-	use scale_info::TypeInfo;
+	use frame_system::pallet_prelude::*;
 	use pallet_octopus_support::traits::AssetIdAndNameProvider;
-
+	use scale_info::TypeInfo;
+	use sp_runtime::DispatchResult;
 	use sp_runtime::traits::{
 		AtLeast32BitUnsigned, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Member, One,
 		StaticLookup, Zero,
 	};
-	use sp_runtime::DispatchResult;
+	use sp_std::{fmt::Debug, vec::Vec};
 
 	use fuso_support::traits::{ReservableToken, Token};
-
-	use frame_support::pallet_prelude::*;
-	use frame_system::pallet_prelude::*;
-	use frame_support::traits::tokens::{fungibles, DepositConsequence, WithdrawConsequence};
 
 	#[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
 	pub struct TokenAccountData<Balance> {
@@ -234,10 +232,10 @@ pub mod pallet {
 
 		fn create_token(name: &[u8]) -> T::TokenId {
 			let token_id = Self::next_token_id();
-			let n = name.as_ref().to_vec();
-			let t = XToken::<T::TokenId, T::Balance>::NEP141_TOKEN(token_id, n.clone(), n.clone(), Zero::zero(),18u8 );
-			TokenByName::<T>::insert(n, t.clone());
-			TokenById::<T>::insert(token_id,t.clone());
+			let name = name.as_ref().to_vec();
+			let token = XToken::<T::TokenId, T::Balance>::NEP141_TOKEN(token_id, name.clone(), name.clone(), Zero::zero(), 18u8);
+			TokenByName::<T>::insert(name, token.clone());
+			TokenById::<T>::insert(token_id, token.clone());
 			token_id
 		}
 
@@ -310,7 +308,6 @@ pub mod pallet {
 		type Balance = T::Balance;
 
 		fn total_issuance(asset: Self::AssetId) -> Self::Balance {
-			//Asset::<T, I>::get(asset).map(|x| x.supply).unwrap_or_else(Zero::zero)
 			Self::Balance::default()
 		}
 
@@ -343,7 +340,6 @@ pub mod pallet {
 			who: &T::AccountId,
 			amount: Self::Balance,
 		) -> WithdrawConsequence<Self::Balance> {
-			//Pallet::<T, I>::can_decrease(asset, who, amount, false)
 			WithdrawConsequence::Success
 		}
 	}
