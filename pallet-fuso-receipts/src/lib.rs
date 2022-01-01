@@ -17,8 +17,6 @@
 
 pub use pallet::*;
 
-//mod tests;
-
 #[frame_support::pallet]
 pub mod pallet {
     use codec::{Compact, Decode, Encode};
@@ -27,30 +25,20 @@ pub mod pallet {
         traits::{BalanceStatus, Currency, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
+    use fuso_support::traits::{ReservableToken, Token};
     use scale_info::TypeInfo;
     use sp_io::hashing::sha2_256;
-    use sp_runtime::{Permill, Perquintill, RuntimeDebug, traits::StaticLookup};
+    use sp_runtime::{
+        traits::{StaticLookup, Zero},
+        Permill, Perquintill, RuntimeDebug,
+    };
     use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
 
-    use fuso_support::traits::{ReservableToken, Token};
-
     pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
-
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
-
     pub type Amount = u128;
-
     pub type Price = (u128, Perquintill);
-
     pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
-
-    // pub type PositiveImbalanceOf<T> = <<T as Config>::Coin as Currency<
-    //     <T as frame_system::Config>::AccountId,
-    // >>::PositiveImbalance;
-
-    // pub type NegativeImbalanceOf<T> = <<T as Config>::Coin as Currency<
-    //     <T as frame_system::Config>::AccountId,
-    // >>::NegativeImbalance;
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -173,21 +161,31 @@ pub mod pallet {
     }
 
     #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
-    pub struct Dominator<Balance, BlockNumber> {
+    pub struct Dominator<Coin, BlockNumber> {
+        pub staked: Coin,
         pub merkle_root: [u8; 32],
-        pub pledged: Balance,
         pub sequence: (u64, BlockNumber),
+    }
+
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub struct BonusKey<AccountId, TokenId> {
+        owner: AccountId,
+        token: TokenId,
+    }
+
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub struct Staking<Coin> {
+        start_era: u32,
+        amount: Coin,
     }
 
     #[pallet::config]
     pub trait Config:
-    frame_system::Config + pallet_balances::Config + pallet_fuso_token::Config
+        frame_system::Config + pallet_balances::Config + pallet_fuso_token::Config
     {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-        // type Coin: ReservableCurrency<Self::AccountId>;
-
-        // type Token: ReservableToken<Self::AccountId>;
+        type DominatorThreshold: Get<AmountOfCoin<Self>>;
     }
 
     #[pallet::storage]
@@ -212,10 +210,34 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    #[pallet::storage]
+    #[pallet::getter(fn bonuses)]
+    pub type Bonuses<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        BonusKey<T::AccountId, T::TokenId>,
+        Blake2_128Concat,
+        u32,
+        u128,
+        ValueQuery,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn stakings)]
+    pub type Stakings<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        T::AccountId,
+        Staking<AmountOfCoin<T>>,
+        OptionQuery,
+    >;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
-        DominatorClaimed(T::AccountId, AmountOfCoin<T>),
+        DominatorClaimed(T::AccountId),
         CoinHosted(T::AccountId, T::AccountId, AmountOfCoin<T>),
         TokenHosted(T::AccountId, T::AccountId, TokenId<T>, AmountOfToken<T>),
         CoinRevoked(T::AccountId, T::AccountId, AmountOfCoin<T>),
@@ -244,39 +266,33 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     #[pallet::hooks]
-    // TODO
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
 
     #[pallet::call]
     impl<T: Config> Pallet<T>
-        where
-            AmountOfCoin<T>: Copy + From<u128>,
-            AmountOfToken<T>: Copy + From<u128>,
-            u128: From<AmountOfToken<T>> + From<AmountOfCoin<T>>,
-            u32: From<TokenId<T>>
+    where
+        AmountOfCoin<T>: Copy + From<u128>,
+        AmountOfToken<T>: Copy + From<u128>,
+        u128: From<AmountOfToken<T>> + From<AmountOfCoin<T>>,
+        u32: From<TokenId<T>>,
     {
-        // TODO pledge amount config?
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
         #[pallet::weight(1_000_000_000_000)]
-        pub fn claim_dominator(
-            origin: OriginFor<T>,
-            pledged: AmountOfCoin<T>,
-        ) -> DispatchResultWithPostInfo {
+        pub fn claim_dominator(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let dominator = ensure_signed(origin)?;
             ensure!(
                 !Dominators::<T>::contains_key(&dominator),
                 Error::<T>::DominatorAlreadyExists
             );
-            <pallet_balances::Pallet<T>>::reserve(&dominator, pledged)?;
-            <Dominators<T>>::insert(
+            Dominators::<T>::insert(
                 &dominator,
                 Dominator {
-                    pledged: pledged,
+                    staked: Zero::zero(),
                     sequence: (0, frame_system::Pallet::<T>::block_number()),
                     merkle_root: Default::default(),
                 },
             );
-            Self::deposit_event(Event::DominatorClaimed(dominator, pledged));
+            Self::deposit_event(Event::DominatorClaimed(dominator));
             Ok(().into())
         }
 
@@ -292,6 +308,25 @@ pub mod pallet {
             for proof in proofs.into_iter() {
                 Self::verify_and_update(&dominator, &ex, proof)?;
             }
+            Ok(().into())
+        }
+
+        #[pallet::weight(1_000_000_000_000)]
+        pub fn stake(
+            origin: OriginFor<T>,
+            dominator: <T::Lookup as StaticLookup>::Source,
+            amount: AmountOfCoin<T>,
+        ) -> DispatchResultWithPostInfo {
+            let fund_owner = ensure_signed(origin)?;
+            let dominator = T::Lookup::lookup(dominator)?;
+            ensure!(
+                Dominators::<T>::contains_key(&dominator),
+                Error::<T>::DominatorNotFound
+            );
+            pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
+            let block_number = frame_system::Pallet::<T>::block_number();
+            // TODO if staking already exists
+
             Ok(().into())
         }
 
@@ -385,7 +420,10 @@ pub mod pallet {
             Receipts::<T>::insert(
                 dominator.clone(),
                 fund_owner.clone(),
-                Receipt::Authorize(UniBalance::Token(token_id.into(), amount.into()), block_number),
+                Receipt::Authorize(
+                    UniBalance::Token(token_id.into(), amount.into()),
+                    block_number,
+                ),
             );
             Self::deposit_event(Event::TokenHosted(fund_owner, dominator, token_id, amount));
             Ok(().into())
@@ -435,12 +473,8 @@ pub mod pallet {
         type Error = DispatchError;
         fn try_from((token, value): (u32, u128)) -> Result<Self, Self::Error> {
             match token.clone() {
-                0 => {
-                    Ok(UniBalance::Coin(value))
-                }
-                id => {
-                    Ok(UniBalance::Token(token, value))
-                }
+                0 => Ok(UniBalance::Coin(value)),
+                id => Ok(UniBalance::Token(token, value)),
             }
         }
     }
@@ -453,17 +487,22 @@ pub mod pallet {
         pub quote_fee: UniBalance,
     }
 
-    impl<T: Config> Pallet<T> where AmountOfCoin<T>: Copy + From<u128>,
-                                    AmountOfToken<T>: Copy + From<u128>,
-                                    TokenId<T>: From<u32> {
+    impl<T: Config> Pallet<T>
+    where
+        AmountOfCoin<T>: Copy + From<u128>,
+        AmountOfToken<T>: Copy + From<u128>,
+        TokenId<T>: From<u32>,
+    {
         fn verify_and_update(
             dominator: &T::AccountId,
             ex: &Dominator<AmountOfCoin<T>, T::BlockNumber>,
             proof: Proof<T::AccountId>,
         ) -> DispatchResultWithPostInfo
-            where AmountOfCoin<T>: Copy + From<u128>,
-                  AmountOfToken<T>: Copy + From<u128>,
-                  TokenId<T>: From<u32> {
+        where
+            AmountOfCoin<T>: Copy + From<u128>,
+            AmountOfToken<T>: Copy + From<u128>,
+            TokenId<T>: From<u32>,
+        {
             let p0 = smt::CompiledMerkleProof(proof.proof_of_exists.clone());
             let old = proof
                 .leaves
@@ -723,13 +762,7 @@ pub mod pallet {
             let (ask1, bid1) = leaves[0].split_new_to_u128();
             let ask_delta = ask0 - ask1;
             let bid_delta = bid1 - bid0;
-            // FIXME ceil
-            // let frozen_vol = price
-            //     .0
-            //     .checked_mul(amount)
-            //     .ok_or_else(|| Error::<T>::ProofsUnsatisfied)?
-            //     .checked_add(price.1.mul_ceil(amount))
-            //     .ok_or_else(|| Error::<T>::ProofsUnsatisfied)?;
+
             let taker_base = &leaves[leaves.len() - 2];
             let (tba0, tbf0) = taker_base.split_old_to_u128();
             let (tba1, tbf1) = taker_base.split_new_to_u128();
@@ -916,7 +949,8 @@ pub mod pallet {
                     pallet_balances::Pallet::<T>::reserved_balance(who) >= (*value).into()
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::reserved_balance(&(*id).into(), who) >= (*value).into()
+                    pallet_fuso_token::Pallet::<T>::reserved_balance(&(*id).into(), who)
+                        >= (*value).into()
                 }
             }
         }
@@ -924,7 +958,9 @@ pub mod pallet {
         fn mutate_to(who: &T::AccountId, balance: &UniBalance) {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved = (*value).into());
+                    pallet_balances::Pallet::<T>::mutate_account(who, |a| {
+                        a.reserved = (*value).into()
+                    });
                 }
                 UniBalance::Token(id, value) => {
                     pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
@@ -945,12 +981,17 @@ pub mod pallet {
             }
         }
 
-        fn charge(who: &T::AccountId, balance: &UniBalance) where AmountOfCoin<T>: Copy + From<u128>,
-                                                                  TokenId<T>: From<u32>,
-                                                                  AmountOfToken<T>: Copy + From<u128> {
+        fn charge(who: &T::AccountId, balance: &UniBalance)
+        where
+            AmountOfCoin<T>: Copy + From<u128>,
+            TokenId<T>: From<u32>,
+            AmountOfToken<T>: Copy + From<u128>,
+        {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::mutate_account(who, |a| a.reserved += (*value).into());
+                    pallet_balances::Pallet::<T>::mutate_account(who, |a| {
+                        a.reserved += (*value).into()
+                    });
                 }
                 UniBalance::Token(id, value) => {
                     pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
