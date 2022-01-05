@@ -19,11 +19,12 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use codec::{Compact, Decode, Encode};
+    use codec::{Compact, Decode, Encode, EncodeLike};
     use frame_support::{
         pallet_prelude::*,
         storage::bounded_vec::BoundedVec,
         traits::{BalanceStatus, Currency, ReservableCurrency},
+        transactional,
     };
     use frame_system::pallet_prelude::*;
     use fuso_support::traits::{ReservableToken, Token};
@@ -41,6 +42,8 @@ pub mod pallet {
     pub type Price = (u128, Perquintill);
     pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
     pub type Symbol<T> = (TokenId<T>, TokenId<T>);
+    // the T::BlockNumber can be encoded into u32
+    pub type Season = u32;
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -172,7 +175,7 @@ pub mod pallet {
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct BonusKey<AccountId, TokenId> {
-        owner: AccountId,
+        dominator: AccountId,
         token: TokenId,
     }
 
@@ -184,8 +187,8 @@ pub mod pallet {
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct Staking<Coin> {
-        start_season: u32,
-        end_season: Option<u32>,
+        start_season: Season,
+        end_season: Option<Season>,
         amount: Coin,
     }
 
@@ -275,6 +278,7 @@ pub mod pallet {
         InsufficientBalance,
         InsufficientStashAccount,
         InvalidStatus,
+        InvalidStaking,
     }
 
     #[pallet::pallet]
@@ -287,10 +291,10 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T>
     where
-        AmountOfCoin<T>: Copy + From<u128>,
-        AmountOfToken<T>: Copy + From<u128>,
-        u128: From<AmountOfToken<T>> + From<AmountOfCoin<T>>,
-        u32: From<TokenId<T>>,
+        AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
+        AmountOfToken<T>: Copy + From<u128> + Into<u128>,
+        TokenId<T>: From<u32> + Into<u32>,
+        <T as frame_system::Config>::BlockNumber: Into<u32>,
     {
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
         #[pallet::weight(1_000_000_000_000)]
@@ -341,17 +345,37 @@ pub mod pallet {
                 Dominators::<T>::try_get(&dominator).map_err(|_| Error::<T>::DominatorNotFound)?;
             pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
             let current_block = frame_system::Pallet::<T>::block_number();
-            let current_season = (current_block - dominator.start_from) % T::SeasonDuration::get();
+            let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
             // TODO if staking already exists
             Ok(().into())
         }
 
         #[pallet::weight(1_000_000_000_000)]
-        pub fn retrieve_shares(
+        pub fn claim_shares(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
             token: TokenId<T>,
         ) -> DispatchResultWithPostInfo {
+            let signer = ensure_signed(origin)?;
+            let dex = T::Lookup::lookup(dominator)?;
+            let dominator =
+                Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
+            let key = BonusKey {
+                dominator: dex.clone(),
+                token: token,
+            };
+            let stakings =
+                Stakings::<T>::try_get(&dex, &signer).map_err(|_| Error::<T>::InvalidStaking)?;
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
+            // FIXME
+            Self::take_shares(
+                &key,
+                &signer,
+                stakings.last().ok_or(Error::<T>::InvalidStaking)?,
+                current_season.into(),
+            )
+            .map_err(|_| Error::<T>::InvalidStatus)?;
             Ok(().into())
         }
 
@@ -1030,10 +1054,10 @@ pub mod pallet {
             which: &BonusKey<T::AccountId, TokenId<T>>,
             staker: &T::AccountId,
             staking: &Staking<AmountOfCoin<T>>,
-            to_season: u32,
-        ) {
+            to_season: Season,
+        ) -> Result<Season, ()> {
             if to_season - staking.start_season <= 1 {
-                return;
+                return Ok(staking.start_season);
             }
             let mut share = 0u128;
             for i in staking.start_season + 1..to_season {
@@ -1050,15 +1074,15 @@ pub mod pallet {
             let t = <T as pallet_fuso_token::Config>::TokenId::zero();
             match which.token {
                 t => {
-                    pallet_balances::Pallet::<T>::mutate_account(staker, |a| {
-                        a.free += share.into()
-                    });
+                    pallet_balances::Pallet::<T>::mutate_account(staker, |a| a.free += share.into())
+                        .map_err(|_| ())
+                        .map(|_| to_season - 1)
                 }
-                id => {
-                    pallet_fuso_token::Pallet::<T>::mutate_account(&id, staker, |a| {
-                        a.free += share.into()
-                    });
-                }
+                id => pallet_fuso_token::Pallet::<T>::mutate_account(&id, staker, |a| {
+                    a.free += share.into()
+                })
+                .map_err(|_| ())
+                .map(|_| to_season - 1),
             }
         }
     }
