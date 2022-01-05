@@ -22,6 +22,7 @@ pub mod pallet {
     use codec::{Compact, Decode, Encode};
     use frame_support::{
         pallet_prelude::*,
+        storage::bounded_vec::BoundedVec,
         traits::{BalanceStatus, Currency, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
@@ -30,7 +31,7 @@ pub mod pallet {
     use sp_io::hashing::sha2_256;
     use sp_runtime::{
         traits::{StaticLookup, Zero},
-        Permill, Perquintill, RuntimeDebug,
+        PerThing, Permill, Perquintill, RuntimeDebug,
     };
     use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
 
@@ -39,6 +40,7 @@ pub mod pallet {
     pub type Amount = u128;
     pub type Price = (u128, Perquintill);
     pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
+    pub type Symbol<T> = (TokenId<T>, TokenId<T>);
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -164,6 +166,7 @@ pub mod pallet {
     pub struct Dominator<Coin, BlockNumber> {
         pub staked: Coin,
         pub merkle_root: [u8; 32],
+        pub start_from: BlockNumber,
         pub sequence: (u64, BlockNumber),
     }
 
@@ -174,8 +177,15 @@ pub mod pallet {
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub struct Bonus<Coin> {
+        total_staking: Coin,
+        total_profit: u128,
+    }
+
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct Staking<Coin> {
-        start_era: u32,
+        start_season: u32,
+        end_season: Option<u32>,
         amount: Coin,
     }
 
@@ -186,6 +196,12 @@ pub mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         type DominatorThreshold: Get<AmountOfCoin<Self>>;
+
+        type SeasonDuration: Get<Self::BlockNumber>;
+
+        type MaxStakes: Get<u32>;
+
+        type SymbolLimit: Get<usize>;
     }
 
     #[pallet::storage]
@@ -218,8 +234,8 @@ pub mod pallet {
         BonusKey<T::AccountId, T::TokenId>,
         Blake2_128Concat,
         u32,
-        u128,
-        ValueQuery,
+        Bonus<AmountOfCoin<T>>,
+        OptionQuery,
     >;
 
     #[pallet::storage]
@@ -230,7 +246,7 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         T::AccountId,
-        Staking<AmountOfCoin<T>>,
+        BoundedVec<Staking<AmountOfCoin<T>>, T::MaxStakes>,
         OptionQuery,
     >;
 
@@ -284,11 +300,13 @@ pub mod pallet {
                 !Dominators::<T>::contains_key(&dominator),
                 Error::<T>::DominatorAlreadyExists
             );
+            let current_block = frame_system::Pallet::<T>::block_number();
             Dominators::<T>::insert(
                 &dominator,
                 Dominator {
                     staked: Zero::zero(),
-                    sequence: (0, frame_system::Pallet::<T>::block_number()),
+                    start_from: current_block,
+                    sequence: (0, current_block),
                     merkle_root: Default::default(),
                 },
             );
@@ -319,14 +337,21 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
             let dominator = T::Lookup::lookup(dominator)?;
-            ensure!(
-                Dominators::<T>::contains_key(&dominator),
-                Error::<T>::DominatorNotFound
-            );
+            let dominator =
+                Dominators::<T>::try_get(&dominator).map_err(|_| Error::<T>::DominatorNotFound)?;
             pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
-            let block_number = frame_system::Pallet::<T>::block_number();
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let current_season = (current_block - dominator.start_from) % T::SeasonDuration::get();
             // TODO if staking already exists
+            Ok(().into())
+        }
 
+        #[pallet::weight(1_000_000_000_000)]
+        pub fn retrieve_shares(
+            origin: OriginFor<T>,
+            dominator: <T::Lookup as StaticLookup>::Source,
+            token: TokenId<T>,
+        ) -> DispatchResultWithPostInfo {
             Ok(().into())
         }
 
@@ -489,8 +514,8 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T>
     where
-        AmountOfCoin<T>: Copy + From<u128>,
-        AmountOfToken<T>: Copy + From<u128>,
+        AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
+        AmountOfToken<T>: Copy + From<u128> + Into<u128>,
         TokenId<T>: From<u32>,
     {
         fn verify_and_update(
@@ -996,6 +1021,42 @@ pub mod pallet {
                 UniBalance::Token(id, value) => {
                     pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
                         a.reserved += (*value).into()
+                    });
+                }
+            }
+        }
+
+        fn take_shares(
+            which: &BonusKey<T::AccountId, TokenId<T>>,
+            staker: &T::AccountId,
+            staking: &Staking<AmountOfCoin<T>>,
+            to_season: u32,
+        ) {
+            if to_season - staking.start_season <= 1 {
+                return;
+            }
+            let mut share = 0u128;
+            for i in staking.start_season + 1..to_season {
+                match Bonuses::<T>::get(&which, staking.start_season + 1) {
+                    Some(bonus) => {
+                        let s: u128 = staking.amount.into();
+                        let t: u128 = bonus.total_staking.into();
+                        let p: Perquintill = PerThing::from_rational(s, t);
+                        share += p * bonus.total_profit;
+                    }
+                    None => {}
+                };
+            }
+            let t = <T as pallet_fuso_token::Config>::TokenId::zero();
+            match which.token {
+                t => {
+                    pallet_balances::Pallet::<T>::mutate_account(staker, |a| {
+                        a.free += share.into()
+                    });
+                }
+                id => {
+                    pallet_fuso_token::Pallet::<T>::mutate_account(&id, staker, |a| {
+                        a.free += share.into()
                     });
                 }
             }
