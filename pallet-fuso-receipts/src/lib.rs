@@ -188,7 +188,14 @@ pub mod pallet {
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct Staking<Coin> {
         start_season: Season,
-        end_season: Option<Season>,
+        amount: Coin,
+    }
+
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub struct Pending<AccountId, Coin> {
+        dominator: AccountId,
+        from_season: Season,
+        to_season: Season,
         amount: Coin,
     }
 
@@ -249,7 +256,7 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         T::AccountId,
-        BoundedVec<Staking<AmountOfCoin<T>>, T::MaxStakes>,
+        Staking<AmountOfCoin<T>>,
         OptionQuery,
     >;
 
@@ -350,6 +357,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        #[transactional]
         #[pallet::weight(1_000_000_000_000)]
         pub fn claim_shares(
             origin: OriginFor<T>,
@@ -364,18 +372,18 @@ pub mod pallet {
                 dominator: dex.clone(),
                 token: token,
             };
-            let stakings =
+            let staking =
                 Stakings::<T>::try_get(&dex, &signer).map_err(|_| Error::<T>::InvalidStaking)?;
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
-            // FIXME
-            Self::take_shares(
-                &key,
-                &signer,
-                stakings.last().ok_or(Error::<T>::InvalidStaking)?,
-                current_season.into(),
-            )
-            .map_err(|_| Error::<T>::InvalidStatus)?;
+            let step_into = Self::take_shares(&key, &signer, &staking, current_season.into())
+                .map_err(|_| Error::<T>::InvalidStatus)?;
+            Stakings::<T>::try_mutate(&dex, &signer, |s| -> DispatchResult {
+                let mut mutation = s.take().unwrap();
+                mutation.start_season = step_into;
+                s.replace(mutation);
+                Ok(())
+            })?;
             Ok(().into())
         }
 
@@ -1050,18 +1058,19 @@ pub mod pallet {
             }
         }
 
+        #[transactional]
         fn take_shares(
             which: &BonusKey<T::AccountId, TokenId<T>>,
             staker: &T::AccountId,
             staking: &Staking<AmountOfCoin<T>>,
             to_season: Season,
         ) -> Result<Season, ()> {
-            if to_season - staking.start_season <= 1 {
+            if to_season == staking.start_season {
                 return Ok(staking.start_season);
             }
             let mut share = 0u128;
-            for i in staking.start_season + 1..to_season {
-                match Bonuses::<T>::get(&which, staking.start_season + 1) {
+            for i in staking.start_season..to_season {
+                match Bonuses::<T>::get(&which, staking.start_season) {
                     Some(bonus) => {
                         let s: u128 = staking.amount.into();
                         let t: u128 = bonus.total_staking.into();
@@ -1076,13 +1085,13 @@ pub mod pallet {
                 t => {
                     pallet_balances::Pallet::<T>::mutate_account(staker, |a| a.free += share.into())
                         .map_err(|_| ())
-                        .map(|_| to_season - 1)
+                        .map(|_| to_season)
                 }
                 id => pallet_fuso_token::Pallet::<T>::mutate_account(&id, staker, |a| {
                     a.free += share.into()
                 })
                 .map_err(|_| ())
-                .map(|_| to_season - 1),
+                .map(|_| to_season),
             }
         }
     }
