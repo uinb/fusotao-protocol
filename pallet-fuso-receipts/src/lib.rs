@@ -19,20 +19,15 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use codec::{Compact, Decode, Encode, EncodeLike};
-    use frame_support::{
-        pallet_prelude::*,
-        storage::bounded_vec::BoundedVec,
-        traits::{BalanceStatus, Currency, ReservableCurrency},
-        transactional,
-    };
+    use codec::{Compact, Decode, Encode};
+    use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
     use frame_system::pallet_prelude::*;
     use fuso_support::traits::{ReservableToken, Token};
     use scale_info::TypeInfo;
     use sp_io::hashing::sha2_256;
     use sp_runtime::{
         traits::{StaticLookup, Zero},
-        PerThing, Permill, Perquintill, RuntimeDebug,
+        PerThing, Percent, Permill, Perquintill, RuntimeDebug,
     };
     use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
 
@@ -171,6 +166,7 @@ pub mod pallet {
         pub merkle_root: [u8; 32],
         pub start_from: BlockNumber,
         pub sequence: (u64, BlockNumber),
+        pub active: bool,
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
@@ -192,7 +188,7 @@ pub mod pallet {
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
-    pub struct Pending<AccountId, Coin> {
+    pub struct PendingDistribution<AccountId, Coin> {
         dominator: AccountId,
         from_season: Season,
         to_season: Season,
@@ -211,7 +207,11 @@ pub mod pallet {
 
         type MaxStakes: Get<u32>;
 
+        type MinimalStakingAmount: Get<AmountOfCoin<Self>>;
+
         type SymbolLimit: Get<usize>;
+
+        type DominatorSharesRatio: Get<Percent>;
     }
 
     #[pallet::storage]
@@ -260,6 +260,16 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    #[pallet::storage]
+    #[pallet::getter(fn pending_distributions)]
+    pub type PendingDistributions<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        PendingDistribution<T::AccountId, AmountOfCoin<T>>,
+        OptionQuery,
+    >;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -279,13 +289,15 @@ pub mod pallet {
         ChainNotSupport,
         ReceiptAlreadyExists,
         DominatorAlreadyExists,
-        DominatorBanned,
+        DominatorInactive,
         PledgeUnsatisfied,
         DominatorClosing,
         InsufficientBalance,
         InsufficientStashAccount,
         InvalidStatus,
         InvalidStaking,
+        StakingNotExists,
+        DistributionOngoing,
     }
 
     #[pallet::pallet]
@@ -319,6 +331,7 @@ pub mod pallet {
                     start_from: current_block,
                     sequence: (0, current_block),
                     merkle_root: Default::default(),
+                    active: false,
                 },
             );
             Self::deposit_event(Event::DominatorClaimed(dominator));
@@ -331,15 +344,17 @@ pub mod pallet {
             origin: OriginFor<T>,
             proofs: Vec<Proof<T::AccountId>>,
         ) -> DispatchResultWithPostInfo {
-            let dominator = ensure_signed(origin)?;
-            let ex =
-                Dominators::<T>::try_get(&dominator).map_err(|_| Error::<T>::DominatorNotFound)?;
+            let dex = ensure_signed(origin)?;
+            let dominator =
+                Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
+            ensure!(dominator.active, Error::<T>::DominatorInactive);
             for proof in proofs.into_iter() {
-                Self::verify_and_update(&dominator, &ex, proof)?;
+                Self::verify_and_update(&dex, &dominator, proof)?;
             }
             Ok(().into())
         }
 
+        #[transactional]
         #[pallet::weight(1_000_000_000_000)]
         pub fn stake(
             origin: OriginFor<T>,
@@ -347,13 +362,89 @@ pub mod pallet {
             amount: AmountOfCoin<T>,
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
-            let dominator = T::Lookup::lookup(dominator)?;
+            let dex = T::Lookup::lookup(dominator)?;
             let dominator =
-                Dominators::<T>::try_get(&dominator).map_err(|_| Error::<T>::DominatorNotFound)?;
-            pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
+                Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
-            // TODO if staking already exists
+            Stakings::<T>::try_mutate(&dex, &fund_owner, |staking| -> DispatchResult {
+                if staking.is_none() {
+                    // TODO reserve_named
+                    pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
+                    staking.replace(Staking {
+                        start_season: current_season.into() + 1,
+                        amount: amount,
+                    });
+                    Ok(())
+                } else {
+                    ensure!(
+                        !PendingDistributions::<T>::contains_key(&fund_owner),
+                        Error::<T>::DistributionOngoing,
+                    );
+                    pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
+                    let exists = staking.take().unwrap();
+                    staking.replace(Staking {
+                        start_season: current_season.into() + 1,
+                        amount: exists.amount + amount,
+                    });
+                    PendingDistributions::<T>::mutate(&fund_owner, |p| {
+                        p.replace(PendingDistribution {
+                            dominator: dex.clone(),
+                            from_season: exists.start_season,
+                            to_season: current_season.into(),
+                            amount: exists.amount,
+                        });
+                    });
+                    Ok(())
+                }
+            })?;
+            // TODO
+            Ok(().into())
+        }
+
+        #[transactional]
+        #[pallet::weight(1_000_000_000_000)]
+        pub fn unstake(
+            origin: OriginFor<T>,
+            dominator: <T::Lookup as StaticLookup>::Source,
+            amount: AmountOfCoin<T>,
+        ) -> DispatchResultWithPostInfo {
+            let fund_owner = ensure_signed(origin)?;
+            let dex = T::Lookup::lookup(dominator)?;
+            let dominator =
+                Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
+            Stakings::<T>::try_mutate_exists(&dex, &fund_owner, |staking| -> DispatchResult {
+                ensure!(staking.is_some(), Error::<T>::StakingNotExists);
+                ensure!(
+                    staking.as_ref().filter(|s| s.amount >= amount).is_some(),
+                    Error::<T>::StakingNotExists
+                );
+                ensure!(
+                    !PendingDistributions::<T>::contains_key(&fund_owner),
+                    Error::<T>::DistributionOngoing,
+                );
+                let exists = staking.take().unwrap();
+                // TODO unreserve_named
+                pallet_balances::Pallet::<T>::unreserve(&fund_owner, amount);
+                if exists.amount - amount >= T::MinimalStakingAmount::get() {
+                    staking.replace(Staking {
+                        start_season: current_season.into() + 1,
+                        amount: exists.amount - amount,
+                    });
+                }
+                PendingDistributions::<T>::mutate(&fund_owner, |p| {
+                    p.replace(PendingDistribution {
+                        dominator: dex.clone(),
+                        from_season: exists.start_season,
+                        to_season: current_season.into(),
+                        amount: exists.amount,
+                    });
+                });
+                Ok(())
+            })?;
+            // TODO
             Ok(().into())
         }
 
@@ -531,7 +622,7 @@ pub mod pallet {
         fn try_from((token, value): (u32, u128)) -> Result<Self, Self::Error> {
             match token.clone() {
                 0 => Ok(UniBalance::Coin(value)),
-                id => Ok(UniBalance::Token(token, value)),
+                id => Ok(UniBalance::Token(id, value)),
             }
         }
     }
@@ -670,7 +761,7 @@ pub mod pallet {
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
-                        Receipt::Revoke(v, index) => balance == v,
+                        Receipt::Revoke(v, _) => balance == v,
                         _ => false,
                     };
                     ensure!(exists, Error::<T>::ReceiptNotExists);
@@ -695,7 +786,7 @@ pub mod pallet {
         }
 
         fn verify_ask_limit(
-            price: Price,
+            _price: Price,
             amount: u128,
             maker_fee: Permill,
             taker_fee: Permill,
@@ -803,7 +894,7 @@ pub mod pallet {
         }
 
         fn verify_bid_limit(
-            price: Price,
+            _price: Price,
             amount: u128,
             maker_fee: Permill,
             taker_fee: Permill,
@@ -957,8 +1048,7 @@ pub mod pallet {
             leaves: &[MerkleLeaf],
         ) -> Result<(), DispatchError> {
             ensure!(leaves.len() == 1, Error::<T>::ProofsUnsatisfied);
-            let (a0, f0) = leaves[0].split_old_to_u128();
-            // let (a1, f1) = leaves[0].split_new_to_u128();
+            let (a0, _) = leaves[0].split_old_to_u128();
             ensure!(a0 < amount, Error::<T>::ProofsUnsatisfied);
             let (c, id) = leaves[0].try_get_account::<T>()?;
             ensure!(
@@ -1038,22 +1128,25 @@ pub mod pallet {
             }
         }
 
-        fn charge(who: &T::AccountId, balance: &UniBalance)
+        #[transactional]
+        fn charge(who: &T::AccountId, balance: &UniBalance) -> Result<(), ()>
         where
             AmountOfCoin<T>: Copy + From<u128>,
             TokenId<T>: From<u32>,
             AmountOfToken<T>: Copy + From<u128>,
         {
             match balance {
-                UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::mutate_account(who, |a| {
-                        a.reserved += (*value).into()
-                    });
-                }
+                UniBalance::Coin(value) => pallet_balances::Pallet::<T>::mutate_account(who, |a| {
+                    a.reserved += (*value).into();
+                })
+                .map(|_| ())
+                .map_err(|_| ()),
                 UniBalance::Token(id, value) => {
                     pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
-                        a.reserved += (*value).into()
-                    });
+                        a.reserved += (*value).into();
+                    })
+                    .map(|_| ())
+                    .map_err(|_| ())
                 }
             }
         }
@@ -1069,7 +1162,7 @@ pub mod pallet {
                 return Ok(staking.start_season);
             }
             let mut share = 0u128;
-            for i in staking.start_season..to_season {
+            for _ in staking.start_season..to_season {
                 match Bonuses::<T>::get(&which, staking.start_season) {
                     Some(bonus) => {
                         let s: u128 = staking.amount.into();
@@ -1080,18 +1173,16 @@ pub mod pallet {
                     None => {}
                 };
             }
-            let t = <T as pallet_fuso_token::Config>::TokenId::zero();
-            match which.token {
-                t => {
-                    pallet_balances::Pallet::<T>::mutate_account(staker, |a| a.free += share.into())
-                        .map_err(|_| ())
-                        .map(|_| to_season)
-                }
-                id => pallet_fuso_token::Pallet::<T>::mutate_account(&id, staker, |a| {
+            if which.token == <T as pallet_fuso_token::Config>::TokenId::zero() {
+                pallet_balances::Pallet::<T>::mutate_account(staker, |a| a.free += share.into())
+                    .map_err(|_| ())
+                    .map(|_| to_season)
+            } else {
+                pallet_fuso_token::Pallet::<T>::mutate_account(&which.token, staker, |a| {
                     a.free += share.into()
                 })
                 .map_err(|_| ())
-                .map(|_| to_season),
+                .map(|_| to_season)
             }
         }
     }
