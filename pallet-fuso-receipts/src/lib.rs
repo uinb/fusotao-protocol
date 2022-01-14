@@ -33,12 +33,11 @@ pub mod pallet {
 
     pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
-    pub type Amount = u128;
-    pub type Price = (u128, Perquintill);
     pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
     pub type Symbol<T> = (TokenId<T>, TokenId<T>);
-    // the T::BlockNumber can be encoded into u32
     pub type Season = u32;
+    pub type Amount = u128;
+    pub type Price = (u128, Perquintill);
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -201,11 +200,9 @@ pub mod pallet {
     {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-        type DominatorThreshold: Get<AmountOfCoin<Self>>;
+        type DominatorOnlineThreshold: Get<AmountOfCoin<Self>>;
 
         type SeasonDuration: Get<Self::BlockNumber>;
-
-        type MaxStakes: Get<u32>;
 
         type MinimalStakingAmount: Get<AmountOfCoin<Self>>;
 
@@ -243,7 +240,7 @@ pub mod pallet {
         Blake2_128Concat,
         BonusKey<T::AccountId, T::TokenId>,
         Blake2_128Concat,
-        u32,
+        Season,
         Bonus<AmountOfCoin<T>>,
         OptionQuery,
     >;
@@ -278,6 +275,14 @@ pub mod pallet {
         TokenHosted(T::AccountId, T::AccountId, TokenId<T>, AmountOfToken<T>),
         CoinRevoked(T::AccountId, T::AccountId, AmountOfCoin<T>),
         TokenRevoked(T::AccountId, T::AccountId, TokenId<T>, AmountOfToken<T>),
+        ProofAccepted(T::AccountId, u32),
+        ProofRejected(T::AccountId, u32),
+        TaoStaked(T::AccountId, T::AccountId, AmountOfCoin<T>),
+        TaoUnstaked(T::AccountId, T::AccountId, AmountOfCoin<T>),
+        DominatorOnline(T::AccountId),
+        DominatorOffline(T::AccountId),
+        DominatorSlashed(T::AccountId),
+        DomintorEvicted(T::AccountId),
     }
 
     #[pallet::error]
@@ -291,7 +296,6 @@ pub mod pallet {
         DominatorAlreadyExists,
         DominatorInactive,
         PledgeUnsatisfied,
-        DominatorClosing,
         InsufficientBalance,
         InsufficientStashAccount,
         InvalidStatus,
@@ -375,7 +379,6 @@ pub mod pallet {
                         start_season: current_season.into() + 1,
                         amount: amount,
                     });
-                    Ok(())
                 } else {
                     ensure!(
                         !PendingDistributions::<T>::contains_key(&fund_owner),
@@ -395,8 +398,9 @@ pub mod pallet {
                             amount: exists.amount,
                         });
                     });
-                    Ok(())
                 }
+                Self::deposit_event(Event::TaoStaked(fund_owner, dominator, amount));
+                Ok(())
             })?;
             // TODO
             Ok(().into())
@@ -442,6 +446,7 @@ pub mod pallet {
                         amount: exists.amount,
                     });
                 });
+                Self::deposit_event(Event::TaoUnstaked(fund_owner, dominator, amount));
                 Ok(())
             })?;
             // TODO
