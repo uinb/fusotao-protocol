@@ -246,6 +246,16 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
+    #[pallet::getter(fn shares)]
+    pub type Shares<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::TokenId,
+        AmountOfToken<T>,
+        OptionQuery
+    >;
+
+    #[pallet::storage]
     #[pallet::getter(fn stakings)]
     pub type Stakings<T: Config> = StorageDoubleMap<
         _,
