@@ -12,20 +12,21 @@ description = "FUSOTAO token pallet"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { default-features = false, features = ['derive'], package = 'parity-scale-codec', version = '2.0.0' }
+codec = { default-features = false, features = ['derive'], package = 'parity-scale-codec', version = '2.3.1' }
 scale-info = { version = "1.0", default-features = false, features = ["derive"] }
-frame-system = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
-frame-support = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
-frame-benchmarking = { default-features = false, optional = true, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12"}
-sp-std = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
+frame-system = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12" }
+frame-support = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12" }
+frame-benchmarking = { default-features = false, optional = true, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12"}
+sp-std = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12" }
 ascii = { version = "1.0", default-features = false }
-pallet-octopus-support = {git = 'https://github.com/uinb/octopus-pallets.git', branch = 'main' }
 fuso-support = { version = "0.1.0", path = "../fuso-support" }
 serde = { default-features = false, version = "1.0.126" }
-sp-core = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
-sp-io = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
-sp-runtime = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
-pallet-balances = { default-features = false, git = "https://github.com/octopus-network/substrate.git", branch = "polkadot-v0.9.12" }
+sp-core = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12" }
+sp-io = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12" }
+sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12" }
+pallet-balances = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12" }
+
+pallet-octopus-support = { git = "https://github.com/uinb/octopus-pallets.git", branch = "main",  default-features = false }
 
 [features]
 default = ['std']
@@ -34,7 +35,8 @@ std = [
     'frame-support/std',
     'frame-system/std',
     'frame-benchmarking/std',
-    'sp-std/std'
+    'sp-std/std',
+	"pallet-octopus-support/std"
 ]
 runtime-benchmarks = [
     'frame-benchmarking',

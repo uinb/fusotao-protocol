@@ -16,8 +16,7 @@
 #![recursion_limit = "256"]
 
 pub use pallet::*;
-
-//mod tests;
+pub mod weights;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -30,18 +29,15 @@ pub mod pallet {
     use scale_info::TypeInfo;
     use sp_io::hashing::sha2_256;
     use sp_runtime::{Permill, Perquintill, RuntimeDebug, traits::StaticLookup};
-    use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
+    use sp_std::{convert::*, prelude::*, result::Result, vec::{Vec, self}};
 
     use fuso_support::traits::{ReservableToken, Token};
+	use crate::weights::WeightInfo;
 
-    pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
-
+	pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
-
     pub type Amount = u128;
-
     pub type Price = (u128, Perquintill);
-
     pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
 
     // pub type PositiveImbalanceOf<T> = <<T as Config>::Coin as Currency<
@@ -185,6 +181,7 @@ pub mod pallet {
     {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
+		type SelfWeightInfo: WeightInfo;
         // type Coin: ReservableCurrency<Self::AccountId>;
 
         // type Token: ReservableToken<Self::AccountId>;
@@ -257,7 +254,7 @@ pub mod pallet {
     {
         // TODO pledge amount config?
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
-        #[pallet::weight(1_000_000_000_000)]
+        #[pallet::weight(T::SelfWeightInfo::claim_dominator())]
         pub fn claim_dominator(
             origin: OriginFor<T>,
             pledged: AmountOfCoin<T>,
@@ -281,7 +278,7 @@ pub mod pallet {
         }
 
         // TODO 0 gas if OK, non-zero gas otherwise
-        #[pallet::weight(100_000)]
+        #[pallet::weight(T::SelfWeightInfo::verify())]
         pub fn verify(
             origin: OriginFor<T>,
             proofs: Vec<Proof<T::AccountId>>,
@@ -295,7 +292,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(1_000_000_000_000)]
+        #[pallet::weight(T::SelfWeightInfo::authorize_coin())]
         pub fn authorize_coin(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -327,7 +324,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(1_000_000_000_000)]
+        #[pallet::weight(T::SelfWeightInfo::revoke_coin())]
         pub fn revoke_coin(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -359,7 +356,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(1_000_000_000_000)]
+        #[pallet::weight(T::SelfWeightInfo::authorize_token())]
         pub fn authorize_token(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -391,7 +388,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(1_000_000_000_000)]
+        #[pallet::weight(T::SelfWeightInfo::revoke_token())]
         pub fn revoke_token(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -650,7 +647,7 @@ pub mod pallet {
             ensure!(bid_delta == tb_delta, Error::<T>::ProofsUnsatisfied);
             let mut mb_delta = 0u128;
             let mut mq_delta = 0u128;
-            let mut delta = vec![];
+            let mut delta = Vec::new();
             for i in 0..maker_count / 2 {
                 // base first
                 let maker_base = &leaves[i * 2 + 1];
@@ -756,7 +753,7 @@ pub mod pallet {
             );
             let mut mb_delta = 0u128;
             let mut mq_delta = 0u128;
-            let mut delta = vec![];
+            let mut delta = Vec::new();
             for i in 0..maker_count / 2 {
                 // base first
                 let maker_base = &leaves[i * 2 + 1];

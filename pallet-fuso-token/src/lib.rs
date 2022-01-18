@@ -14,6 +14,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
+pub mod weights;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -21,21 +22,21 @@ pub mod pallet {
 	use codec::{Decode, Encode};
 	use codec::Codec;
 	use frame_support::pallet_prelude::*;
-	use frame_support::pallet_prelude::*;
 	use frame_support::traits::BalanceStatus;
 	use frame_support::traits::tokens::{DepositConsequence, fungibles, WithdrawConsequence};
 	use frame_system::pallet_prelude::*;
-	use frame_system::pallet_prelude::*;
-	use pallet_octopus_support::traits::AssetIdAndNameProvider;
+//	use pallet_octopus_support::traits::AssetIdAndNameProvider;
 	use scale_info::TypeInfo;
 	use sp_runtime::DispatchResult;
 	use sp_runtime::traits::{
 		AtLeast32BitUnsigned, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Member, One,
 		StaticLookup, Zero,
 	};
-	use sp_std::{fmt::Debug, vec::Vec};
-
-	use fuso_support::traits::{ReservableToken, Token};
+	use sp_runtime::traits::Saturating;
+	use sp_std::{cmp, fmt::Debug, vec::Vec};
+	use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
+	use crate::weights::WeightInfo;
+	use pallet_octopus_support::traits::AssetIdAndNameProvider;
 
 	#[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
 	pub struct TokenAccountData<Balance> {
@@ -47,6 +48,15 @@ pub mod pallet {
 	pub struct TokenInfo<Balance> {
 		pub total: Balance,
 		pub symbol: Vec<u8>,
+	}
+
+	/// Store named reserved balance.
+	#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
+	pub struct ReserveData<ReserveIdentifier, Balance> {
+		/// The identifier for the named reserve.
+		pub id: ReserveIdentifier,
+		/// The amount of the named reserve.
+		pub amount: Balance,
 	}
 
 	#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
@@ -69,13 +79,20 @@ pub mod pallet {
 			+ MaybeSerializeDeserialize;
 
 		type Balance: Parameter
-			+ Member
-			+ AtLeast32BitUnsigned
-			+ Codec
-			+ Default
-			+ Copy
-			+ MaybeSerializeDeserialize
-			+ Debug;
+		+ Member
+		+ AtLeast32BitUnsigned
+		+ Codec
+		+ Default
+		+ Copy
+		+ MaybeSerializeDeserialize
+		+ Debug;
+
+		#[pallet::constant]
+		type MaxReserves: Get<u32>;
+
+		type ReserveIdentifier: Parameter + Member + MaxEncodedLen + Ord + Copy;
+
+		type WeightInfo: WeightInfo;
 	}
 
 	#[pallet::pallet]
@@ -91,6 +108,7 @@ pub mod pallet {
 		InvalidToken,
 		InsufficientBalance,
 		Overflow,
+		TooManyReserves,
 	}
 
 	#[pallet::storage]
@@ -117,6 +135,17 @@ pub mod pallet {
 	#[pallet::getter(fn get_token_by_name)]
 	pub type TokenByName<T: Config> =
 	StorageMap<_, Twox64Concat, Vec<u8>, XToken<T::TokenId, T::Balance>, OptionQuery>;
+
+	/// Named reserves on some account balances.
+	#[pallet::storage]
+	#[pallet::getter(fn reserves)]
+	pub type Reserves<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		(T::AccountId, T::TokenId),
+		BoundedVec<ReserveData<T::ReserveIdentifier, T::Balance>, T::MaxReserves>,
+		ValueQuery,
+	>;
 
 	#[pallet::type_value]
 	pub fn DefaultNextTokenId<T: Config>() -> T::TokenId {
@@ -179,7 +208,7 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-		#[pallet::weight(0)]
+		#[pallet::weight(T::WeightInfo::transfer())]
 		pub fn transfer(
 			origin: OriginFor<T>,
 			token: T::TokenId,
@@ -221,6 +250,19 @@ pub mod pallet {
 		}
 	}
 
+
+	impl<T: Config> AssetIdAndNameProvider<u32> for Pallet<T>{
+		type Err = ();
+
+		fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<u32, Self::Err> {
+			unimplemented!()
+		}
+
+		fn try_get_asset_name(asset_id: u32) -> Result<Vec<u8>, Self::Err> {
+			unimplemented!()
+		}
+	}
+
 	impl<T: Config> Pallet<T> {
 		pub fn mutate_account<R>(
 			token: &T::TokenId,
@@ -255,11 +297,11 @@ pub mod pallet {
 					.checked_add(&amount)
 					.ok_or(Error::<T>::Overflow)?;
 				to.replace(account);
-				<Tokens<T>>::try_mutate_exists(&token, |tokenInfo| -> DispatchResult {
-					ensure!(tokenInfo.is_some(), Error::<T>::BalanceZero);
-					let mut info  = tokenInfo.take().unwrap();
+				<Tokens<T>>::try_mutate_exists(&token, |token_info| -> DispatchResult {
+					ensure!(token_info.is_some(), Error::<T>::BalanceZero);
+					let mut info  = token_info.take().unwrap();
 					info.total = info.total.checked_add(&amount).ok_or(Error::<T>::InsufficientBalance)?;
-					tokenInfo.replace(info);
+					token_info.replace(info);
 					Ok(())
 				});
 
@@ -289,11 +331,11 @@ pub mod pallet {
 						from.replace(account);
 					}
 				}
-				<Tokens<T>>::try_mutate_exists(&token, |tokenInfo| -> DispatchResult {
-					ensure!(tokenInfo.is_some(), Error::<T>::BalanceZero);
-					let mut info  = tokenInfo.take().unwrap();
+				<Tokens<T>>::try_mutate_exists(&token, |token_info| -> DispatchResult {
+					ensure!(token_info.is_some(), Error::<T>::BalanceZero);
+					let mut info  = token_info.take().unwrap();
 					info.total = info.total.checked_sub(&amount).ok_or(Error::<T>::InsufficientBalance)?;
-					tokenInfo.replace(info);
+					token_info.replace(info);
 					Ok(())
 				});
 				Ok(())
@@ -513,7 +555,7 @@ pub mod pallet {
 		}
 	}
 
-	impl<T: Config> AssetIdAndNameProvider<T::TokenId> for Pallet<T> {
+	/*impl<T: Config> AssetIdAndNameProvider<T::TokenId> for Pallet<T> {
 		type Err = ();
 
 		fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
@@ -535,5 +577,206 @@ pub mod pallet {
 				_ => Err(())
 			}
 		}
+	}*/
+
+	impl<T: Config> NamedReservableToken<T::AccountId> for Pallet<T> {
+		type ReserveIdentifier = T::ReserveIdentifier;
+
+		fn can_reserve_named(id: &Self::ReserveIdentifier,
+							 token: &T::TokenId,
+							 who: &T::AccountId,
+							 value: T::Balance) -> bool {
+			if value.is_zero() {
+				return true;
+			}
+			if !<Balances<T>>::contains_key((token, who)) {
+				return false;
+			}
+			Self::free_balance(token, who).checked_sub(&value).is_some()
+		}
+
+		fn reserve_named(
+			id: &Self::ReserveIdentifier,
+			token: &T::TokenId,
+			who: &T::AccountId,
+			value: T::Balance,
+		) -> sp_std::result::Result<T::Balance, DispatchError> {
+			if value.is_zero() {
+				return Ok(value);
+			}
+
+			let d = Reserves::<T>::try_mutate((who, token), |reserves| -> DispatchResult {
+				match reserves.binary_search_by_key(id, |data| data.id) {
+					Ok(index) => {
+						// this add can't overflow but just to be defensive.
+						reserves[index].amount = reserves[index].amount.saturating_add(value);
+					},
+					Err(index) => {
+						reserves
+							.try_insert(index, ReserveData { id: id.clone(), amount: value })
+							.map_err(|_| Error::<T>::TooManyReserves)?;
+					},
+				};
+				<Self as ReservableToken<_>>::reserve(token, who, value)?;
+				Ok(())
+			});
+			Ok(value)
+		}
+
+		fn unreserve_named(
+			id: &Self::ReserveIdentifier,
+			token: &T::TokenId,
+			who: &T::AccountId,
+			value: T::Balance,
+		) -> sp_std::result::Result<T::Balance, DispatchError> {
+
+			if value.is_zero() {
+				return Ok(Zero::zero())
+			}
+
+			 Reserves::<T>::mutate_exists((who, token), |maybe_reserves| -> Result<T::Balance, DispatchError> {
+				if let Some(reserves) = maybe_reserves.as_mut() {
+					match reserves.binary_search_by_key(id, |data| data.id) {
+						Ok(index) => {
+							let to_change = cmp::min(reserves[index].amount, value);
+
+							let remain = <Self as ReservableToken<_>>::unreserve(token, who, to_change)?;
+
+							// remain should always be zero but just to be defensive here
+							let actual = to_change.saturating_sub(remain);
+
+							// `actual <= to_change` and `to_change <= amount`; qed;
+							reserves[index].amount -= actual;
+
+							if reserves[index].amount.is_zero() {
+								if reserves.len() == 1 {
+									// no more named reserves
+									*maybe_reserves = None;
+								} else {
+									// remove this named reserve
+									reserves.remove(index);
+								}
+							}
+
+							Ok(value - actual)
+						},
+						Err(_) => Ok(value),
+					}
+				} else {
+					Ok(value)
+				}
+			})
+
+		}
+
+		fn reserved_balance_named(id: &Self::ReserveIdentifier, token: &Self::TokenId, who: &T::AccountId) -> Self::Balance {
+			let reserves = Self::reserves((who, token));
+			reserves
+				.binary_search_by_key(id, |data| data.id)
+				.map(|index| reserves[index].amount)
+				.unwrap_or_default()
+		}
+
+		fn repatriate_reserved_named(
+			id: &Self::ReserveIdentifier,
+			token: &T::TokenId,
+			slashed: &T::AccountId,
+			beneficiary: &T::AccountId,
+			value: T::Balance,
+			status: BalanceStatus,
+		) -> sp_std::result::Result<Self::Balance, DispatchError> {
+
+			if value.is_zero() {
+				return Ok(Zero::zero())
+			}
+
+			if slashed == beneficiary {
+				return match status {
+					BalanceStatus::Free => Self::unreserve_named(id, token, slashed, value),
+					BalanceStatus::Reserved =>
+						Ok(value.saturating_sub(Self::reserved_balance_named(id, token, slashed))),
+				}
+			}
+
+			Reserves::<T>::try_mutate((slashed, token), |reserves| -> Result<Self::Balance, DispatchError> {
+				match reserves.binary_search_by_key(id, |data| data.id) {
+					Ok(index) => {
+						let to_change = cmp::min(reserves[index].amount, value);
+
+						let actual = if status == BalanceStatus::Reserved {
+							// make it the reserved under same identifier
+							Reserves::<T>::try_mutate(
+								(beneficiary,token),
+								|reserves| -> Result<T::Balance, DispatchError> {
+									match reserves.binary_search_by_key(id, |data| data.id) {
+										Ok(index) => {
+											let remain =
+												<Self as ReservableToken<_>>::repatriate_reserved(
+													token,
+													slashed,
+													beneficiary,
+													to_change,
+													status,
+												)?;
+
+											// remain should always be zero but just to be defensive
+											// here
+											let actual = to_change.saturating_sub(remain);
+
+											// this add can't overflow but just to be defensive.
+											reserves[index].amount =
+												reserves[index].amount.saturating_add(actual);
+
+											Ok(actual)
+										},
+										Err(index) => {
+											let remain =
+												<Self as ReservableToken<_>>::repatriate_reserved(
+													token,
+													slashed,
+													beneficiary,
+													to_change,
+													status,
+												)?;
+
+											// remain should always be zero but just to be defensive
+											// here
+											let actual = to_change.saturating_sub(remain);
+
+											reserves
+												.try_insert(
+													index,
+													ReserveData { id: id.clone(), amount: actual },
+												)
+												.map_err(|_| Error::<T>::TooManyReserves)?;
+
+											Ok(actual)
+										},
+									}
+								},
+							)?
+						} else {
+							let remain = <Self as ReservableToken<_>>::repatriate_reserved(
+								token,
+								slashed,
+								beneficiary,
+								to_change,
+								status,
+							)?;
+
+							// remain should always be zero but just to be defensive here
+							to_change.saturating_sub(remain)
+						};
+
+						// `actual <= to_change` and `to_change <= amount`; qed;
+						reserves[index].amount -= actual;
+
+						Ok(value - actual)
+					},
+					Err(_) => Ok(value),
+				}
+			})
+		}
 	}
 }
+
