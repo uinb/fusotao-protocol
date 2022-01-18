@@ -187,6 +187,12 @@ pub mod pallet {
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub struct Share<Coin> {
+        stable_coin: bool,
+        amount: Coin,
+    }
+
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct PendingDistribution<AccountId, Coin> {
         dominator: AccountId,
         from_season: Season,
@@ -247,11 +253,13 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn shares)]
-    pub type Shares<T: Config> = StorageMap<
+    pub type Shares<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
+        T::AccountId, //dominator id
+        Blake2_128Concat,
         T::TokenId,
-        AmountOfToken<T>,
+        Share<AmountOfToken<T>>,
         OptionQuery
     >;
 
@@ -409,7 +417,7 @@ pub mod pallet {
                         });
                     });
                 }
-                Self::deposit_event(Event::TaoStaked(fund_owner, dominator, amount));
+                Self::deposit_event(Event::TaoStaked(fund_owner.clone(), dex.clone(), amount));
                 Ok(())
             })?;
             // TODO
@@ -456,7 +464,7 @@ pub mod pallet {
                         amount: exists.amount,
                     });
                 });
-                Self::deposit_event(Event::TaoUnstaked(fund_owner, dominator, amount));
+                Self::deposit_event(Event::TaoUnstaked(fund_owner.clone(), dex.clone(), amount));
                 Ok(())
             })?;
             // TODO
