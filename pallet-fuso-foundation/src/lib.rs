@@ -43,7 +43,7 @@ pub mod pallet {
         pub fund: Vec<(T::AccountId, (T::BlockNumber, T::BlockNumber, u16, BalanceOf<T>))>,
         //TODO
         pub fund_total: Vec<(T::AccountId, BalanceOf<T>)>,
-	}
+    }
 
     #[cfg(feature = "std")]
     impl<T: Config> Default for GenesisConfig<T> {
@@ -56,13 +56,20 @@ pub mod pallet {
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> where IdentifierOf<T>: From<[u8; 8]> {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T>
+    where
+        IdentifierOf<T>: From<[u8; 8]>,
+    {
         fn build(&self) {
             for (account, balance) in &self.fund {
                 Foundation::<T>::insert(account, balance);
             }
             for (account, balance) in &self.fund_total {
-                <pallet_balances::Pallet<T>>::reserve_named(&(RESERVABLE_IDENTIFIER.into()), &account, *balance);
+                <pallet_balances::Pallet<T>>::reserve_named(
+                    &(RESERVABLE_IDENTIFIER.into()),
+                    &account,
+                    *balance,
+                );
             }
         }
     }
@@ -78,7 +85,10 @@ pub mod pallet {
     pub enum Error<T> {}
 
     #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> where IdentifierOf<T>: From<[u8; 8]> {
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T>
+    where
+        IdentifierOf<T>: From<[u8; 8]>,
+    {
         fn on_initialize(now: T::BlockNumber) -> Weight {
 			Self::initialize(now)
         }
@@ -96,7 +106,10 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {}
 
-    impl<T: Config> Pallet<T> where IdentifierOf<T>: From<[u8; 8]> {
+    impl<T: Config> Pallet<T>
+    where
+        IdentifierOf<T>: From<[u8; 8]>,
+    {
         fn initialize(now: T::BlockNumber) -> Weight {
             let max_block: T::BlockNumber = T::MaxBlock::get();
             let min_block: T::BlockNumber = T::MinBlock::get();
