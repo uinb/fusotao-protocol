@@ -19,6 +19,7 @@ pub mod weights;
 #[frame_support::pallet]
 pub mod pallet {
     use ascii::AsciiStr;
+	use crate::weights::WeightInfo;
     use codec::Codec;
     use codec::{Decode, Encode};
     use frame_support::pallet_prelude::*;
@@ -30,13 +31,14 @@ pub mod pallet {
     use pallet_octopus_support::traits::AssetIdAndNameProvider;
     use scale_info::TypeInfo;
     use sp_runtime::traits::{
+		Saturating,
         AtLeast32BitUnsigned, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Member, One,
         StaticLookup, Zero,
     };
     use sp_runtime::DispatchResult;
-    use sp_std::{fmt::Debug, vec::Vec};
+    use sp_std::{fmt::Debug, vec::Vec,cmp};
 
-    use fuso_support::traits::{ReservableToken, Token};
+    use fuso_support::traits::{ReservableToken, NamedReservableToken, Token};
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
     pub struct TokenAccountData<Balance> {
