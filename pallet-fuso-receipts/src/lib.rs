@@ -30,6 +30,7 @@ pub mod pallet {
         PerThing, Percent, Permill, Perquintill, RuntimeDebug,
     };
     use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
+    use frame_support::traits::NamedReservableCurrency;
 
     pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
@@ -38,6 +39,9 @@ pub mod pallet {
     pub type Season = u32;
     pub type Amount = u128;
     pub type Price = (u128, Perquintill);
+
+
+    pub type IdentifierOf<T> = <T as pallet_balances::Config>::ReserveIdentifier;
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -160,8 +164,9 @@ pub mod pallet {
     }
 
     #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
-    pub struct Dominator<Coin, BlockNumber> {
+    pub struct Dominator<Coin, TokenId, BlockNumber> {
         pub staked: Coin,
+        pub stablecoins: Vec<TokenId>,
         pub merkle_root: [u8; 32],
         pub start_from: BlockNumber,
         pub sequence: (u64, BlockNumber),
@@ -214,6 +219,8 @@ pub mod pallet {
 
         type SymbolLimit: Get<usize>;
 
+        type DominatorStablecoinLimit: Get<usize>;
+
         type DominatorSharesRatio: Get<Percent>;
     }
 
@@ -235,7 +242,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         T::AccountId,
-        Dominator<AmountOfCoin<T>, T::BlockNumber>,
+        Dominator<AmountOfCoin<T>, T::TokenId, T::BlockNumber>,
         OptionQuery,
     >;
 
@@ -275,16 +282,6 @@ pub mod pallet {
         OptionQuery,
     >;
 
-    #[pallet::storage]
-    #[pallet::getter(fn pending_distributions)]
-    pub type PendingDistributions<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        PendingDistribution<T::AccountId, AmountOfCoin<T>>,
-        OptionQuery,
-    >;
-
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -320,6 +317,7 @@ pub mod pallet {
         InvalidStaking,
         StakingNotExists,
         DistributionOngoing,
+        OutOfStablecoinLimit,
     }
 
     #[pallet::pallet]
@@ -336,6 +334,7 @@ pub mod pallet {
         AmountOfToken<T>: Copy + From<u128> + Into<u128>,
         TokenId<T>: From<u32> + Into<u32>,
         <T as frame_system::Config>::BlockNumber: Into<u32>,
+        IdentifierOf<T>: From<T::AccountId>
     {
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
         #[pallet::weight(1_000_000_000_000)]
@@ -350,6 +349,7 @@ pub mod pallet {
                 &dominator,
                 Dominator {
                     staked: Zero::zero(),
+                    stablecoins: Vec::new(),
                     start_from: current_block,
                     sequence: (0, current_block),
                     merkle_root: Default::default(),
@@ -357,6 +357,88 @@ pub mod pallet {
                 },
             );
             Self::deposit_event(Event::DominatorClaimed(dominator));
+            Ok(().into())
+        }
+
+        #[pallet::weight(100_000)]
+        pub fn add_stablecoin(
+            origin: OriginFor<T>,
+            stablecoin: T::TokenId
+        ) -> DispatchResultWithPostInfo {
+
+            let dex = ensure_signed(origin)?;
+            ensure!(
+                Dominators::<T>::contains_key(&dex),
+                Error::<T>::DominatorNotFound
+            );
+
+
+            Dominators::<T>::try_mutate_exists(&dex, | dominator| -> DispatchResult {
+                ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
+                let dex = &mut dominator.take().unwrap();
+                let old_stablecoins = &mut dex.stablecoins;
+                let mut new_stablecoins  = Vec::new();
+                new_stablecoins.append(old_stablecoins);
+                ensure!(dex.active, Error::<T>::DominatorInactive);
+                let idx = dex.stablecoins.binary_search(&stablecoin);
+                if idx.is_ok() {
+                    return Ok(());
+                } else {
+                    ensure!(dex.stablecoins.len() < T::DominatorStablecoinLimit::get(), Error::<T>::OutOfStablecoinLimit);
+                    new_stablecoins.insert(idx.unwrap_or_else(|x|x),stablecoin);
+                    dominator.replace(
+                        Dominator {
+                            staked: dex.staked,
+                            stablecoins: new_stablecoins,
+                            start_from: dex.start_from,
+                            sequence: dex.sequence,
+                            merkle_root: dex.merkle_root,
+                            active: dex.active,
+                        }
+                    );
+                }
+                return Ok(());
+            });
+            Ok(().into())
+        }
+
+        #[pallet::weight(100_000)]
+        pub fn remove_stablecoin(
+            origin: OriginFor<T>,
+            stablecoin: T::TokenId
+        ) -> DispatchResultWithPostInfo {
+
+            let dex = ensure_signed(origin)?;
+            ensure!(
+                Dominators::<T>::contains_key(&dex),
+                Error::<T>::DominatorNotFound
+            );
+            Dominators::<T>::try_mutate_exists(&dex, | dominator| -> DispatchResult {
+                ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
+                let dex = &mut dominator.take().unwrap();
+                let old_stablecoins = &mut dex.stablecoins;
+                let mut new_stablecoins  = Vec::new();
+                new_stablecoins.append(old_stablecoins);
+                ensure!(dex.active, Error::<T>::DominatorInactive);
+                let idx = dex.stablecoins.binary_search(&stablecoin);
+                if idx.is_err() {
+                    return Ok(());
+                } else {
+                    ensure!(dex.stablecoins.len() < T::DominatorStablecoinLimit::get(), Error::<T>::OutOfStablecoinLimit);
+                    new_stablecoins.remove(idx.unwrap());
+                    dominator.replace(
+                        Dominator {
+                            staked: dex.staked,
+                            stablecoins: new_stablecoins,
+                            start_from: dex.start_from,
+                            sequence: dex.sequence,
+                            merkle_root: dex.merkle_root,
+                            active: dex.active,
+                        }
+                    );
+                }
+                return Ok(());
+            });
             Ok(().into())
         }
 
@@ -392,30 +474,33 @@ pub mod pallet {
             Stakings::<T>::try_mutate(&dex, &fund_owner, |staking| -> DispatchResult {
                 if staking.is_none() {
                     // TODO reserve_named
-                    pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
+                    pallet_balances::Pallet::<T>::reserve_named(&dex.clone().into(), &fund_owner, amount)?;
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
                         amount: amount,
                     });
                 } else {
-                    ensure!(
-                        !PendingDistributions::<T>::contains_key(&fund_owner),
-                        Error::<T>::DistributionOngoing,
-                    );
                     pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
                     let exists = staking.take().unwrap();
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
                         amount: exists.amount + amount,
                     });
-                    PendingDistributions::<T>::mutate(&fund_owner, |p| {
-                        p.replace(PendingDistribution {
+
+                    let pending_distribution = PendingDistribution {
+                        dominator: dex.clone(),
+                        from_season: exists.start_season,
+                        to_season: current_season.into(),
+                        amount: exists.amount,
+                    };
+
+                    for stablecoin in dominator.stablecoins{
+                        let key = BonusKey {
                             dominator: dex.clone(),
-                            from_season: exists.start_season,
-                            to_season: current_season.into(),
-                            amount: exists.amount,
-                        });
-                    });
+                            token: stablecoin,
+                        };
+                        Self::take_shares(&key, &fund_owner, &pending_distribution);
+                    }
                 }
                 Self::deposit_event(Event::TaoStaked(fund_owner.clone(), dex.clone(), amount));
                 Ok(())
@@ -443,27 +528,28 @@ pub mod pallet {
                     staking.as_ref().filter(|s| s.amount >= amount).is_some(),
                     Error::<T>::StakingNotExists
                 );
-                ensure!(
-                    !PendingDistributions::<T>::contains_key(&fund_owner),
-                    Error::<T>::DistributionOngoing,
-                );
                 let exists = staking.take().unwrap();
                 // TODO unreserve_named
-                pallet_balances::Pallet::<T>::unreserve(&fund_owner, amount);
+                pallet_balances::Pallet::<T>::unreserve_named(&dex.clone().into(),&fund_owner, amount);
                 if exists.amount - amount >= T::MinimalStakingAmount::get() {
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
                         amount: exists.amount - amount,
                     });
                 }
-                PendingDistributions::<T>::mutate(&fund_owner, |p| {
-                    p.replace(PendingDistribution {
+                let pending_distribution = PendingDistribution {
+                    dominator: dex.clone(),
+                    from_season: exists.start_season,
+                    to_season: current_season.into(),
+                    amount: exists.amount,
+                };
+                for stablecoin in dominator.stablecoins{
+                    let key = BonusKey {
                         dominator: dex.clone(),
-                        from_season: exists.start_season,
-                        to_season: current_season.into(),
-                        amount: exists.amount,
-                    });
-                });
+                        token: stablecoin,
+                    };
+                    Self::take_shares(&key, &fund_owner, &pending_distribution);
+                }
                 Self::deposit_event(Event::TaoUnstaked(fund_owner.clone(), dex.clone(), amount));
                 Ok(())
             })?;
@@ -471,7 +557,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[transactional]
+     /*   #[transactional]
         #[pallet::weight(1_000_000_000_000)]
         pub fn claim_shares(
             origin: OriginFor<T>,
@@ -500,7 +586,7 @@ pub mod pallet {
             })?;
             Ok(().into())
         }
-
+*/
         #[pallet::weight(1_000_000_000_000)]
         pub fn authorize_coin(
             origin: OriginFor<T>,
@@ -666,7 +752,7 @@ pub mod pallet {
     {
         fn verify_and_update(
             dominator: &T::AccountId,
-            ex: &Dominator<AmountOfCoin<T>, T::BlockNumber>,
+            ex: &Dominator<AmountOfCoin<T>, T::TokenId, T::BlockNumber>,
             proof: Proof<T::AccountId>,
         ) -> DispatchResultWithPostInfo
         where
@@ -1173,7 +1259,7 @@ pub mod pallet {
                 }
             }
         }
-
+/*
         #[transactional]
         fn take_shares(
             which: &BonusKey<T::AccountId, TokenId<T>>,
@@ -1206,6 +1292,40 @@ pub mod pallet {
                 })
                 .map_err(|_| ())
                 .map(|_| to_season)
+            }
+        }*/
+
+        #[transactional]
+        fn take_shares(
+            which: &BonusKey<T::AccountId, TokenId<T>>,
+            staker: &T::AccountId,
+            pending_distribution: &PendingDistribution<T::AccountId, AmountOfCoin<T>>
+        ) -> Result<Season, ()> {
+            if pending_distribution.to_season == pending_distribution.from_season {
+                return Ok(pending_distribution.from_season);
+            }
+            let mut share = 0u128;
+            for season in pending_distribution.from_season..pending_distribution.to_season {
+                match Bonuses::<T>::get(&which, season) {
+                    Some(bonus) => {
+                        let s: u128 = pending_distribution.amount.into();
+                        let t: u128 = bonus.total_staking.into();
+                        let p: Perquintill = PerThing::from_rational(s, t);
+                        share += p * bonus.total_profit;
+                    }
+                    None => {}
+                };
+            }
+            if which.token == <T as pallet_fuso_token::Config>::TokenId::zero() {
+                pallet_balances::Pallet::<T>::mutate_account(staker, |a| a.free += share.into())
+                    .map_err(|_| ())
+                    .map(|_| pending_distribution.to_season)
+            } else {
+                pallet_fuso_token::Pallet::<T>::mutate_account(&which.token, staker, |a| {
+                    a.free += share.into()
+                })
+                    .map_err(|_| ())
+                    .map(|_| pending_distribution.to_season)
             }
         }
     }
