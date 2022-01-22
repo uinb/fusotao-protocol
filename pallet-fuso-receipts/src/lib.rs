@@ -338,8 +338,8 @@ pub mod pallet {
         AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
         AmountOfToken<T>: Copy + From<u128> + Into<u128>,
         TokenId<T>: From<u32> + Into<u32>,
-        <T as frame_system::Config>::BlockNumber: Into<u32>,
-        IdentifierOf<T>: From<T::AccountId>
+        <T as frame_system::Config>::BlockNumber: Into<u32>
+       // IdentifierOf<T>: From<T::AccountId>
     {
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
         #[pallet::weight(T::SelfWeightInfo::claim_dominator())]
