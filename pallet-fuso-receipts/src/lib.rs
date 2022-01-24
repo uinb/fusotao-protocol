@@ -16,23 +16,25 @@
 #![recursion_limit = "256"]
 
 pub use pallet::*;
+
 pub mod weights;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use codec::{Compact, Decode, Encode};
-    use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
-    use frame_system::pallet_prelude::*;
-    use fuso_support::traits::{ReservableToken, Token, NamedReservableToken};
+	use codec::{Compact, Decode, Encode};
+	use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
+	use frame_support::traits::NamedReservableCurrency;
+	use frame_system::pallet_prelude::*;
+	use scale_info::TypeInfo;
+	use sp_io::hashing::sha2_256;
+	use sp_runtime::{
+		Percent,
+		Permill, Perquintill, PerThing, RuntimeDebug, traits::{StaticLookup, Zero},
+	};
+	use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
+
 	use fuso_support::reserve_identifier_prefix;
-    use scale_info::TypeInfo;
-    use sp_io::hashing::sha2_256;
-    use sp_runtime::{
-        traits::{StaticLookup, Zero},
-        PerThing, Percent, Permill, Perquintill, RuntimeDebug,
-    };
-    use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
-    use frame_support::traits::NamedReservableCurrency;
+	use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
 
 	use crate::weights::WeightInfo;
 
@@ -338,8 +340,9 @@ pub mod pallet {
 		AmountOfToken<T>: Copy + From<u128> + Into<u128>,
 		TokenId<T>: From<u32> + Into<u32>,
 		<T as frame_system::Config>::BlockNumber: Into<u32>,
-		IdentifierOfCoin<T>: From<(u8, T::AccountId)>,
-		IdentifierOfToken<T>: From<(u8, T::AccountId)>
+		IdentifierOfCoin<T>: From<(u8, [u8; 32])>,
+		IdentifierOfToken<T>: From<(u8, [u8; 32])>,
+		<T as frame_system::Config>::AccountId: Into<[u8; 32]>
 	{
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
         #[pallet::weight(T::SelfWeightInfo::claim_dominator())]
@@ -480,7 +483,7 @@ pub mod pallet {
                 if staking.is_none() {
                     // TODO reserve_named
                     pallet_balances::Pallet::<T>::reserve_named(
-						&(reserve_identifier_prefix::STAKING, dex.clone()).into(),
+						&(reserve_identifier_prefix::STAKING, dex.clone().into()).into(),
 						&fund_owner,
 						amount)?;
                     staking.replace(Staking {
@@ -539,7 +542,7 @@ pub mod pallet {
                 let exists = staking.take().unwrap();
                 // TODO unreserve_named
                 pallet_balances::Pallet::<T>::unreserve_named(
-					&(reserve_identifier_prefix::STAKING, dex.clone()).into(),
+					&(reserve_identifier_prefix::STAKING, dex.clone().into()).into(),
 					&fund_owner,
 					amount);
                 if exists.amount - amount >= T::MinimalStakingAmount::get() {
@@ -621,7 +624,7 @@ pub mod pallet {
             );
             let block_number = frame_system::Pallet::<T>::block_number();
             pallet_balances::Pallet::<T>::reserve_named(
-				&(reserve_identifier_prefix::AUTHORIZING, dex.clone()).into(),
+				&(reserve_identifier_prefix::AUTHORIZING, dex.clone().into()).into(),
 				&fund_owner,
 				amount)?;
             Receipts::<T>::insert(
@@ -688,7 +691,7 @@ pub mod pallet {
             );
             let block_number = frame_system::Pallet::<T>::block_number();
             pallet_fuso_token::Pallet::<T>::reserve_named(
-				&(reserve_identifier_prefix::AUTHORIZING, dex.clone()).into(),
+				&(reserve_identifier_prefix::AUTHORIZING, dex.clone().into()).into(),
 				&token_id,
 				&fund_owner,
 				amount)?;
@@ -763,12 +766,13 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T>
-    where
-        AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
-        AmountOfToken<T>: Copy + From<u128> + Into<u128>,
-        TokenId<T>: From<u32>,
-		IdentifierOfCoin<T>: From<(u8, T::AccountId)>,
-		IdentifierOfToken<T>: From<(u8, T::AccountId)>
+		where
+			AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
+			AmountOfToken<T>: Copy + From<u128> + Into<u128>,
+			TokenId<T>: From<u32>,
+			IdentifierOfCoin<T>: From<(u8, [u8; 32])>,
+			IdentifierOfToken<T>: From<(u8, [u8; 32])>,
+			<T as frame_system::Config>::AccountId: Into<[u8; 32]>
     {
         fn verify_and_update(
             dominator: &T::AccountId,
@@ -1250,12 +1254,12 @@ pub mod pallet {
             match balance {
                 UniBalance::Coin(value) => {
                     pallet_balances::Pallet::<T>::unreserve_named(
-						&(reserve_identifier_prefix::AUTHORIZING, dominator.clone()).into(),
+						&(reserve_identifier_prefix::AUTHORIZING, dominator.clone().into()).into(),
 						who, value.into());
                 }
                 UniBalance::Token(id, value) => {
                     pallet_fuso_token::Pallet::<T>::unreserve_named(
-						&(reserve_identifier_prefix::AUTHORIZING, dominator.clone()).into(),
+						&(reserve_identifier_prefix::AUTHORIZING, dominator.clone().into()).into(),
 						&id.into(), who, value.into());
                 }
             }
