@@ -19,3 +19,9 @@ pub use alloc::collections;
 
 pub mod external_chain;
 pub mod traits;
+
+pub mod reserve_identifier_prefix {
+	pub const STAKING: u8 = 0u8;
+	pub const AUTHORIZING: u8 = 1u8;
+	pub const FOUNDATION: u8 = 2u8;
+}

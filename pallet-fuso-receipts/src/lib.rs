@@ -24,6 +24,7 @@ pub mod pallet {
     use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
     use frame_system::pallet_prelude::*;
     use fuso_support::traits::{ReservableToken, Token, NamedReservableToken};
+	use fuso_support::reserve_identifier_prefix;
     use scale_info::TypeInfo;
     use sp_io::hashing::sha2_256;
     use sp_runtime::{
@@ -42,10 +43,6 @@ pub mod pallet {
     pub type Season = u32;
     pub type Amount = u128;
     pub type Price = (u128, Perquintill);
-
-
-	pub const STAKEING_RESERVE_IDENDTIFIER_PREFIX: u8 = 0u8;
-	pub const AUTHORIZING_RESERVE_IDENTIFIER_PREFIX: u8 = 1u8;
 
     pub type IdentifierOfCoin<T> = <T as pallet_balances::Config>::ReserveIdentifier;
 	pub type IdentifierOfToken<T> = <T as pallet_fuso_token::Config>::ReserveIdentifier;
@@ -483,7 +480,7 @@ pub mod pallet {
                 if staking.is_none() {
                     // TODO reserve_named
                     pallet_balances::Pallet::<T>::reserve_named(
-						&(STAKEING_RESERVE_IDENDTIFIER_PREFIX, dex.clone()).into(),
+						&(reserve_identifier_prefix::STAKING, dex.clone()).into(),
 						&fund_owner,
 						amount)?;
                     staking.replace(Staking {
@@ -542,7 +539,7 @@ pub mod pallet {
                 let exists = staking.take().unwrap();
                 // TODO unreserve_named
                 pallet_balances::Pallet::<T>::unreserve_named(
-					&(STAKEING_RESERVE_IDENDTIFIER_PREFIX, dex.clone()).into(),
+					&(reserve_identifier_prefix::STAKING, dex.clone()).into(),
 					&fund_owner,
 					amount);
                 if exists.amount - amount >= T::MinimalStakingAmount::get() {
@@ -624,7 +621,7 @@ pub mod pallet {
             );
             let block_number = frame_system::Pallet::<T>::block_number();
             pallet_balances::Pallet::<T>::reserve_named(
-				&(AUTHORIZING_RESERVE_IDENTIFIER_PREFIX, dex.clone()).into(),
+				&(reserve_identifier_prefix::AUTHORIZING, dex.clone()).into(),
 				&fund_owner,
 				amount)?;
             Receipts::<T>::insert(
@@ -691,7 +688,7 @@ pub mod pallet {
             );
             let block_number = frame_system::Pallet::<T>::block_number();
             pallet_fuso_token::Pallet::<T>::reserve_named(
-				&(AUTHORIZING_RESERVE_IDENTIFIER_PREFIX, dex.clone()).into(),
+				&(reserve_identifier_prefix::AUTHORIZING, dex.clone()).into(),
 				&token_id,
 				&fund_owner,
 				amount)?;
@@ -1253,12 +1250,12 @@ pub mod pallet {
             match balance {
                 UniBalance::Coin(value) => {
                     pallet_balances::Pallet::<T>::unreserve_named(
-						&(AUTHORIZING_RESERVE_IDENTIFIER_PREFIX, dominator.clone()).into(),
+						&(reserve_identifier_prefix::AUTHORIZING, dominator.clone()).into(),
 						who, value.into());
                 }
                 UniBalance::Token(id, value) => {
                     pallet_fuso_token::Pallet::<T>::unreserve_named(
-						&(AUTHORIZING_RESERVE_IDENTIFIER_PREFIX, dominator.clone()).into(),
+						&(reserve_identifier_prefix::AUTHORIZING, dominator.clone()).into(),
 						&id.into(), who, value.into());
                 }
             }

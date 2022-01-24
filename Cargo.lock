@@ -1245,6 +1245,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "fuso-support",
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
