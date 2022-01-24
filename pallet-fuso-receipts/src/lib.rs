@@ -225,8 +225,6 @@ pub mod pallet {
         type SymbolLimit: Get<usize>;
 
         type DominatorStablecoinLimit: Get<usize>;
-
-        type DominatorSharesRatio: Get<Percent>;
     }
 
     #[pallet::storage]
@@ -338,8 +336,8 @@ pub mod pallet {
         AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
         AmountOfToken<T>: Copy + From<u128> + Into<u128>,
         TokenId<T>: From<u32> + Into<u32>,
-        <T as frame_system::Config>::BlockNumber: Into<u32>
-       // IdentifierOf<T>: From<T::AccountId>
+        <T as frame_system::Config>::BlockNumber: Into<u32>,
+        IdentifierOf<T>: From<T::AccountId>
     {
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
         #[pallet::weight(T::SelfWeightInfo::claim_dominator())]
@@ -479,7 +477,7 @@ pub mod pallet {
             Stakings::<T>::try_mutate(&dex, &fund_owner, |staking| -> DispatchResult {
                 if staking.is_none() {
                     // TODO reserve_named
-                   // pallet_balances::Pallet::<T>::reserve_named(&dex.clone().into(), &fund_owner, amount)?;
+                    pallet_balances::Pallet::<T>::reserve_named(&dex.clone().into(), &fund_owner, amount)?;
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
                         amount: amount,
@@ -535,7 +533,7 @@ pub mod pallet {
                 );
                 let exists = staking.take().unwrap();
                 // TODO unreserve_named
-                //pallet_balances::Pallet::<T>::unreserve_named(&dex.clone().into(),&fund_owner, amount);
+                pallet_balances::Pallet::<T>::unreserve_named(&dex.clone().into(),&fund_owner, amount);
                 if exists.amount - amount >= T::MinimalStakingAmount::get() {
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
