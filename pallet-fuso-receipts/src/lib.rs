@@ -23,7 +23,7 @@ pub mod pallet {
     use codec::{Compact, Decode, Encode};
     use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
     use frame_system::pallet_prelude::*;
-    use fuso_support::traits::{ReservableToken, Token};
+    use fuso_support::traits::{ReservableToken, Token, NamedReservableToken};
     use scale_info::TypeInfo;
     use sp_io::hashing::sha2_256;
     use sp_runtime::{
@@ -44,7 +44,11 @@ pub mod pallet {
     pub type Price = (u128, Perquintill);
 
 
-    pub type IdentifierOf<T> = <T as pallet_balances::Config>::ReserveIdentifier;
+	pub const STAKEING_RESERVE_IDENDTIFIER_PREFIX: u8 = 0u8;
+	pub const AUTHORIZING_RESERVE_IDENTIFIER_PREFIX: u8 = 1u8;
+
+    pub type IdentifierOfCoin<T> = <T as pallet_balances::Config>::ReserveIdentifier;
+	pub type IdentifierOfToken<T> = <T as pallet_fuso_token::Config>::ReserveIdentifier;
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -333,12 +337,13 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T>
     where
-        AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
-        AmountOfToken<T>: Copy + From<u128> + Into<u128>,
-        TokenId<T>: From<u32> + Into<u32>,
-        <T as frame_system::Config>::BlockNumber: Into<u32>,
-        IdentifierOf<T>: From<T::AccountId>
-    {
+		AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
+		AmountOfToken<T>: Copy + From<u128> + Into<u128>,
+		TokenId<T>: From<u32> + Into<u32>,
+		<T as frame_system::Config>::BlockNumber: Into<u32>,
+		IdentifierOfCoin<T>: From<(u8, T::AccountId)>,
+		IdentifierOfToken<T>: From<(u8, T::AccountId)>
+	{
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
         #[pallet::weight(T::SelfWeightInfo::claim_dominator())]
         pub fn claim_dominator(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
@@ -477,7 +482,10 @@ pub mod pallet {
             Stakings::<T>::try_mutate(&dex, &fund_owner, |staking| -> DispatchResult {
                 if staking.is_none() {
                     // TODO reserve_named
-                    pallet_balances::Pallet::<T>::reserve_named(&dex.clone().into(), &fund_owner, amount)?;
+                    pallet_balances::Pallet::<T>::reserve_named(
+						&(STAKEING_RESERVE_IDENDTIFIER_PREFIX, dex.clone()).into(),
+						&fund_owner,
+						amount)?;
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
                         amount: amount,
@@ -533,7 +541,10 @@ pub mod pallet {
                 );
                 let exists = staking.take().unwrap();
                 // TODO unreserve_named
-                pallet_balances::Pallet::<T>::unreserve_named(&dex.clone().into(),&fund_owner, amount);
+                pallet_balances::Pallet::<T>::unreserve_named(
+					&(STAKEING_RESERVE_IDENDTIFIER_PREFIX, dex.clone()).into(),
+					&fund_owner,
+					amount);
                 if exists.amount - amount >= T::MinimalStakingAmount::get() {
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
@@ -597,14 +608,14 @@ pub mod pallet {
             amount: AmountOfCoin<T>,
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
-            let dominator = T::Lookup::lookup(dominator)?;
+            let dex = T::Lookup::lookup(dominator)?;
             ensure!(
-                Dominators::<T>::contains_key(&dominator),
+                Dominators::<T>::contains_key(&dex),
                 Error::<T>::DominatorNotFound
             );
             // TODO when can dominator accept hosting
             ensure!(
-                !Receipts::<T>::contains_key(&dominator, &fund_owner),
+                !Receipts::<T>::contains_key(&dex, &fund_owner),
                 Error::<T>::ReceiptAlreadyExists,
             );
             ensure!(
@@ -612,13 +623,16 @@ pub mod pallet {
                 Error::<T>::InsufficientBalance
             );
             let block_number = frame_system::Pallet::<T>::block_number();
-            pallet_balances::Pallet::<T>::reserve(&fund_owner, amount)?;
+            pallet_balances::Pallet::<T>::reserve_named(
+				&(AUTHORIZING_RESERVE_IDENTIFIER_PREFIX, dex.clone()).into(),
+				&fund_owner,
+				amount)?;
             Receipts::<T>::insert(
-                dominator.clone(),
+                dex.clone(),
                 fund_owner.clone(),
                 Receipt::Authorize(UniBalance::Coin(amount.into()), block_number),
             );
-            Self::deposit_event(Event::CoinHosted(fund_owner, dominator, amount));
+            Self::deposit_event(Event::CoinHosted(fund_owner, dex, amount));
             Ok(().into())
         }
 
@@ -662,13 +676,13 @@ pub mod pallet {
             amount: AmountOfToken<T>,
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
-            let dominator = T::Lookup::lookup(dominator)?;
+            let dex = T::Lookup::lookup(dominator)?;
             ensure!(
-                Dominators::<T>::contains_key(&dominator),
+                Dominators::<T>::contains_key(&dex),
                 Error::<T>::DominatorNotFound
             );
             ensure!(
-                !Receipts::<T>::contains_key(&dominator, &fund_owner),
+                !Receipts::<T>::contains_key(&dex, &fund_owner),
                 Error::<T>::ReceiptAlreadyExists,
             );
             ensure!(
@@ -676,16 +690,20 @@ pub mod pallet {
                 Error::<T>::InsufficientBalance
             );
             let block_number = frame_system::Pallet::<T>::block_number();
-            pallet_fuso_token::Pallet::<T>::reserve(&token_id, &fund_owner, amount)?;
+            pallet_fuso_token::Pallet::<T>::reserve_named(
+				&(AUTHORIZING_RESERVE_IDENTIFIER_PREFIX, dex.clone()).into(),
+				&token_id,
+				&fund_owner,
+				amount)?;
             Receipts::<T>::insert(
-                dominator.clone(),
+                dex.clone(),
                 fund_owner.clone(),
                 Receipt::Authorize(
                     UniBalance::Token(token_id.into(), amount.into()),
                     block_number,
                 ),
             );
-            Self::deposit_event(Event::TokenHosted(fund_owner, dominator, token_id, amount));
+            Self::deposit_event(Event::TokenHosted(fund_owner, dex, token_id, amount));
             Ok(().into())
         }
 
@@ -752,6 +770,8 @@ pub mod pallet {
         AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
         AmountOfToken<T>: Copy + From<u128> + Into<u128>,
         TokenId<T>: From<u32>,
+		IdentifierOfCoin<T>: From<(u8, T::AccountId)>,
+		IdentifierOfToken<T>: From<(u8, T::AccountId)>
     {
         fn verify_and_update(
             dominator: &T::AccountId,
@@ -851,7 +871,7 @@ pub mod pallet {
                     };
                     ensure!(exists, Error::<T>::ReceiptNotExists);
                     Self::verify_transfer_out(currency, amount, &proof.user_id, &proof.leaves)?;
-                    Self::unreserve(&proof.user_id, balance);
+                    Self::unreserve_named(&dominator, &proof.user_id, balance);
                     Receipts::<T>::remove(&dominator, &proof.user_id);
                 }
                 Command::TransferIn(currency, amount) => {
@@ -1229,13 +1249,17 @@ pub mod pallet {
             }
         }
 
-        fn unreserve(who: &T::AccountId, balance: UniBalance) {
+        fn unreserve_named(dominator: &T::AccountId, who: &T::AccountId, balance: UniBalance) {
             match balance {
                 UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::unreserve(who, value.into());
+                    pallet_balances::Pallet::<T>::unreserve_named(
+						&(AUTHORIZING_RESERVE_IDENTIFIER_PREFIX, dominator.clone()).into(),
+						who, value.into());
                 }
                 UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::unreserve(&id.into(), who, value.into());
+                    pallet_fuso_token::Pallet::<T>::unreserve_named(
+						&(AUTHORIZING_RESERVE_IDENTIFIER_PREFIX, dominator.clone()).into(),
+						&id.into(), who, value.into());
                 }
             }
         }
