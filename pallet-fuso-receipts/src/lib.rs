@@ -387,7 +387,6 @@ pub mod pallet {
                 let old_stablecoins = &mut dex.stablecoins;
                 let mut new_stablecoins  = Vec::new();
                 new_stablecoins.append(old_stablecoins);
-                ensure!(dex.active, Error::<T>::DominatorInactive);
                 let idx = dex.stablecoins.binary_search(&stablecoin);
                 if idx.is_ok() {
                     return Ok(());
@@ -427,7 +426,6 @@ pub mod pallet {
                 let old_stablecoins = &mut dex.stablecoins;
                 let mut new_stablecoins  = Vec::new();
                 new_stablecoins.append(old_stablecoins);
-                ensure!(dex.active, Error::<T>::DominatorInactive);
                 let idx = dex.stablecoins.binary_search(&stablecoin);
                 if idx.is_err() {
                     return Ok(());
