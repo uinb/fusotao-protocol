@@ -23,8 +23,10 @@ pub mod pallet {
 	};
 	use frame_support::{pallet_prelude::*};
 	use frame_system::pallet_prelude::*;
-	use fuso_support::reserve_identifier_prefix;
 	use sp_runtime::traits::{Saturating, Zero};
+
+	use fuso_support::reserve_identifier_prefix;
+
 	pub type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
     pub type IdentifierOf<T> = <T as pallet_balances::Config>::ReserveIdentifier;
 
@@ -59,7 +61,8 @@ pub mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T>
     where
-        IdentifierOf<T>: From<(u8,T::AccountId)>,
+		IdentifierOf<T>: From<(u8, [u8; 32])>,
+		<T as frame_system::Config>::AccountId: Into<[u8; 32]>
     {
         fn build(&self) {
             for (account, balance) in &self.fund {
@@ -67,10 +70,10 @@ pub mod pallet {
             }
             for (account, balance) in &self.fund_total {
                 <pallet_balances::Pallet<T>>::reserve_named(
-                    &(reserve_identifier_prefix::FOUNDATION, T::AccountId::default()).into(),
-                    &account,
-                    *balance,
-                );
+					&(reserve_identifier_prefix::FOUNDATION, T::AccountId::default().into()).into(),
+					&account,
+					*balance,
+				);
             }
         }
     }
@@ -87,8 +90,9 @@ pub mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T>
-    where
-        IdentifierOf<T>: From<(u8, T::AccountId)>,
+		where
+			IdentifierOf<T>: From<(u8, [u8; 32])>,
+			<T as frame_system::Config>::AccountId: Into<[u8; 32]>
     {
         fn on_initialize(now: T::BlockNumber) -> Weight {
 			Self::initialize(now)
@@ -108,8 +112,9 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {}
 
     impl<T: Config> Pallet<T>
-    where
-        IdentifierOf<T>: From<(u8,T::AccountId)>,
+		where
+			IdentifierOf<T>: From<(u8, [u8; 32])>,
+			<T as frame_system::Config>::AccountId: Into<[u8; 32]>
     {
         fn initialize(now: T::BlockNumber) -> Weight {
             let max_block: T::BlockNumber = T::MaxBlock::get();
@@ -130,7 +135,7 @@ pub mod pallet {
 				let balance: (T::BlockNumber,T::BlockNumber, u16, BalanceOf<T>) = item.1;
 				if now.saturating_sub(balance.0) % balance.1 == Zero::zero() {
 					if balance.2 > 0 {
-						<pallet_balances::Pallet<T>>::unreserve_named(&(reserve_identifier_prefix::FOUNDATION, T::AccountId::default()).into(), &account, balance.3);
+						<pallet_balances::Pallet<T>>::unreserve_named(&(reserve_identifier_prefix::FOUNDATION, T::AccountId::default().into()).into(), &account, balance.3);
 						Self::deposit_event(Event::PreLockedFundUnlocked(account.clone(), balance.3));
 						let b = (balance.0, balance.1, balance.2 - 1, balance.3);
 						Foundation::<T>::insert(account, b);
