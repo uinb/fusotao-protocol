@@ -37,7 +37,7 @@ pub mod pallet {
     use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
 
     use crate::weights::WeightInfo;
-	use codec::alloc::collections::HashMap;
+	use scale_info::prelude::collections::HashMap;
 
 	pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
