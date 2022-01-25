@@ -37,9 +37,10 @@ pub mod pallet {
     use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
 
     use crate::weights::WeightInfo;
-	use codec::alloc::collections::BTreeMap;
+    use codec::alloc::collections::BTreeMap;
+    use frame_support::weights::constants::RocksDbWeight;
 
-	pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
+    pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
     pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
     pub type Symbol<T> = (TokenId<T>, TokenId<T>);
@@ -321,7 +322,31 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T>
+    where
+        AmountOfCoin<T>: Into<u128>,
+        T::BlockNumber: Into<u32>,
+    {
+        fn on_initialize(now: T::BlockNumber) -> Weight {
+            let mut weight: Weight = 0u64 as Weight;
+
+            for dominator in Dominators::<T>::iter() {
+                let start = dominator.1.start_from;
+                weight = weight.saturating_add(RocksDbWeight::get().reads(1 as Weight));
+                if (now - start) % T::SeasonDuration::get() == 0u32.into() {
+                    let current_session: u32 =
+                        ((now - start) / T::SeasonDuration::get()).into() as u32;
+                    let b = (
+                        UniBalance::Coin(dominator.1.staked.into()),
+                        BoundedVec::default(),
+                    );
+                    Bonuses::<T>::insert(dominator.0, current_session, b);
+                    weight = weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+                }
+            }
+            weight
+        }
+    }
 
     #[pallet::call]
     impl<T: Config> Pallet<T>
@@ -353,6 +378,11 @@ pub mod pallet {
                     merkle_root: Default::default(),
                     active: false,
                 },
+            );
+            Bonuses::<T>::insert(
+                &dominator,
+                0u32,
+                (UniBalance::Coin(0), BoundedVec::default()),
             );
             Self::deposit_event(Event::DominatorClaimed(dominator));
             Ok(().into())
@@ -460,6 +490,10 @@ pub mod pallet {
             dominator: <T::Lookup as StaticLookup>::Source,
             amount: AmountOfCoin<T>,
         ) -> DispatchResultWithPostInfo {
+            ensure!(
+                amount >= T::MinimalStakingAmount::get(),
+                Error::<T>::InvalidStaking
+            );
             let fund_owner = ensure_signed(origin)?;
             let dex = T::Lookup::lookup(dominator)?;
             let dominator =
@@ -499,28 +533,9 @@ pub mod pallet {
                 }
 
                 //check and update active
-                let new_staking = Self::update_total_staking(
-                    &dex.clone(),
-                    current_season.into(),
-                    StakeOption::STAKING,
-                    amount,
-                )?;
-                if new_staking >= T::DominatorOnlineThreshold::get() {
-                    Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
-                        ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-                        let dex = &mut dominator.take().unwrap();
-                        dominator.replace(Dominator {
-                            staked: dex.staked,
-                            stablecoins: dex.clone().stablecoins,
-                            start_from: dex.start_from,
-                            sequence: dex.sequence,
-                            merkle_root: dex.merkle_root,
-                            active: true,
-                        });
-                        Ok(())
-                    });
-                }
-
+                let new_staking = dominator.staked + amount;
+                Self::update_bonus_staking(&dex.clone(), current_season.into(), new_staking)?;
+                Self::update_dominator_staked_and_active(&dex.clone(), new_staking)?;
                 Self::deposit_event(Event::TaoStaked(fund_owner.clone(), dex.clone(), amount));
                 Ok(())
             })?;
@@ -536,6 +551,10 @@ pub mod pallet {
             amount: AmountOfCoin<T>,
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
+            ensure!(
+                amount >= T::MinimalStakingAmount::get(),
+                Error::<T>::InvalidStaking
+            );
             let dex = T::Lookup::lookup(dominator)?;
             let dominator =
                 Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
@@ -569,31 +588,12 @@ pub mod pallet {
                 Self::take_shares(&dex.clone(), &fund_owner, &pending_distribution);
 
                 //check and update active
-                let new_staking = Self::update_total_staking(
-                    &dex.clone(),
-                    current_season.into(),
-                    StakeOption::UNSTAKING,
-                    amount,
-                )?;
-                if new_staking < T::DominatorOnlineThreshold::get() {
-                    Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
-                        ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-                        let dex = &mut dominator.take().unwrap();
-                        dominator.replace(Dominator {
-                            staked: dex.staked,
-                            stablecoins: dex.clone().stablecoins,
-                            start_from: dex.start_from,
-                            sequence: dex.sequence,
-                            merkle_root: dex.merkle_root,
-                            active: false,
-                        });
-                        Ok(())
-                    });
-                }
+                let new_staking = dominator.staked - amount;
+                Self::update_bonus_staking(&dex.clone(), current_season.into(), new_staking)?;
+                Self::update_dominator_staked_and_active(&dex.clone(), new_staking)?;
                 Self::deposit_event(Event::TaoUnstaked(fund_owner.clone(), dex.clone(), amount));
                 Ok(())
             })?;
-            // TODO
             Ok(().into())
         }
 
@@ -1340,50 +1340,42 @@ pub mod pallet {
         }
 
         #[transactional]
-        fn update_total_staking(
+        fn update_bonus_staking(
             dex: &T::AccountId,
             season: Season,
-            operation: StakeOption,
-            amount: AmountOfCoin<T>,
-        ) -> Result<AmountOfCoin<T>, Error<T>> {
-            let mut new_staking = 0u128;
+            new_staking: AmountOfCoin<T>,
+        ) -> Result<(), Error<T>> {
             match Bonuses::<T>::get(dex, season) {
                 Some(bonus) => {
-                    match operation {
-                        StakeOption::STAKING => match bonus.0 {
-                            UniBalance::Coin(a) => {
-                                new_staking = a + amount.into();
-                            }
-                            _ => {}
-                        },
-                        StakeOption::UNSTAKING => match bonus.0 {
-                            UniBalance::Coin(a) => {
-                                ensure!(a >= amount.into(), Error::<T>::InsufficientStakingAmount);
-                                new_staking = a - amount.into();
-                                ensure!(
-                                    new_staking >= T::MinimalStakingAmount::get().into(),
-                                    Error::<T>::InvalidStaking
-                                )
-                            }
-                            _ => {}
-                        },
-                    }
-                    let b = (UniBalance::Coin(new_staking), bonus.1);
+                    let b = (UniBalance::Coin(new_staking.into()), bonus.1);
                     Bonuses::<T>::insert(dex, season, b);
                 }
-                None => match operation {
-                    StakeOption::STAKING => {
-                        new_staking = amount.into();
-                        let b: (UniBalance, _) =
-                            (UniBalance::Coin(amount.into()), BoundedVec::default());
-                        Bonuses::<T>::insert(dex, season, b);
-                    }
-                    StakeOption::UNSTAKING => {
-                        ensure!(false, Error::<T>::InsufficientStakingAmount);
-                    }
-                },
+                None => {
+                    let b = (UniBalance::Coin(new_staking.into()), BoundedVec::default());
+                    Bonuses::<T>::insert(dex, season, b);
+                }
             };
-            Ok(new_staking.into())
+            Ok(())
+        }
+
+        fn update_dominator_staked_and_active(
+            dex: &T::AccountId,
+            new_staking: AmountOfCoin<T>,
+        ) -> Result<(), Error<T>> {
+            Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
+                ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
+                let dex = &mut dominator.take().unwrap();
+                dominator.replace(Dominator {
+                    staked: new_staking,
+                    stablecoins: dex.clone().stablecoins,
+                    start_from: dex.start_from,
+                    sequence: dex.sequence,
+                    merkle_root: dex.merkle_root,
+                    active: new_staking.into() >= T::DominatorOnlineThreshold::get().into(),
+                });
+                Ok(())
+            });
+            Ok(())
         }
 
         #[transactional]
