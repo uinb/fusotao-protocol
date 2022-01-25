@@ -96,14 +96,17 @@ pub trait ReservableToken<AccountId>: Token<AccountId> {
     ) -> sp_std::result::Result<Self::Balance, DispatchError>;
 }
 
-
 pub trait NamedReservableToken<AccountId>: Token<AccountId> {
-
     type ReserveIdentifier;
 
     /// Same result as `reserve(who, value)` (but without the side-effects) assuming there
     /// are no balance changes in the meantime.
-    fn can_reserve_named(id: &Self::ReserveIdentifier, token: &Self::TokenId, who: &AccountId, value: Self::Balance) -> bool;
+    fn can_reserve_named(
+        id: &Self::ReserveIdentifier,
+        token: &Self::TokenId,
+        who: &AccountId,
+        value: Self::Balance,
+    ) -> bool;
 
     /// The amount of the balance of a given account that is externally reserved; this can still get
     /// slashed, but gets slashed last of all.
@@ -116,7 +119,11 @@ pub trait NamedReservableToken<AccountId>: Token<AccountId> {
     ///
     /// `system::AccountNonce` is also deleted if `FreeBalance` is also zero (it also gets
     /// collapsed to zero if it ever becomes less than `ExistentialDeposit`.
-    fn reserved_balance_named(id: &Self::ReserveIdentifier, token: &Self::TokenId, who: &AccountId) -> Self::Balance;
+    fn reserved_balance_named(
+        id: &Self::ReserveIdentifier,
+        token: &Self::TokenId,
+        who: &AccountId,
+    ) -> Self::Balance;
 
     /// Moves `value` from balance to reserved balance.
     ///
