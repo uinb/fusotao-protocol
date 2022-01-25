@@ -37,9 +37,9 @@ pub mod pallet {
     use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
 
     use crate::weights::WeightInfo;
-    use std::collections::HashMap;
+	use codec::alloc::collections::HashMap;
 
-    pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
+	pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
     pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
     pub type Symbol<T> = (TokenId<T>, TokenId<T>);
