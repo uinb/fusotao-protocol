@@ -358,7 +358,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(100_000)]
+        #[pallet::weight(T::SelfWeightInfo::add_stablecoin())]
         pub fn add_stablecoin(
             origin: OriginFor<T>,
             stablecoin: T::TokenId,
@@ -398,7 +398,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(100_000)]
+        #[pallet::weight(T::SelfWeightInfo::remove_stablecoin())]
         pub fn remove_stablecoin(
             origin: OriginFor<T>,
             stablecoin: T::TokenId,
@@ -454,7 +454,7 @@ pub mod pallet {
         }
 
         #[transactional]
-        #[pallet::weight(1_000_000_000_000)]
+        #[pallet::weight(T::SelfWeightInfo::stake())]
         pub fn stake(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -529,7 +529,7 @@ pub mod pallet {
         }
 
         #[transactional]
-        #[pallet::weight(1_000_000_000_000)]
+        #[pallet::weight(T::SelfWeightInfo::unstake())]
         pub fn unstake(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -627,6 +627,7 @@ pub mod pallet {
                     Ok(().into())
                 }
         */
+
         #[pallet::weight(T::SelfWeightInfo::authorize_coin())]
         pub fn authorize_coin(
             origin: OriginFor<T>,
