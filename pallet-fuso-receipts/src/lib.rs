@@ -37,7 +37,7 @@ pub mod pallet {
     use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
 
     use crate::weights::WeightInfo;
-	use scale_info::prelude::collections::HashMap;
+	use std::collections::BTreeMap;
 
 	pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
@@ -1398,7 +1398,7 @@ pub mod pallet {
             if pending_distribution.to_season == pending_distribution.from_season {
                 return Ok(pending_distribution.from_season);
             }
-            let mut shares_map: HashMap<u32, u128> = HashMap::new();
+            let mut shares_map: BTreeMap<u32, u128> = BTreeMap::new();
             for season in pending_distribution.from_season..pending_distribution.to_season {
                 match Bonuses::<T>::get(dex, season) {
                     Some(bonus) => {
