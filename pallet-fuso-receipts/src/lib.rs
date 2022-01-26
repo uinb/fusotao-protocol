@@ -405,8 +405,9 @@ pub mod pallet {
                 let old_stablecoins = &mut dex.stablecoins;
                 let mut new_stablecoins = Vec::new();
                 new_stablecoins.append(old_stablecoins);
-                let idx = dex.stablecoins.binary_search(&stablecoin);
+                let idx = new_stablecoins.binary_search(&stablecoin);
                 if idx.is_ok() {
+					dominator.replace(dex.clone());
                     return Ok(());
                 } else {
                     ensure!(
@@ -444,14 +445,11 @@ pub mod pallet {
                 let old_stablecoins = &mut dex.stablecoins;
                 let mut new_stablecoins = Vec::new();
                 new_stablecoins.append(old_stablecoins);
-                let idx = dex.stablecoins.binary_search(&stablecoin);
+                let idx = new_stablecoins.binary_search(&stablecoin);
                 if idx.is_err() {
+					dominator.replace(dex.clone());
                     return Ok(());
                 } else {
-                    ensure!(
-                        dex.stablecoins.len() < T::DominatorStablecoinLimit::get(),
-                        Error::<T>::OutOfStablecoinLimit
-                    );
                     new_stablecoins.remove(idx.unwrap());
                     dominator.replace(Dominator {
                         staked: dex.staked,
