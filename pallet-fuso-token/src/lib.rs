@@ -198,13 +198,7 @@ pub mod pallet {
                     reserved: Zero::zero(),
                 },
             );
-            Tokens::<T>::insert(
-                id,
-                TokenInfo {
-                    total: total,
-                    symbol: symbol,
-                },
-            );
+            Tokens::<T>::insert(id, TokenInfo { total, symbol });
             Self::deposit_event(Event::TokenIssued(id, origin, total));
             Ok(().into())
         }

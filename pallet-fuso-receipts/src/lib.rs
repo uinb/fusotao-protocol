@@ -21,8 +21,10 @@ pub mod weights;
 
 #[frame_support::pallet]
 pub mod pallet {
+    use codec::alloc::collections::BTreeMap;
     use codec::{Compact, Decode, Encode};
     use frame_support::traits::NamedReservableCurrency;
+    use frame_support::weights::constants::RocksDbWeight;
     use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
     use frame_system::pallet_prelude::*;
     use scale_info::TypeInfo;
@@ -37,8 +39,6 @@ pub mod pallet {
     use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
 
     use crate::weights::WeightInfo;
-    use codec::alloc::collections::BTreeMap;
-    use frame_support::weights::constants::RocksDbWeight;
 
     pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
     pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
@@ -401,28 +401,17 @@ pub mod pallet {
 
             Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
                 ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-                let dex = &mut dominator.take().unwrap();
-                let old_stablecoins = &mut dex.stablecoins;
-                let mut new_stablecoins = Vec::new();
-                new_stablecoins.append(old_stablecoins);
+                let mut dex = dominator.take().unwrap();
                 let idx = dex.stablecoins.binary_search(&stablecoin);
-                if idx.is_ok() {
-                    return Ok(());
-                } else {
+                if !idx.is_ok() {
                     ensure!(
                         dex.stablecoins.len() < T::DominatorStablecoinLimit::get(),
                         Error::<T>::OutOfStablecoinLimit
                     );
-                    new_stablecoins.insert(idx.unwrap_or_else(|x| x), stablecoin);
-                    dominator.replace(Dominator {
-                        staked: dex.staked,
-                        stablecoins: new_stablecoins,
-                        start_from: dex.start_from,
-                        sequence: dex.sequence,
-                        merkle_root: dex.merkle_root,
-                        active: dex.active,
-                    });
+                    dex.stablecoins
+                        .insert(idx.unwrap_or_else(|x| x), stablecoin);
                 }
+                dominator.replace(dex);
                 return Ok(());
             });
             Ok(().into())
@@ -440,28 +429,12 @@ pub mod pallet {
             );
             Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
                 ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-                let dex = &mut dominator.take().unwrap();
-                let old_stablecoins = &mut dex.stablecoins;
-                let mut new_stablecoins = Vec::new();
-                new_stablecoins.append(old_stablecoins);
+                let mut dex = dominator.take().unwrap();
                 let idx = dex.stablecoins.binary_search(&stablecoin);
-                if idx.is_err() {
-                    return Ok(());
-                } else {
-                    ensure!(
-                        dex.stablecoins.len() < T::DominatorStablecoinLimit::get(),
-                        Error::<T>::OutOfStablecoinLimit
-                    );
-                    new_stablecoins.remove(idx.unwrap());
-                    dominator.replace(Dominator {
-                        staked: dex.staked,
-                        stablecoins: new_stablecoins,
-                        start_from: dex.start_from,
-                        sequence: dex.sequence,
-                        merkle_root: dex.merkle_root,
-                        active: dex.active,
-                    });
+                if idx.is_ok() {
+                    dex.stablecoins.remove(idx.unwrap());
                 }
+                dominator.replace(dex);
                 return Ok(());
             });
             Ok(().into())
@@ -510,7 +483,7 @@ pub mod pallet {
                     )?;
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
-                        amount: amount,
+                        amount,
                     });
                 } else {
                     pallet_balances::Pallet::<T>::reserve_named(
@@ -787,6 +760,7 @@ pub mod pallet {
 
     impl TryFrom<(u32, u128)> for UniBalance {
         type Error = DispatchError;
+
         fn try_from((token, value): (u32, u128)) -> Result<Self, Self::Error> {
             match token.clone() {
                 0 => Ok(UniBalance::Coin(value)),
