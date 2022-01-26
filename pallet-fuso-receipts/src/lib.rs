@@ -407,7 +407,9 @@ pub mod pallet {
                 new_stablecoins.append(old_stablecoins);
                 let idx = new_stablecoins.binary_search(&stablecoin);
                 if idx.is_ok() {
-					dominator.replace(dex.clone());
+                    let mut d = dex.clone();
+                    d.stablecoins = new_stablecoins;
+                    dominator.replace(d.clone());
                     return Ok(());
                 } else {
                     ensure!(
@@ -442,12 +444,14 @@ pub mod pallet {
             Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
                 ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
                 let dex = &mut dominator.take().unwrap();
-                let old_stablecoins = &mut dex.stablecoins;
+                let mut old_stablecoins = &mut dex.stablecoins.clone();
                 let mut new_stablecoins = Vec::new();
                 new_stablecoins.append(old_stablecoins);
                 let idx = new_stablecoins.binary_search(&stablecoin);
                 if idx.is_err() {
-					dominator.replace(dex.clone());
+                    let mut d = dex.clone();
+                    d.stablecoins = new_stablecoins;
+                    dominator.replace(d.clone());
                     return Ok(());
                 } else {
                     new_stablecoins.remove(idx.unwrap());
