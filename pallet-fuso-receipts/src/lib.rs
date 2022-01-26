@@ -413,7 +413,7 @@ pub mod pallet {
                     return Ok(());
                 } else {
                     ensure!(
-                        dex.stablecoins.len() < T::DominatorStablecoinLimit::get(),
+                        new_stablecoins.len() < T::DominatorStablecoinLimit::get(),
                         Error::<T>::OutOfStablecoinLimit
                     );
                     new_stablecoins.insert(idx.unwrap_or_else(|x| x), stablecoin);
