@@ -401,31 +401,17 @@ pub mod pallet {
 
             Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
                 ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-                let dex = &mut dominator.take().unwrap();
-                let old_stablecoins = &mut dex.stablecoins;
-                let mut new_stablecoins = Vec::new();
-                new_stablecoins.append(old_stablecoins);
-                let idx = new_stablecoins.binary_search(&stablecoin);
-                if idx.is_ok() {
-                    let mut d = dex.clone();
-                    d.stablecoins = new_stablecoins;
-                    dominator.replace(d.clone());
-                    return Ok(());
-                } else {
+                let mut dex = dominator.take().unwrap();
+                let idx = dex.stablecoins.binary_search(&stablecoin);
+                if !idx.is_ok() {
                     ensure!(
-                        new_stablecoins.len() < T::DominatorStablecoinLimit::get(),
+                        dex.stablecoins.len() < T::DominatorStablecoinLimit::get(),
                         Error::<T>::OutOfStablecoinLimit
                     );
-                    new_stablecoins.insert(idx.unwrap_or_else(|x| x), stablecoin);
-                    dominator.replace(Dominator {
-                        staked: dex.staked,
-                        stablecoins: new_stablecoins,
-                        start_from: dex.start_from,
-                        sequence: dex.sequence,
-                        merkle_root: dex.merkle_root,
-                        active: dex.active,
-                    });
+                    dex.stablecoins
+                        .insert(idx.unwrap_or_else(|x| x), stablecoin);
                 }
+                dominator.replace(dex);
                 return Ok(());
             });
             Ok(().into())
@@ -443,27 +429,12 @@ pub mod pallet {
             );
             Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
                 ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-                let dex = &mut dominator.take().unwrap();
-                let mut old_stablecoins = &mut dex.stablecoins.clone();
-                let mut new_stablecoins = Vec::new();
-                new_stablecoins.append(old_stablecoins);
-                let idx = new_stablecoins.binary_search(&stablecoin);
-                if idx.is_err() {
-                    let mut d = dex.clone();
-                    d.stablecoins = new_stablecoins;
-                    dominator.replace(d.clone());
-                    return Ok(());
-                } else {
-                    new_stablecoins.remove(idx.unwrap());
-                    dominator.replace(Dominator {
-                        staked: dex.staked,
-                        stablecoins: new_stablecoins,
-                        start_from: dex.start_from,
-                        sequence: dex.sequence,
-                        merkle_root: dex.merkle_root,
-                        active: dex.active,
-                    });
+                let mut dex = dominator.take().unwrap();
+                let idx = dex.stablecoins.binary_search(&stablecoin);
+                if idx.is_ok() {
+                    dex.stablecoins.remove(idx.unwrap());
                 }
+                dominator.replace(dex);
                 return Ok(());
             });
             Ok(().into())
