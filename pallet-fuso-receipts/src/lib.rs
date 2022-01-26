@@ -21,55 +21,55 @@ pub mod weights;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use codec::{Compact, Decode, Encode};
-	use codec::alloc::collections::BTreeMap;
-	use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
-	use frame_support::traits::NamedReservableCurrency;
-	use frame_support::weights::constants::RocksDbWeight;
-	use frame_system::pallet_prelude::*;
-	use scale_info::TypeInfo;
-	use sp_io::hashing::sha2_256;
-	use sp_runtime::{
-		Percent,
-		Permill, Perquintill, PerThing, RuntimeDebug, traits::{StaticLookup, Zero},
-	};
-	use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
+    use codec::alloc::collections::BTreeMap;
+    use codec::{Compact, Decode, Encode};
+    use frame_support::traits::NamedReservableCurrency;
+    use frame_support::weights::constants::RocksDbWeight;
+    use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
+    use frame_system::pallet_prelude::*;
+    use scale_info::TypeInfo;
+    use sp_io::hashing::sha2_256;
+    use sp_runtime::{
+        traits::{StaticLookup, Zero},
+        PerThing, Percent, Permill, Perquintill, RuntimeDebug,
+    };
+    use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
 
-	use fuso_support::reserve_identifier_prefix;
-	use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
+    use fuso_support::reserve_identifier_prefix;
+    use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
 
-	use crate::weights::WeightInfo;
+    use crate::weights::WeightInfo;
 
-	pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
-	pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
-	pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
-	pub type Symbol<T> = (TokenId<T>, TokenId<T>);
-	pub type Season = u32;
-	pub type Amount = u128;
-	pub type Price = (u128, Perquintill);
+    pub type AmountOfCoin<T> = <T as pallet_balances::Config>::Balance;
+    pub type AmountOfToken<T> = <T as pallet_fuso_token::Config>::Balance;
+    pub type TokenId<T> = <T as pallet_fuso_token::Config>::TokenId;
+    pub type Symbol<T> = (TokenId<T>, TokenId<T>);
+    pub type Season = u32;
+    pub type Amount = u128;
+    pub type Price = (u128, Perquintill);
 
-	pub type IdentifierOfCoin<T> = <T as pallet_balances::Config>::ReserveIdentifier;
-	pub type IdentifierOfToken<T> = <T as pallet_fuso_token::Config>::ReserveIdentifier;
+    pub type IdentifierOfCoin<T> = <T as pallet_balances::Config>::ReserveIdentifier;
+    pub type IdentifierOfToken<T> = <T as pallet_fuso_token::Config>::ReserveIdentifier;
 
-	#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
-	pub struct MerkleLeaf {
-		pub key: Vec<u8>,
-		pub old_v: [u8; 32],
-		pub new_v: [u8; 32],
-	}
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub struct MerkleLeaf {
+        pub key: Vec<u8>,
+        pub old_v: [u8; 32],
+        pub new_v: [u8; 32],
+    }
 
-	impl MerkleLeaf {
-		const ACCOUNT_KEY: u8 = 0x00;
-		const ORDERBOOK_KEY: u8 = 0x01;
+    impl MerkleLeaf {
+        const ACCOUNT_KEY: u8 = 0x00;
+        const ORDERBOOK_KEY: u8 = 0x01;
 
-		fn try_get_account<T: Config>(&self) -> Result<(u32, T::AccountId), Error<T>> {
-			if self.key.len() != 37 {
-				return Err(Error::<T>::ProofsUnsatisfied);
-			}
-			match self.key[0] {
-				Self::ACCOUNT_KEY => Ok((
-					u32::from_le_bytes(
-						self.key[33..]
+        fn try_get_account<T: Config>(&self) -> Result<(u32, T::AccountId), Error<T>> {
+            if self.key.len() != 37 {
+                return Err(Error::<T>::ProofsUnsatisfied);
+            }
+            match self.key[0] {
+                Self::ACCOUNT_KEY => Ok((
+                    u32::from_le_bytes(
+                        self.key[33..]
                             .try_into()
                             .map_err(|_| Error::<T>::ProofsUnsatisfied)?,
                     ),
@@ -510,7 +510,7 @@ pub mod pallet {
                     )?;
                     staking.replace(Staking {
                         start_season: current_season.into() + 1,
-                        amount: amount,
+                        amount,
                     });
                 } else {
                     pallet_balances::Pallet::<T>::reserve_named(
@@ -787,6 +787,7 @@ pub mod pallet {
 
     impl TryFrom<(u32, u128)> for UniBalance {
         type Error = DispatchError;
+
         fn try_from((token, value): (u32, u128)) -> Result<Self, Self::Error> {
             match token.clone() {
                 0 => Ok(UniBalance::Coin(value)),
@@ -1329,44 +1330,44 @@ pub mod pallet {
                 })
                 .map(|_| ())
                 .map_err(|_| ()),
-				UniBalance::Token(id, value) => {
-					pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
-						a.reserved += (*value).into();
-					})
-						.map(|_| ())
-						.map_err(|_| ())
-				}
-			}
-		}
+                UniBalance::Token(id, value) => {
+                    pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
+                        a.reserved += (*value).into();
+                    })
+                    .map(|_| ())
+                    .map_err(|_| ())
+                }
+            }
+        }
 
-		#[transactional]
-		fn update_bonus_staking(
-			dex: &T::AccountId,
-			season: Season,
-			new_staking: AmountOfCoin<T>,
-		) -> Result<(), Error<T>> {
-			match Bonuses::<T>::get(dex, season) {
-				Some(bonus) => {
-					let b = (UniBalance::Coin(new_staking.into()), bonus.1);
-					Bonuses::<T>::insert(dex, season, b);
-				}
-				None => {
-					let b = (UniBalance::Coin(new_staking.into()), BoundedVec::default());
-					Bonuses::<T>::insert(dex, season, b);
-				}
-			};
-			Ok(())
-		}
+        #[transactional]
+        fn update_bonus_staking(
+            dex: &T::AccountId,
+            season: Season,
+            new_staking: AmountOfCoin<T>,
+        ) -> Result<(), Error<T>> {
+            match Bonuses::<T>::get(dex, season) {
+                Some(bonus) => {
+                    let b = (UniBalance::Coin(new_staking.into()), bonus.1);
+                    Bonuses::<T>::insert(dex, season, b);
+                }
+                None => {
+                    let b = (UniBalance::Coin(new_staking.into()), BoundedVec::default());
+                    Bonuses::<T>::insert(dex, season, b);
+                }
+            };
+            Ok(())
+        }
 
-		fn update_dominator_staked_and_active(
-			dex: &T::AccountId,
-			new_staking: AmountOfCoin<T>,
-		) -> Result<(), Error<T>> {
-			Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
-				ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-				let dex = &mut dominator.take().unwrap();
-				dominator.replace(Dominator {
-					staked: new_staking,
+        fn update_dominator_staked_and_active(
+            dex: &T::AccountId,
+            new_staking: AmountOfCoin<T>,
+        ) -> Result<(), Error<T>> {
+            Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
+                ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
+                let dex = &mut dominator.take().unwrap();
+                dominator.replace(Dominator {
+                    staked: new_staking,
                     stablecoins: dex.clone().stablecoins,
                     start_from: dex.start_from,
                     sequence: dex.sequence,
