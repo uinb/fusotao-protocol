@@ -30,7 +30,7 @@ pub mod pallet {
     use scale_info::TypeInfo;
     use sp_io::hashing::sha2_256;
     use sp_runtime::{
-        traits::{StaticLookup, Zero},
+        traits::{One, StaticLookup, Zero},
         PerThing, Percent, Permill, Perquintill, RuntimeDebug,
     };
     use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
@@ -172,8 +172,8 @@ pub mod pallet {
     }
 
     #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
-    pub struct Dominator<Coin, TokenId, BlockNumber> {
-        pub staked: Coin,
+    pub struct Dominator<Balance, TokenId, BlockNumber> {
+        pub staked: Balance,
         pub stablecoins: Vec<TokenId>,
         pub merkle_root: [u8; 32],
         pub start_from: BlockNumber,
@@ -181,34 +181,69 @@ pub mod pallet {
         pub active: bool,
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
-    pub struct Bonus<T: Config> {
-        total_staking: UniBalance,
-        profits: BoundedVec<UniBalance, T::BonusesVecLimit>,
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Default)]
+    pub struct Staking<Balance> {
+        from_season: Season,
+        amount: Balance,
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
-    pub struct Staking<Coin> {
-        start_season: Season,
-        amount: Coin,
-    }
-
-    pub enum StakeOption {
-        STAKING,
-        UNSTAKING,
-    }
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
-    pub struct Share<Coin> {
-        stable_coin: bool,
-        amount: Coin,
-    }
-
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
-    pub struct PendingDistribution<AccountId, Coin> {
+    pub struct Distribution<AccountId, Balance> {
         dominator: AccountId,
         from_season: Season,
         to_season: Season,
-        amount: Coin,
+        staking: Balance,
+    }
+
+    type UniBalanceOf<T> = UniBalance<TokenId<T>, AmountOfToken<T>, AmountOfCoin<T>>;
+
+    #[derive(Encode, Decode, Eq, PartialEq, Clone, RuntimeDebug, TypeInfo)]
+    pub enum UniBalance<TokenId, TokenAmount, CoinAmount> {
+        Token(TokenId, TokenAmount),
+        Coin(CoinAmount),
+    }
+
+    impl<TokenId, TokenAmount, CoinAmount> Into<u128> for UniBalance<TokenId, TokenAmount, CoinAmount>
+    where
+        TokenAmount: Into<u128>,
+        CoinAmount: Into<u128>,
+    {
+        fn into(self) -> u128 {
+            match self {
+                Self::Token(_, b) => b.into(),
+                Self::Coin(a) => a.into(),
+            }
+        }
+    }
+
+    impl<TokenId, TokenAmount, CoinAmount> Into<(u32, u128)>
+        for UniBalance<TokenId, TokenAmount, CoinAmount>
+    where
+        TokenId: Into<u32>,
+        TokenAmount: Into<u128>,
+        CoinAmount: Into<u128>,
+    {
+        fn into(self) -> (u32, u128) {
+            match self {
+                Self::Token(id, b) => (id.into(), b.into()),
+                Self::Coin(a) => (0, a.into()),
+            }
+        }
+    }
+
+    impl<TokenId, TokenAmount, CoinAmount> From<(u32, u128)>
+        for UniBalance<TokenId, TokenAmount, CoinAmount>
+    where
+        TokenId: From<u32>,
+        TokenAmount: From<u128>,
+        CoinAmount: From<u128>,
+    {
+        fn from((token, value): (u32, u128)) -> Self {
+            match token {
+                0 => UniBalance::Coin(value.into()),
+                id => UniBalance::Token(id.into(), value.into()),
+            }
+        }
     }
 
     #[pallet::config]
@@ -220,8 +255,8 @@ pub mod pallet {
         type DominatorOnlineThreshold: Get<AmountOfCoin<Self>>;
 
         type SeasonDuration: Get<Self::BlockNumber>;
+
         type SelfWeightInfo: WeightInfo;
-        // type Coin: ReservableCurrency<Self::AccountId>;
 
         type MinimalStakingAmount: Get<AmountOfCoin<Self>>;
 
@@ -240,7 +275,7 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         T::AccountId,
-        Receipt<UniBalance, T::BlockNumber>,
+        Receipt<UniBalanceOf<T>, T::BlockNumber>,
         OptionQuery,
     >;
 
@@ -262,8 +297,11 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         Season,
-        (UniBalance, BoundedVec<UniBalance, T::BonusesVecLimit>),
-        OptionQuery,
+        (
+            AmountOfCoin<T>,
+            BoundedVec<UniBalanceOf<T>, T::BonusesVecLimit>,
+        ),
+        ValueQuery,
     >;
 
     #[pallet::storage]
@@ -275,7 +313,7 @@ pub mod pallet {
         Blake2_128Concat,
         T::AccountId,
         Staking<AmountOfCoin<T>>,
-        OptionQuery,
+        ValueQuery,
     >;
 
     #[pallet::event]
@@ -336,10 +374,7 @@ pub mod pallet {
                 if (now - start) % T::SeasonDuration::get() == 0u32.into() {
                     let current_session: u32 =
                         ((now - start) / T::SeasonDuration::get()).into() as u32;
-                    let b = (
-                        UniBalance::Coin(dominator.1.staked.into()),
-                        BoundedVec::default(),
-                    );
+                    let b = (dominator.1.staked, BoundedVec::default());
                     Bonuses::<T>::insert(dominator.0, current_session, b);
                     weight = weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
                 }
@@ -382,7 +417,7 @@ pub mod pallet {
             Bonuses::<T>::insert(
                 &dominator,
                 0u32,
-                (UniBalance::Coin(0), BoundedVec::default()),
+                (AmountOfCoin::<T>::zero(), BoundedVec::default()),
             );
             Self::deposit_event(Event::DominatorClaimed(dominator));
             Ok(().into())
@@ -474,45 +509,31 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
             Stakings::<T>::try_mutate(&dex, &fund_owner, |staking| -> DispatchResult {
-                if staking.is_none() {
-                    // TODO reserve_named
-                    pallet_balances::Pallet::<T>::reserve_named(
-                        &(reserve_identifier_prefix::STAKING, dex.clone().into()).into(),
-                        &fund_owner,
-                        amount,
-                    )?;
-                    staking.replace(Staking {
-                        start_season: current_season.into() + 1,
-                        amount,
-                    });
-                } else {
-                    pallet_balances::Pallet::<T>::reserve_named(
-                        &(reserve_identifier_prefix::STAKING, dex.clone().into()).into(),
-                        &fund_owner,
-                        amount,
-                    )?;
-                    let exists = staking.take().unwrap();
-                    staking.replace(Staking {
-                        start_season: current_season.into() + 1,
-                        amount: exists.amount + amount,
-                    });
-                    let pending_distribution = PendingDistribution {
+                let step_into = if !staking.amount.is_zero() {
+                    let pending_distribution = Distribution {
                         dominator: dex.clone(),
-                        from_season: exists.start_season,
+                        from_season: staking.from_season,
                         to_season: current_season.into(),
-                        amount: exists.amount,
+                        staking: staking.amount,
                     };
-                    Self::take_shares(&dex.clone(), &fund_owner, &pending_distribution);
-                }
-
+                    Self::take_shares(&fund_owner, &pending_distribution)?
+                } else {
+                    (current_season + One::one()).into()
+                };
+                pallet_balances::Pallet::<T>::reserve_named(
+                    &(reserve_identifier_prefix::STAKING, dex.clone().into()).into(),
+                    &fund_owner,
+                    amount,
+                )?;
                 //check and update active
                 let new_staking = dominator.staked + amount;
                 Self::update_bonus_staking(&dex.clone(), current_season.into(), new_staking)?;
                 Self::update_dominator_staked_and_active(&dex.clone(), new_staking)?;
+                staking.amount += amount;
+                staking.from_season = step_into;
                 Self::deposit_event(Event::TaoStaked(fund_owner.clone(), dex.clone(), amount));
                 Ok(())
             })?;
-            // TODO
             Ok(().into())
         }
 
@@ -540,7 +561,6 @@ pub mod pallet {
                     Error::<T>::StakingNotExists
                 );
                 let exists = staking.take().unwrap();
-                // TODO unreserve_named
                 pallet_balances::Pallet::<T>::unreserve_named(
                     &(reserve_identifier_prefix::STAKING, dex.clone().into()).into(),
                     &fund_owner,
@@ -548,58 +568,56 @@ pub mod pallet {
                 );
                 if exists.amount - amount >= T::MinimalStakingAmount::get() {
                     staking.replace(Staking {
-                        start_season: current_season.into() + 1,
+                        from_season: current_season.into() + 1,
                         amount: exists.amount - amount,
                     });
                 }
-                let pending_distribution = PendingDistribution {
+                let distribution = Distribution {
                     dominator: dex.clone(),
-                    from_season: exists.start_season,
+                    from_season: exists.from_season,
                     to_season: current_season.into(),
-                    amount: exists.amount,
+                    staking: exists.amount,
                 };
-                Self::take_shares(&dex.clone(), &fund_owner, &pending_distribution);
-
+                Self::take_shares(&fund_owner, &distribution);
                 //check and update active
                 let new_staking = dominator.staked - amount;
-                Self::update_bonus_staking(&dex.clone(), current_season.into(), new_staking)?;
-                Self::update_dominator_staked_and_active(&dex.clone(), new_staking)?;
+                Self::update_bonus_staking(&dex, current_season.into(), new_staking)?;
+                Self::update_dominator_staked_and_active(&dex, new_staking)?;
                 Self::deposit_event(Event::TaoUnstaked(fund_owner.clone(), dex.clone(), amount));
                 Ok(())
             })?;
             Ok(().into())
         }
 
-        /*   #[transactional]
-                #[pallet::weight(1_000_000_000_000)]
-                pub fn claim_shares(
-                    origin: OriginFor<T>,
-                    dominator: <T::Lookup as StaticLookup>::Source,
-                    token: TokenId<T>,
-                ) -> DispatchResultWithPostInfo {
-                    let signer = ensure_signed(origin)?;
-                    let dex = T::Lookup::lookup(dominator)?;
-                    let dominator =
-                        Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
-                    let key = BonusKey {
-                        dominator: dex.clone(),
-                        token: token,
-                    };
-                    let staking =
-                        Stakings::<T>::try_get(&dex, &signer).map_err(|_| Error::<T>::InvalidStaking)?;
-                    let current_block = frame_system::Pallet::<T>::block_number();
-                    let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
-                    let step_into = Self::take_shares(&key, &signer, &staking, current_season.into())
-                        .map_err(|_| Error::<T>::InvalidStatus)?;
-                    Stakings::<T>::try_mutate(&dex, &signer, |s| -> DispatchResult {
-                        let mut mutation = s.take().unwrap();
-                        mutation.start_season = step_into;
-                        s.replace(mutation);
-                        Ok(())
-                    })?;
-                    Ok(().into())
-                }
-        */
+        // #[transactional]
+        // #[pallet::weight(1_000_000_000_000)]
+        // pub fn claim_shares(
+        //     origin: OriginFor<T>,
+        //     dominator: <T::Lookup as StaticLookup>::Source,
+        //     token: TokenId<T>,
+        // ) -> DispatchResultWithPostInfo {
+        //     let signer = ensure_signed(origin)?;
+        //     let dex = T::Lookup::lookup(dominator)?;
+        //     let dominator =
+        //         Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
+        //     let key = BonusKey {
+        //         dominator: dex.clone(),
+        //         token,
+        //     };
+        //     let staking =
+        //         Stakings::<T>::try_get(&dex, &signer).map_err(|_| Error::<T>::InvalidStaking)?;
+        //     let current_block = frame_system::Pallet::<T>::block_number();
+        //     let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
+        //     let step_into = Self::take_shares(&key, &signer, &staking, current_season.into())
+        //         .map_err(|_| Error::<T>::InvalidStatus)?;
+        //     Stakings::<T>::try_mutate(&dex, &signer, |s| -> DispatchResult {
+        //         let mut mutation = s.take().unwrap();
+        //         mutation.start_season = step_into;
+        //         s.replace(mutation);
+        //         Ok(())
+        //     })?;
+        //     Ok(().into())
+        // }
 
         #[pallet::weight(T::SelfWeightInfo::authorize_coin())]
         pub fn authorize_coin(
@@ -631,7 +649,7 @@ pub mod pallet {
             Receipts::<T>::insert(
                 dex.clone(),
                 fund_owner.clone(),
-                Receipt::Authorize(UniBalance::Coin(amount.into()), block_number),
+                Receipt::Authorize(UniBalance::Coin(amount), block_number),
             );
             Self::deposit_event(Event::CoinHosted(fund_owner, dex, amount));
             Ok(().into())
@@ -654,7 +672,7 @@ pub mod pallet {
                 !Receipts::<T>::contains_key(&dominator, &fund_owner),
                 Error::<T>::ReceiptAlreadyExists,
             );
-            let balance = UniBalance::Coin(amount.into());
+            let balance = UniBalance::Coin(amount);
             ensure!(
                 Self::has_enough_reserved(&fund_owner, &balance),
                 Error::<T>::InsufficientBalance
@@ -700,10 +718,7 @@ pub mod pallet {
             Receipts::<T>::insert(
                 dex.clone(),
                 fund_owner.clone(),
-                Receipt::Authorize(
-                    UniBalance::Token(token_id.into(), amount.into()),
-                    block_number,
-                ),
+                Receipt::Authorize(UniBalance::Token(token_id, amount), block_number),
             );
             Self::deposit_event(Event::TokenHosted(fund_owner, dex, token_id, amount));
             Ok(().into())
@@ -726,7 +741,7 @@ pub mod pallet {
                 !Receipts::<T>::contains_key(&dominator, &fund_owner),
                 Error::<T>::ReceiptAlreadyExists,
             );
-            let balance = UniBalance::Token(token_id.into(), amount.into());
+            let balance = UniBalance::Token(token_id, amount);
             ensure!(
                 // fuso_pallet_token::Pallet::<T>::can_unreserve(&token_id, &fund_owner, amount),
                 Self::has_enough_reserved(&fund_owner, &balance),
@@ -743,45 +758,19 @@ pub mod pallet {
         }
     }
 
-    #[derive(Encode, Decode, Eq, PartialEq, Clone, RuntimeDebug, TypeInfo)]
-    pub enum UniBalance {
-        Token(u32, u128),
-        Coin(u128),
-    }
-
-    impl Into<u128> for UniBalance {
-        fn into(self) -> u128 {
-            match self {
-                Self::Token(a, b) => b,
-                Self::Coin(a) => a,
-            }
-        }
-    }
-
-    impl TryFrom<(u32, u128)> for UniBalance {
-        type Error = DispatchError;
-
-        fn try_from((token, value): (u32, u128)) -> Result<Self, Self::Error> {
-            match token.clone() {
-                0 => Ok(UniBalance::Coin(value)),
-                id => Ok(UniBalance::Token(id, value)),
-            }
-        }
-    }
-
     #[derive(Clone)]
     struct AssetsAlternate<T: Config> {
         // account, base, quote
-        pub alternates: Vec<(T::AccountId, UniBalance, UniBalance)>,
-        pub base_fee: UniBalance,
-        pub quote_fee: UniBalance,
+        pub alternates: Vec<(T::AccountId, UniBalanceOf<T>, UniBalanceOf<T>)>,
+        pub base_fee: UniBalanceOf<T>,
+        pub quote_fee: UniBalanceOf<T>,
     }
 
     impl<T: Config> Pallet<T>
     where
         AmountOfCoin<T>: Copy + From<u128> + Into<u128>,
         AmountOfToken<T>: Copy + From<u128> + Into<u128>,
-        TokenId<T>: From<u32>,
+        TokenId<T>: Copy + From<u32> + Into<u32>,
         IdentifierOfCoin<T>: From<(u8, [u8; 32])>,
         IdentifierOfToken<T>: From<(u8, [u8; 32])>,
         <T as frame_system::Config>::AccountId: Into<[u8; 32]>,
@@ -790,12 +779,7 @@ pub mod pallet {
             dominator: &T::AccountId,
             ex: &Dominator<AmountOfCoin<T>, T::TokenId, T::BlockNumber>,
             proof: Proof<T::AccountId>,
-        ) -> DispatchResultWithPostInfo
-        where
-            AmountOfCoin<T>: Copy + From<u128>,
-            AmountOfToken<T>: Copy + From<u128>,
-            TokenId<T>: From<u32>,
-        {
+        ) -> DispatchResultWithPostInfo {
             let p0 = smt::CompiledMerkleProof(proof.proof_of_exists.clone());
             let old = proof
                 .leaves
@@ -875,7 +859,7 @@ pub mod pallet {
                 }
                 Command::TransferOut(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance = (currency, amount).try_into()?;
+                    let balance: UniBalanceOf<T> = (currency, amount).into();
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -889,7 +873,7 @@ pub mod pallet {
                 }
                 Command::TransferIn(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance = (currency, amount).try_into()?;
+                    let balance: UniBalanceOf<T> = (currency, amount).into();
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -902,7 +886,7 @@ pub mod pallet {
                 }
                 Command::RejectTransferOut(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
-                    let balance: UniBalance = (currency, amount).try_into()?;
+                    let balance: UniBalanceOf<T> = (currency, amount).into();
                     let r = Receipts::<T>::get(&dominator, &proof.user_id)
                         .ok_or(Error::<T>::ReceiptNotExists)?;
                     let exists = match r {
@@ -965,7 +949,7 @@ pub mod pallet {
             ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
             ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
 
-            let taker_paid = (base, tb_delta).try_into()?;
+            let taker_paid = (base, tb_delta).into();
             ensure!(
                 Self::has_enough_reserved(&taker_b_id, &taker_paid),
                 Error::<T>::ProofsUnsatisfied
@@ -1002,14 +986,10 @@ pub mod pallet {
                 // the accounts should be owned by same user
                 ensure!(maker_b_id == maker_q_id, Error::<T>::ProofsUnsatisfied);
                 ensure!(
-                    Self::has_enough_reserved(&maker_q_id, &(quote, quote_decr).try_into()?),
+                    Self::has_enough_reserved(&maker_q_id, &(quote, quote_decr).into()),
                     Error::<T>::ProofsUnsatisfied
                 );
-                delta.push((
-                    maker_b_id,
-                    (base, mb1).try_into()?,
-                    (quote, mq1).try_into()?,
-                ));
+                delta.push((maker_b_id, (base, mb1).into(), (quote, mq1).into()));
             }
             //debug::debug!("ask-limit all makers ok");
             // FIXME ceil
@@ -1027,14 +1007,14 @@ pub mod pallet {
             );
             delta.push((
                 taker_b_id,
-                (base, tba1 + tbf1).try_into()?,
-                (quote, tqa1 + tqf1).try_into()?,
+                (base, tba1 + tbf1).into(),
+                (quote, tqa1 + tqf1).into(),
             ));
             //debug::debug!("ask-limit taker_quote_available_delta + quote_fee == sum_of_maker_quote_frozen_delta");
             Ok(AssetsAlternate {
                 alternates: delta,
-                base_fee: (base, base_charged).try_into()?,
-                quote_fee: (quote, quote_charged).try_into()?,
+                base_fee: (base, base_charged).into(),
+                quote_fee: (quote, quote_charged).into(),
             })
         }
 
@@ -1077,7 +1057,7 @@ pub mod pallet {
             // }
 
             ensure!(
-                Self::has_enough_reserved(&taker_q_id, &(quote, tq_delta).try_into()?),
+                Self::has_enough_reserved(&taker_q_id, &(quote, tq_delta).into()),
                 Error::<T>::ProofsUnsatisfied
             );
             let mut mb_delta = 0u128;
@@ -1101,14 +1081,10 @@ pub mod pallet {
                 let quote_incr = mq1 - mq0;
                 mq_delta += quote_incr;
                 ensure!(
-                    Self::has_enough_reserved(&maker_b_id, &(base, base_decr).try_into()?),
+                    Self::has_enough_reserved(&maker_b_id, &(base, base_decr).into()),
                     Error::<T>::ProofsUnsatisfied
                 );
-                delta.push((
-                    maker_b_id,
-                    (base, mb1).try_into()?,
-                    (quote, mq1).try_into()?,
-                ));
+                delta.push((maker_b_id, (base, mb1).into(), (quote, mq1).into()));
             }
             //debug::debug!("bid-limit makers ok");
             // FIXME ceil
@@ -1138,13 +1114,13 @@ pub mod pallet {
             //debug::debug!("bid-limit orderbook_bid_size_delta == untraded_base");
             delta.push((
                 taker_b_id,
-                (base, tba1 + tbf1).try_into()?,
-                (quote, tqa1 + tqf1).try_into()?,
+                (base, tba1 + tbf1).into(),
+                (quote, tqa1 + tqf1).into(),
             ));
             Ok(AssetsAlternate {
                 alternates: delta,
-                base_fee: (base, base_charged).try_into()?,
-                quote_fee: (quote, quote_charged).try_into()?,
+                base_fee: (base, base_charged).into(),
+                quote_fee: (quote, quote_charged).into(),
             })
         }
 
@@ -1235,34 +1211,35 @@ pub mod pallet {
             Ok(())
         }
 
-        fn has_enough_reserved(who: &T::AccountId, balance: &UniBalance) -> bool {
-            match balance {
-                UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::reserved_balance(who) >= (*value).into()
-                }
-                UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::reserved_balance(&(*id).into(), who)
-                        >= (*value).into()
-                }
-            }
+        fn has_enough_reserved(who: &T::AccountId, balance: &UniBalanceOf<T>) -> bool {
+            // match balance {
+            // UniBalance::Coin(value) => {
+            //     pallet_balances::Pallet::<T>::reserved_balance(who) >= *value
+            // }
+            // UniBalance::Token(id, value) => {
+            //     pallet_fuso_token::Pallet::<T>::reserved_balance(id, who) >= *value
+            // }
+            // }
+            true
         }
 
-        fn mutate_to(who: &T::AccountId, balance: &UniBalance) {
-            match balance {
-                UniBalance::Coin(value) => {
-                    pallet_balances::Pallet::<T>::mutate_account(who, |a| {
-                        a.reserved = (*value).into()
-                    });
-                }
-                UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
-                        a.reserved = (*value).into()
-                    });
-                }
-            }
+        // FIXME use name_reserved_balance
+        fn mutate_to(who: &T::AccountId, balance: &UniBalanceOf<T>) {
+            // match balance {
+            // UniBalance::Coin(value) => {
+            //     pallet_balances::Pallet::<T>::mutate_account(who, |a| {
+            //         a.reserved = (*value).into()
+            //     });
+            // }
+            // UniBalance::Token(id, value) => {
+            //     pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
+            //         a.reserved = (*value).into()
+            //     });
+            // }
+            // }
         }
 
-        fn unreserve_named(dominator: &T::AccountId, who: &T::AccountId, balance: UniBalance) {
+        fn unreserve_named(dominator: &T::AccountId, who: &T::AccountId, balance: UniBalanceOf<T>) {
             match balance {
                 UniBalance::Coin(value) => {
                     pallet_balances::Pallet::<T>::unreserve_named(
@@ -1272,7 +1249,7 @@ pub mod pallet {
                         )
                             .into(),
                         who,
-                        value.into(),
+                        value,
                     );
                 }
                 UniBalance::Token(id, value) => {
@@ -1282,35 +1259,31 @@ pub mod pallet {
                             dominator.clone().into(),
                         )
                             .into(),
-                        &id.into(),
+                        &id,
                         who,
-                        value.into(),
+                        value,
                     );
                 }
             }
         }
 
         #[transactional]
-        fn charge(who: &T::AccountId, balance: &UniBalance) -> Result<(), ()>
-        where
-            AmountOfCoin<T>: Copy + From<u128>,
-            TokenId<T>: From<u32>,
-            AmountOfToken<T>: Copy + From<u128>,
-        {
-            match balance {
-                UniBalance::Coin(value) => pallet_balances::Pallet::<T>::mutate_account(who, |a| {
-                    a.reserved += (*value).into();
-                })
-                .map(|_| ())
-                .map_err(|_| ()),
-                UniBalance::Token(id, value) => {
-                    pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
-                        a.reserved += (*value).into();
-                    })
-                    .map(|_| ())
-                    .map_err(|_| ())
-                }
-            }
+        fn charge(who: &T::AccountId, balance: &UniBalanceOf<T>) -> Result<(), ()> {
+            // match balance {
+            //     UniBalance::Coin(value) => pallet_balances::Pallet::<T>::mutate_account(who, |a| {
+            //         a.reserved += (*value).into();
+            //     })
+            //     .map(|_| ())
+            //     .map_err(|_| ()),
+            //     UniBalance::Token(id, value) => {
+            //         pallet_fuso_token::Pallet::<T>::mutate_account(&(*id).into(), who, |a| {
+            //             a.reserved += (*value).into();
+            //         })
+            //         .map(|_| ())
+            //         .map_err(|_| ())
+            //     }
+            // }
+            Ok(())
         }
 
         #[transactional]
@@ -1319,16 +1292,10 @@ pub mod pallet {
             season: Season,
             new_staking: AmountOfCoin<T>,
         ) -> Result<(), Error<T>> {
-            match Bonuses::<T>::get(dex, season) {
-                Some(bonus) => {
-                    let b = (UniBalance::Coin(new_staking.into()), bonus.1);
-                    Bonuses::<T>::insert(dex, season, b);
-                }
-                None => {
-                    let b = (UniBalance::Coin(new_staking.into()), BoundedVec::default());
-                    Bonuses::<T>::insert(dex, season, b);
-                }
-            };
+            Bonuses::<T>::try_mutate(dex, season, |b| {
+                b.0 += new_staking;
+                Ok(())
+            })?;
             Ok(())
         }
 
@@ -1354,53 +1321,45 @@ pub mod pallet {
 
         #[transactional]
         fn take_shares(
-            dex: &T::AccountId,
             staker: &T::AccountId,
-            pending_distribution: &PendingDistribution<T::AccountId, AmountOfCoin<T>>,
-        ) -> Result<Season, ()>
-        where
-            <T as pallet_fuso_token::Config>::TokenId: From<u32>,
-        {
-            if pending_distribution.to_season == pending_distribution.from_season {
-                return Ok(pending_distribution.from_season);
+            distributions: &Distribution<T::AccountId, AmountOfCoin<T>>,
+        ) -> Result<Season, Error<T>> {
+            if distributions.to_season == distributions.from_season {
+                return Ok(distributions.from_season);
             }
-            let mut shares_map: BTreeMap<u32, u128> = BTreeMap::new();
-            for season in pending_distribution.from_season..pending_distribution.to_season {
-                match Bonuses::<T>::get(dex, season) {
-                    Some(bonus) => {
-                        for b in bonus.clone().1 {
-                            let s: u128 = pending_distribution.amount.into();
-                            match b {
-                                UniBalance::Token(a, c) => {
-                                    let mut share = *shares_map.get(&a).unwrap_or(&0u128);
-                                    let t: u128 = bonus.0.clone().into();
-                                    let p: Perquintill = PerThing::from_rational(s, t);
-                                    share += p * c;
-                                    shares_map.insert(a, share);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    None => {}
-                };
-            }
-            for share in shares_map {
-                if share.0 == 0 {
-                    pallet_balances::Pallet::<T>::mutate_account(staker, |a| {
-                        a.free += share.1.into()
-                    })
-                    .map_err(|_| ())
-                    .map(|_| pending_distribution.to_season);
-                } else {
-                    pallet_fuso_token::Pallet::<T>::mutate_account(&share.0.into(), staker, |a| {
-                        a.free += share.1.into()
-                    })
-                    .map_err(|_| ())
-                    .map(|_| pending_distribution.to_season);
+            let mut shares_map: BTreeMap<TokenId<T>, u128> = BTreeMap::new();
+            for season in distributions.from_season..distributions.to_season {
+                let bonus = Bonuses::<T>::get(&distributions.dominator, season);
+                if bonus.0.is_zero() {
+                    continue;
+                }
+                let staking: u128 = distributions.staking.into();
+                let total_staking: u128 = bonus.0.clone().into();
+                for b in bonus.1.into_iter() {
+                    let (token_id, profit): (u32, u128) = b.into();
+                    let p: Perquintill = PerThing::from_rational(staking, total_staking);
+                    shares_map
+                        .entry(token_id.into())
+                        .and_modify(|share| *share += p * profit)
+                        .or_insert(p * profit);
                 }
             }
-            Ok(pending_distribution.to_season)
+            // for share in shares_map {
+            //     if share.0 == 0 {
+            //         pallet_balances::Pallet::<T>::mutate_account(staker, |a| {
+            //             a.free += share.1.into()
+            //         })
+            //         .map_err(|_| ())
+            //         .map(|_| distributions.to_season)?;
+            //     } else {
+            //         pallet_fuso_token::Pallet::<T>::mutate_account(&share.0.into(), staker, |a| {
+            //             a.free += share.1.into()
+            //         })
+            //         .map_err(|_| ())
+            //         .map(|_| distributions.to_season)?;
+            //     }
+            // }
+            Ok(distributions.to_season)
         }
     }
 }
