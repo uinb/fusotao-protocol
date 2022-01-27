@@ -40,6 +40,8 @@ pub trait Token<AccountId> {
         + Debug
         + MaybeSerializeDeserialize;
 
+    fn native_token_id() -> Self::TokenId;
+
     fn free_balance(token: &Self::TokenId, who: &AccountId) -> Self::Balance;
 
     fn total_issuance(token: &Self::TokenId) -> Self::Balance;
@@ -67,18 +69,10 @@ pub trait ReservableToken<AccountId>: Token<AccountId> {
     ///
     /// If the free balance is lower than `value`, then no funds will be moved and an `Err` will
     /// be returned to notify of this.
-    fn reserve(
-        token: &Self::TokenId,
-        who: &AccountId,
-        value: Self::Balance,
-    ) -> sp_std::result::Result<Self::Balance, DispatchError>;
+    fn reserve(token: &Self::TokenId, who: &AccountId, value: Self::Balance) -> DispatchResult;
 
     /// Moves up to `value` from reserved balance to free balance.
-    fn unreserve(
-        token: &Self::TokenId,
-        who: &AccountId,
-        value: Self::Balance,
-    ) -> sp_std::result::Result<Self::Balance, DispatchError>;
+    fn unreserve(token: &Self::TokenId, who: &AccountId, value: Self::Balance) -> DispatchResult;
 
     /// Moves up to `value` from reserved balance of account `slashed` to balance of account
     /// `beneficiary`. `beneficiary` must exist for this to succeed. If it does not, `Err` will be
@@ -93,7 +87,7 @@ pub trait ReservableToken<AccountId>: Token<AccountId> {
         beneficiary: &AccountId,
         value: Self::Balance,
         status: BalanceStatus,
-    ) -> sp_std::result::Result<Self::Balance, DispatchError>;
+    ) -> DispatchResult;
 }
 
 pub trait NamedReservableToken<AccountId>: Token<AccountId> {
