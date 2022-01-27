@@ -88,6 +88,8 @@ pub mod pallet {
             + MaybeSerializeDeserialize
             + Debug;
 
+        type NativeTokenId: Get<Self::TokenId>;
+
         #[pallet::constant]
         type MaxReserves: Get<u32>;
 
@@ -262,8 +264,10 @@ pub mod pallet {
             token: &T::TokenId,
             who: &T::AccountId,
             f: impl FnOnce(&mut TokenAccountData<T::Balance>) -> R,
-        ) -> Result<R, ()> {
-            Balances::<T>::try_mutate((token, who), |account| -> Result<R, ()> { Ok(f(account)) })
+        ) -> Result<R, DispatchError> {
+            Balances::<T>::try_mutate((token, who), |account| -> Result<R, DispatchError> {
+                Ok(f(account))
+            })
         }
 
         fn create_token(name: &[u8]) -> T::TokenId {
