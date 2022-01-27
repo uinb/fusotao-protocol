@@ -19,13 +19,11 @@ pub use pallet::*;
 pub mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::{
-        traits::{Get, NamedReservableCurrency},
+        traits::{Get, ReservableCurrency},
         weights::Weight,
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{Saturating, Zero};
-
-    use fuso_support::reserve_identifier_prefix;
 
     pub type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
     pub type IdentifierOf<T> = <T as pallet_balances::Config>::ReserveIdentifier;
@@ -72,15 +70,7 @@ pub mod pallet {
                 Foundation::<T>::insert(account, balance);
             }
             for (account, balance) in &self.fund_total {
-                <pallet_balances::Pallet<T>>::reserve_named(
-                    &(
-                        reserve_identifier_prefix::FOUNDATION,
-                        T::AccountId::default().into(),
-                    )
-                        .into(),
-                    &account,
-                    *balance,
-                );
+                <pallet_balances::Pallet<T>>::reserve(&account, *balance);
             }
         }
     }
@@ -145,15 +135,7 @@ pub mod pallet {
                 let balance: (T::BlockNumber, T::BlockNumber, u16, BalanceOf<T>) = item.1;
                 if now.saturating_sub(balance.0) % balance.1 == Zero::zero() {
                     if balance.2 > 0 {
-                        <pallet_balances::Pallet<T>>::unreserve_named(
-                            &(
-                                reserve_identifier_prefix::FOUNDATION,
-                                T::AccountId::default().into(),
-                            )
-                                .into(),
-                            &account,
-                            balance.3,
-                        );
+                        <pallet_balances::Pallet<T>>::unreserve(&account, balance.3);
                         Self::deposit_event(Event::PreLockedFundUnlocked(
                             account.clone(),
                             balance.3,
