@@ -187,8 +187,8 @@ pub mod pallet {
         amount: Balance,
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
-    pub struct Distribution<AccountId, Balance> {
+    #[derive(Clone, RuntimeDebug)]
+    struct Distribution<AccountId, Balance> {
         dominator: AccountId,
         from_season: Season,
         to_season: Season,
@@ -539,8 +539,7 @@ pub mod pallet {
                     to_season: current_season.into(),
                     staking: exists.amount,
                 };
-                Self::take_shares(&fund_owner, &distribution)?;
-                //check and update active
+                let season = Self::take_shares(&fund_owner, &distribution)?;
                 let new_staking = dominator.staked - amount;
                 Self::update_bonus_staking(&dex, current_season.into(), new_staking)?;
                 Self::update_dominator_staked_and_active(&dex, new_staking)?;
@@ -561,16 +560,18 @@ pub mod pallet {
         //     let dex = T::Lookup::lookup(dominator)?;
         //     let dominator =
         //         Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
-        //     let key = BonusKey {
-        //         dominator: dex.clone(),
-        //         token,
-        //     };
         //     let staking =
         //         Stakings::<T>::try_get(&dex, &signer).map_err(|_| Error::<T>::InvalidStaking)?;
         //     let current_block = frame_system::Pallet::<T>::block_number();
         //     let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
-        //     let step_into = Self::take_shares(&key, &signer, &staking, current_season.into())
-        //         .map_err(|_| Error::<T>::InvalidStatus)?;
+        //     let distribution = Distribution {
+        //         dominator: dex.clone(),
+        //         from_season: staking.from_season,
+        //         to_season: current_season.into(),
+        //         staking: staking.amount,
+        //     };
+        //     let step_into =
+        //         Self::take_shares(&signer, &distribution).map_err(|_| Error::<T>::InvalidStatus)?;
         //     Stakings::<T>::try_mutate(&dex, &signer, |s| -> DispatchResult {
         //         let mut mutation = s.take().unwrap();
         //         mutation.start_season = step_into;
@@ -580,83 +581,8 @@ pub mod pallet {
         //     Ok(().into())
         // }
 
-        #[transactional]
-        #[pallet::weight(T::SelfWeightInfo::authorize_coin())]
-        pub fn authorize_coin(
-            origin: OriginFor<T>,
-            dominator: <T::Lookup as StaticLookup>::Source,
-            amount: Balance<T>,
-        ) -> DispatchResultWithPostInfo {
-            let fund_owner = ensure_signed(origin)?;
-            let dex = T::Lookup::lookup(dominator)?;
-            ensure!(
-                Dominators::<T>::contains_key(&dex),
-                Error::<T>::DominatorNotFound
-            );
-            // TODO when can dominator accept hosting
-            ensure!(
-                !Receipts::<T>::contains_key(&dex, &fund_owner),
-                Error::<T>::ReceiptAlreadyExists,
-            );
-            ensure!(
-                T::Asset::can_reserve(&T::Asset::native_token_id(), &fund_owner, amount),
-                Error::<T>::InsufficientBalance
-            );
-            let block_number = frame_system::Pallet::<T>::block_number();
-            Self::reserve(
-                constants::RESERVE_FOR_AUTHORIZING,
-                fund_owner.clone(),
-                T::Asset::native_token_id(),
-                amount,
-                &fund_owner,
-            )?;
-            Receipts::<T>::insert(
-                dex.clone(),
-                fund_owner.clone(),
-                Receipt::Authorize(T::Asset::native_token_id(), amount, block_number),
-            );
-            Self::deposit_event(Event::CoinHosted(fund_owner, dex, amount));
-            Ok(().into())
-        }
-
-        #[pallet::weight(T::SelfWeightInfo::revoke_coin())]
-        pub fn revoke_coin(
-            origin: OriginFor<T>,
-            dominator: <T::Lookup as StaticLookup>::Source,
-            amount: Balance<T>,
-        ) -> DispatchResultWithPostInfo {
-            let fund_owner = ensure_signed(origin)?;
-            let dominator = T::Lookup::lookup(dominator)?;
-            ensure!(
-                Dominators::<T>::contains_key(&dominator),
-                Error::<T>::DominatorNotFound
-            );
-            // TODO when can dominator accept hosting
-            ensure!(
-                !Receipts::<T>::contains_key(&dominator, &fund_owner),
-                Error::<T>::ReceiptAlreadyExists,
-            );
-            ensure!(
-                Self::has_reserved_on(
-                    fund_owner.clone(),
-                    T::Asset::native_token_id(),
-                    amount,
-                    &dominator
-                ),
-                Error::<T>::InsufficientBalance
-            );
-            let block_number = frame_system::Pallet::<T>::block_number();
-            Receipts::<T>::insert(
-                dominator.clone(),
-                fund_owner.clone(),
-                Receipt::Revoke(T::Asset::native_token_id(), amount, block_number),
-            );
-            Self::deposit_event(Event::CoinRevoked(fund_owner, dominator, amount));
-            Ok(().into())
-        }
-
         #[pallet::weight(T::SelfWeightInfo::authorize_token())]
-        pub fn authorize_token(
+        pub fn authorize(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
             token_id: TokenId<T>,
@@ -664,14 +590,9 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
             let dex = T::Lookup::lookup(dominator)?;
-            ensure!(
-                Dominators::<T>::contains_key(&dex),
-                Error::<T>::DominatorNotFound
-            );
-            ensure!(
-                !Receipts::<T>::contains_key(&dex, &fund_owner),
-                Error::<T>::ReceiptAlreadyExists,
-            );
+            let dominator =
+                Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
+            ensure!(dominator.active, Error::<T>::DominatorInactive);
             ensure!(
                 T::Asset::can_reserve(&token_id, &fund_owner, amount),
                 Error::<T>::InsufficientBalance
@@ -694,7 +615,7 @@ pub mod pallet {
         }
 
         #[pallet::weight(T::SelfWeightInfo::revoke_token())]
-        pub fn revoke_token(
+        pub fn revoke(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
             token_id: TokenId<T>,
