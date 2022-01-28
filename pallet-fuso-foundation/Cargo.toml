@@ -1,8 +1,8 @@
 [package]
 name = "pallet-fuso-foundation"
-version = "0.1.0"
+version = "4.0.0-rc"
 authors = ["UINB Tech"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 homepage = "https://www.fusotao.org"
 repository = "https://github.com/uinb/fusotao-protocol"
@@ -22,8 +22,8 @@ serde = { default-features = false, version = "1" }
 sp-core = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
 sp-io = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
 sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
-fuso-support = { version = "0.1.0", path = "../fuso-support", default-features = false }
 pallet-balances = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
+fuso-support = { path = "../fuso-support", default-features = false }
 
 [features]
 default = ['std']

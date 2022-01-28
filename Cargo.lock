@@ -627,7 +627,7 @@ checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
 
 [[package]]
 name = "fuso-support"
-version = "0.1.0"
+version = "4.0.0-rc"
 dependencies = [
  "bit-vec",
  "byteorder",
@@ -1242,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "pallet-fuso-foundation"
-version = "0.1.0"
+version = "4.0.0-rc"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -1259,27 +1259,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-fuso-receipts"
-version = "0.1.0"
-dependencies = [
- "ascii",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "fuso-support",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
- "sparse-merkle-tree",
-]
-
-[[package]]
 name = "pallet-fuso-token"
-version = "0.1.0"
+version = "4.0.0-rc"
 dependencies = [
  "ascii",
  "frame-benchmarking",
@@ -1295,6 +1276,25 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+]
+
+[[package]]
+name = "pallet-fuso-verifier"
+version = "4.0.0-rc"
+dependencies = [
+ "ascii",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "fuso-support",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sparse-merkle-tree",
 ]
 
 [[package]]

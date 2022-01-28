@@ -1,8 +1,8 @@
 [package]
 name = "fuso-support"
-version = "0.1.0"
+version = "4.0.0-rc"
 authors = ["UINB Tech"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 homepage = "https://www.fusotao.org"
 repository = "https://github.com/uinb/fusotao"
