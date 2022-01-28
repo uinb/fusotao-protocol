@@ -4,7 +4,7 @@ panic = 'unwind'
 [workspace]
 members = [
     'pallet-fuso-token',
-    'pallet-fuso-receipts',
+    'pallet-fuso-verifier',
     'pallet-fuso-foundation',
     'fuso-support',
 ]

@@ -1,12 +1,12 @@
 [package]
-name = "pallet-fuso-receipts"
-version = "0.1.0"
+name = "pallet-fuso-verifier"
+version = "4.0.0-rc"
 authors = ["UINB Tech"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 homepage = "https://www.fusotao.org"
 repository = "https://github.com/uinb/fusotao-protocol"
-description = "FUSOTAO receipts pallet"
+description = "FUSOTAO verifier pallet"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -19,13 +19,11 @@ frame-support = { default-features = false, git = "https://github.com/paritytech
 frame-benchmarking = { default-features = false, optional = true, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
 sp-std = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
 ascii = { version = "1.0", default-features = false }
-fuso-support = { version = "0.1.0", path = "../fuso-support", default-features = false }
-serde = { default-features = false, version = "1.0.126" }
+serde = { default-features = false, version = "1.0" }
 sp-core = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
 sp-io = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
 sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
-#pallet-balances = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
-#pallet-fuso-token = { version = "0.1.0", path = "../pallet-fuso-token", default-features = false }
+fuso-support = { path = "../fuso-support", default-features = false }
 smt = { git = "https://github.com/uinb/sparse-merkle-tree", package = "sparse-merkle-tree", default-features = false, features = ["sha256"] }
 
 [dev-dependencies]
@@ -34,7 +32,6 @@ sp-core = { default-features = false, git = "https://github.com/paritytech/subst
 [features]
 default = ["std"]
 std = [
-    #"serde",
     "codec/std",
     "sp-std/std",
     "sp-io/std",
