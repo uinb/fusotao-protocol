@@ -52,15 +52,6 @@ pub mod pallet {
         pub symbol: Vec<u8>,
     }
 
-    /// Store named reserved balance.
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
-    pub struct ReserveData<ReserveIdentifier, Balance> {
-        /// The identifier for the named reserve.
-        pub id: ReserveIdentifier,
-        /// The amount of the named reserve.
-        pub amount: Balance,
-    }
-
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
     pub enum XToken<TokenId, Balance> {
         //symbol, nep141 contract name
@@ -85,8 +76,6 @@ pub mod pallet {
 
         #[pallet::constant]
         type NativeTokenId: Get<Self::TokenId>;
-
-        type ReserveIdentifier: Parameter + Member + MaxEncodedLen + Ord + Copy;
 
         type Weight: WeightInfo;
     }
