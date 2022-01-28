@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use codec::{Codec, FullCodec, MaxEncodedLen};
+use codec::{Codec, FullCodec};
 use frame_support::{traits::BalanceStatus, Parameter};
-use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeDisplay, MaybeSerializeDeserialize, Member};
-use sp_runtime::{DispatchError, DispatchResult};
-use sp_std::fmt::Debug;
-use sp_std::vec::Vec;
+use sp_runtime::{
+    traits::{AtLeast32BitUnsigned, MaybeDisplay, MaybeSerializeDeserialize, Member},
+    DispatchError, DispatchResult,
+};
+use sp_std::{fmt::Debug, vec::Vec};
 
 pub use crate::external_chain::ExternalChainAddress;
 

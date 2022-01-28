@@ -22,7 +22,6 @@ pub mod weights;
 #[frame_support::pallet]
 pub mod pallet {
     use crate::weights::WeightInfo;
-    use codec::alloc::collections::BTreeMap;
     use codec::{Compact, Decode, Encode};
     use frame_support::{
         weights::constants::RocksDbWeight,
@@ -37,9 +36,11 @@ pub mod pallet {
     use sp_io::hashing::sha2_256;
     use sp_runtime::{
         traits::{CheckedSub, StaticLookup, Zero},
-        PerThing, Permill, Perquintill, RuntimeDebug,
+        Permill, Perquintill, RuntimeDebug,
     };
-    use sp_std::{convert::*, prelude::*, result::Result, vec::Vec};
+    use sp_std::{
+        collections::btree_map::BTreeMap, convert::*, prelude::*, result::Result, vec::Vec,
+    };
 
     pub type TokenId<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::TokenId;
@@ -187,6 +188,14 @@ pub mod pallet {
         amount: Balance,
     }
 
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Default)]
+    pub struct Bonus<TokenId, Balance> {
+        pub staked: Balance,
+        // pub currency: TokenId,
+        pub profit: BTreeMap<TokenId, Balance>,
+        // pub profit: Balance,
+    }
+
     #[derive(Clone, RuntimeDebug)]
     struct Distribution<AccountId, Balance> {
         dominator: AccountId,
@@ -211,11 +220,7 @@ pub mod pallet {
 
         type MaxDominators: Get<u32>;
 
-        type SymbolLimit: Get<usize>;
-
         type DominatorStablecoinLimit: Get<usize>;
-
-        type BonusesVecLimit: Get<u32>;
     }
 
     #[pallet::storage]
@@ -260,7 +265,8 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         Season,
-        (Balance<T>, BoundedVec<UniBalanceOf<T>, T::BonusesVecLimit>),
+        Bonus<TokenId<T>, Balance<T>>,
+        // Bonus<Balance<T>>,
         ValueQuery,
     >;
 
@@ -314,6 +320,7 @@ pub mod pallet {
         DistributionOngoing,
         OutOfStablecoinLimit,
         LittleStakingAmount,
+        UnsupportedQuoteCurrency,
     }
 
     #[pallet::pallet]
@@ -328,16 +335,23 @@ pub mod pallet {
     {
         fn on_initialize(now: T::BlockNumber) -> Weight {
             let mut weight: Weight = 0u64 as Weight;
-
             // FIXME dominator offline
             for dominator in Dominators::<T>::iter() {
                 let start = dominator.1.start_from;
+                if now == start {
+                    continue;
+                }
                 weight = weight.saturating_add(RocksDbWeight::get().reads(1 as Weight));
                 if (now - start) % T::SeasonDuration::get() == 0u32.into() {
-                    let current_season: u32 =
-                        ((now - start) / T::SeasonDuration::get()).into() as u32;
-                    let b = (dominator.1.staked, BoundedVec::default());
-                    Bonuses::<T>::insert(dominator.0, current_season, b);
+                    let season = ((now - start) / T::SeasonDuration::get()).into();
+                    Bonuses::<T>::insert(
+                        dominator.0,
+                        season,
+                        Bonus {
+                            staked: dominator.1.staked,
+                            profit: Default::default(),
+                        },
+                    );
                     weight = weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
                 }
             }
@@ -372,11 +386,6 @@ pub mod pallet {
                     active: false,
                 },
             );
-            Bonuses::<T>::insert(
-                &dominator,
-                0u32,
-                (Balance::<T>::zero(), BoundedVec::default()),
-            );
             Self::deposit_event(Event::DominatorClaimed(dominator));
             Ok(().into())
         }
@@ -386,13 +395,8 @@ pub mod pallet {
             origin: OriginFor<T>,
             stablecoin: TokenId<T>,
         ) -> DispatchResultWithPostInfo {
-            let dex = ensure_signed(origin)?;
-            ensure!(
-                Dominators::<T>::contains_key(&dex),
-                Error::<T>::DominatorNotFound
-            );
-
-            Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
+            let dominator_id = ensure_signed(origin)?;
+            Dominators::<T>::try_mutate_exists(&dominator_id, |dominator| -> DispatchResult {
                 ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
                 let mut dex = dominator.take().unwrap();
                 let idx = dex.stablecoins.binary_search(&stablecoin);
@@ -415,12 +419,8 @@ pub mod pallet {
             origin: OriginFor<T>,
             stablecoin: TokenId<T>,
         ) -> DispatchResultWithPostInfo {
-            let dex = ensure_signed(origin)?;
-            ensure!(
-                Dominators::<T>::contains_key(&dex),
-                Error::<T>::DominatorNotFound
-            );
-            Dominators::<T>::try_mutate_exists(&dex, |dominator| -> DispatchResult {
+            let dominator_id = ensure_signed(origin)?;
+            Dominators::<T>::try_mutate_exists(&dominator_id, |dominator| -> DispatchResult {
                 ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
                 let mut dex = dominator.take().unwrap();
                 let idx = dex.stablecoins.binary_search(&stablecoin);
@@ -617,10 +617,18 @@ pub mod pallet {
                 .verify::<smt::sha256::Sha256Hasher>(&proof.root.into(), new)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
+            let current_season = Self::current_season(dominator.start_from);
             match proof.cmd {
                 Command::AskLimit(price, amount, maker_fee, taker_fee, base, quote) => {
                     let (n, f): (u64, u64) = (price.0.into(), price.1.into());
-                    let (price, amount, maker_fee, taker_fee, base, quote) = (
+                    let (price, amount, maker_fee, taker_fee, base, quote): (
+                        Price,
+                        u128,
+                        Permill,
+                        Permill,
+                        u32,
+                        u32,
+                    ) = (
                         (n.into(), Perquintill::from_parts(f.into())),
                         amount.into(),
                         Permill::from_parts(maker_fee.into()),
@@ -628,6 +636,8 @@ pub mod pallet {
                         base.into(),
                         quote.into(),
                     );
+                    let quote_accepted = dominator.stablecoins.binary_search(&quote.into());
+                    ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
                     let cr = Self::verify_ask_limit(
                         price,
                         amount,
@@ -638,15 +648,25 @@ pub mod pallet {
                         dominator_id,
                         &proof.leaves,
                     )?;
-                    for d in cr.users_mutation {
+                    for d in cr.users_mutation.iter() {
                         Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                         Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
                     }
-                    // TODO fee
+                    Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
+                    T::Asset::try_mutate_account(&base.into(), dominator_id, |b| {
+                        Ok(b.0 += cr.base_fee)
+                    })?;
                 }
                 Command::BidLimit(price, amount, maker_fee, taker_fee, base, quote) => {
                     let (n, f): (u64, u64) = (price.0.into(), price.1.into());
-                    let (price, amount, maker_fee, taker_fee, base, quote) = (
+                    let (price, amount, maker_fee, taker_fee, base, quote): (
+                        Price,
+                        u128,
+                        Permill,
+                        Permill,
+                        u32,
+                        u32,
+                    ) = (
                         (n.into(), Perquintill::from_parts(f.into())),
                         amount.into(),
                         Permill::from_parts(maker_fee.into()),
@@ -654,6 +674,8 @@ pub mod pallet {
                         base.into(),
                         quote.into(),
                     );
+                    let quote_accepted = dominator.stablecoins.binary_search(&quote.into());
+                    ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
                     let cr = Self::verify_bid_limit(
                         price,
                         amount,
@@ -664,14 +686,20 @@ pub mod pallet {
                         dominator_id,
                         &proof.leaves,
                     )?;
-                    for d in cr.users_mutation {
+                    for d in cr.users_mutation.iter() {
                         Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                         Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
                     }
-                    // TODO fee
+                    Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
+                    T::Asset::try_mutate_account(&base.into(), dominator_id, |b| {
+                        Ok(b.0 += cr.base_fee)
+                    })?;
                 }
                 Command::Cancel(base, quote) => {
-                    Self::verify_cancel(base.into(), quote.into(), &proof.user_id, &proof.leaves)?;
+                    let (base, quote): (u32, u32) = (base.into(), quote.into());
+                    let quote_accepted = dominator.stablecoins.binary_search(&quote.into());
+                    ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
+                    Self::verify_cancel(base, quote, &proof.user_id, &proof.leaves)?;
                 }
                 Command::TransferOut(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
@@ -1099,30 +1127,31 @@ pub mod pallet {
             staker: &T::AccountId,
             distributions: &Distribution<T::AccountId, Balance<T>>,
         ) -> Result<Season, DispatchError> {
-            if distributions.to_season == distributions.from_season {
-                return Ok(distributions.from_season);
-            }
-            let mut shares: BTreeMap<TokenId<T>, u128> = BTreeMap::new();
-            for season in distributions.from_season..distributions.to_season {
-                let bonus = Bonuses::<T>::get(&distributions.dominator, season);
-                if bonus.0.is_zero() {
-                    continue;
-                }
-                let staking: u128 = distributions.staking.into();
-                let total_staking: u128 = bonus.0.into();
-                for (token_id, profit) in bonus.1.into_iter() {
-                    let profit = profit.into();
-                    let r: Perquintill = PerThing::from_rational(staking, total_staking);
-                    shares
-                        .entry(token_id)
-                        .and_modify(|share| *share += r * profit)
-                        .or_insert(r * profit);
-                }
-            }
-            for (token_id, profit) in shares {
-                T::Asset::try_mutate_account(&token_id, staker, |b| Ok(b.0 += profit.into()))?;
-            }
-            Ok(distributions.to_season)
+            Ok(0)
+            // if distributions.to_season == distributions.from_season {
+            //     return Ok(distributions.from_season);
+            // }
+            // let mut shares: BTreeMap<TokenId<T>, u128> = BTreeMap::new();
+            // for season in distributions.from_season..distributions.to_season {
+            //     let bonus = Bonuses::<T>::get(&distributions.dominator, season);
+            //     if bonus.0.is_zero() {
+            //         continue;
+            //     }
+            //     let staking: u128 = distributions.staking.into();
+            //     let total_staking: u128 = bonus.0.into();
+            //     for (token_id, profit) in bonus.1.into_iter() {
+            //         let profit = profit.into();
+            //         let r: Perquintill = PerThing::from_rational(staking, total_staking);
+            //         shares
+            //             .entry(token_id)
+            //             .and_modify(|share| *share += r * profit)
+            //             .or_insert(r * profit);
+            //     }
+            // }
+            // for (token_id, profit) in shares {
+            //     T::Asset::try_mutate_account(&token_id, staker, |b| Ok(b.0 += profit.into()))?;
+            // }
+            // Ok(distributions.to_season)
         }
 
         #[transactional]
@@ -1274,11 +1303,26 @@ pub mod pallet {
         }
 
         fn current_season(claim_at: T::BlockNumber) -> Season {
-            let current_block = frame_system::Pallet::<T>::block_number();
-            if current_block <= claim_at {
+            let now = frame_system::Pallet::<T>::block_number();
+            if now <= claim_at {
                 return 0;
             }
-            ((current_block - claim_at) / T::SeasonDuration::get()).into()
+            ((now - claim_at) / T::SeasonDuration::get()).into()
+        }
+
+        fn put_profit(
+            dominator: &T::AccountId,
+            season: Season,
+            currency: TokenId<T>,
+            balance: Balance<T>,
+        ) -> DispatchResult {
+            Bonuses::<T>::try_mutate(dominator, season, |b| {
+                b.profit
+                    .entry(currency)
+                    .and_modify(|p| *p += balance)
+                    .or_insert(balance);
+                Ok(())
+            })
         }
     }
 }
