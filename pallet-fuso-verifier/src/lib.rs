@@ -1262,7 +1262,7 @@ pub mod pallet {
             account: &T::AccountId,
             leaves: &[MerkleLeaf],
         ) -> Result<(), DispatchError> {
-            ensure!(leaves.len() == 3, Error::<T>::ProofsUnsatisfied);
+            ensure!(leaves.len() == 5, Error::<T>::ProofsUnsatisfied);
             let (b, q) = leaves[0].try_get_symbol::<T>()?;
             ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
             let (ask0, bid0) = leaves[0].split_old_to_u128();
@@ -1285,6 +1285,26 @@ pub mod pallet {
             let (qa0, qf0) = leaves[2].split_old_to_u128();
             let (qa1, qf1) = leaves[2].split_new_to_u128();
             ensure!(qa0 + qf0 == qa1 + qf1, Error::<T>::ProofsUnsatisfied);
+
+            let (best_ask0, best_bid0) = leaves[3].split_old_to_u128();
+            let (b, q, cancel_at) = leaves[4].try_get_orderpage::<T>()?;
+            ensure!(
+                b == base && q == quote && (cancel_at >= best_ask0 || cancel_at <= best_bid0),
+                Error::<T>::ProofsUnsatisfied,
+            );
+            let before_cancel = leaves[4].split_old_to_sum();
+            let after_cancel = leaves[4].split_new_to_sum();
+            if cancel_at >= best_ask0 {
+                ensure!(
+                    ask_delta == after_cancel - before_cancel,
+                    Error::<T>::ProofsUnsatisfied
+                );
+            } else {
+                ensure!(
+                    bid_delta == after_cancel - before_cancel,
+                    Error::<T>::ProofsUnsatisfied
+                );
+            }
             Ok(())
         }
 
