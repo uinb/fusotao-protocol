@@ -61,7 +61,9 @@ pub mod pallet {
 
     impl MerkleLeaf {
         const ACCOUNT_KEY: u8 = 0x00;
+        const BESTPRICE_KEY: u8 = 0x02;
         const ORDERBOOK_KEY: u8 = 0x01;
+        const ORDERPAGE_KEY: u8 = 0x03;
 
         fn try_get_account<T: Config>(&self) -> Result<(u32, T::AccountId), Error<T>> {
             if self.key.len() != 37 {
@@ -86,7 +88,7 @@ pub mod pallet {
                 return Err(Error::<T>::ProofsUnsatisfied);
             }
             match self.key[0] {
-                Self::ORDERBOOK_KEY => Ok((
+                Self::ORDERBOOK_KEY | Self::BESTPRICE_KEY => Ok((
                     u32::from_le_bytes(
                         self.key[1..5]
                             .try_into()
@@ -94,6 +96,32 @@ pub mod pallet {
                     ),
                     u32::from_le_bytes(
                         self.key[5..]
+                            .try_into()
+                            .map_err(|_| Error::<T>::ProofsUnsatisfied)?,
+                    ),
+                )),
+                _ => Err(Error::<T>::ProofsUnsatisfied),
+            }
+        }
+
+        fn try_get_orderpage<T: Config>(&self) -> Result<(u32, u32, u128), Error<T>> {
+            if self.key.len() != 25 {
+                return Err(Error::<T>::ProofsUnsatisfied);
+            }
+            match self.key[0] {
+                Self::ORDERPAGE_KEY => Ok((
+                    u32::from_le_bytes(
+                        self.key[1..5]
+                            .try_into()
+                            .map_err(|_| Error::<T>::ProofsUnsatisfied)?,
+                    ),
+                    u32::from_le_bytes(
+                        self.key[5..9]
+                            .try_into()
+                            .map_err(|_| Error::<T>::ProofsUnsatisfied)?,
+                    ),
+                    u128::from_le_bytes(
+                        self.key[9..]
                             .try_into()
                             .map_err(|_| Error::<T>::ProofsUnsatisfied)?,
                     ),
@@ -111,7 +139,7 @@ pub mod pallet {
             (u128::from_le_bytes(l), u128::from_le_bytes(r))
         }
 
-        fn split_old_to_u128sum(&self) -> u128 {
+        fn split_old_to_sum(&self) -> u128 {
             let (l, r) = self.split_old_to_u128();
             l + r
         }
@@ -121,7 +149,7 @@ pub mod pallet {
             (u128::from_le_bytes(l), u128::from_le_bytes(r))
         }
 
-        fn split_new_to_u128sum(&self) -> u128 {
+        fn split_new_to_sum(&self) -> u128 {
             let (l, r) = self.split_new_to_u128();
             l + r
         }
@@ -131,7 +159,7 @@ pub mod pallet {
     pub enum Command {
         // price, amount, maker_fee, taker_fee, base, quote
         AskLimit(
-            (Compact<u64>, Compact<u64>),
+            Compact<u128>,
             Compact<u128>,
             Compact<u32>,
             Compact<u32>,
@@ -139,7 +167,7 @@ pub mod pallet {
             Compact<u32>,
         ),
         BidLimit(
-            (Compact<u64>, Compact<u64>),
+            Compact<u128>,
             Compact<u128>,
             Compact<u32>,
             Compact<u32>,
@@ -149,7 +177,6 @@ pub mod pallet {
         Cancel(Compact<u32>, Compact<u32>),
         TransferOut(Compact<u32>, Compact<u128>),
         TransferIn(Compact<u32>, Compact<u128>),
-        // BlockNumber, Currency, Amount
         RejectTransferOut(Compact<u32>, Compact<u128>),
     }
 
@@ -161,6 +188,8 @@ pub mod pallet {
         pub signature: Vec<u8>,
         pub cmd: Command,
         pub leaves: Vec<MerkleLeaf>,
+        pub maker_page_delta: u8,
+        pub maker_account_delta: u8,
         pub proof_of_exists: Vec<u8>,
         pub proof_of_cmd: Vec<u8>,
         pub root: [u8; 32],
@@ -191,9 +220,7 @@ pub mod pallet {
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Default)]
     pub struct Bonus<TokenId, Balance> {
         pub staked: Balance,
-        // pub currency: TokenId,
         pub profit: BTreeMap<TokenId, Balance>,
-        // pub profit: Balance,
     }
 
     #[derive(Clone, RuntimeDebug)]
@@ -210,17 +237,25 @@ pub mod pallet {
 
         type Asset: ReservableToken<Self::AccountId>;
 
-        type DominatorOnlineThreshold: Get<Balance<Self>>;
-
-        type SeasonDuration: Get<Self::BlockNumber>;
-
         type SelfWeightInfo: WeightInfo;
 
+        #[pallet::constant]
+        type DominatorOnlineThreshold: Get<Balance<Self>>;
+
+        #[pallet::constant]
+        type SeasonDuration: Get<Self::BlockNumber>;
+
+        #[pallet::constant]
+        type DominatorRegisterPoint: Get<Self::BlockNumber>;
+
+        #[pallet::constant]
         type MinimalStakingAmount: Get<Balance<Self>>;
 
+        #[pallet::constant]
         type MaxDominators: Get<u32>;
 
-        type DominatorStablecoinLimit: Get<usize>;
+        #[pallet::constant]
+        type DominatorStablecoinLimit: Get<u32>;
     }
 
     #[pallet::storage]
@@ -266,7 +301,6 @@ pub mod pallet {
         Blake2_128Concat,
         Season,
         Bonus<TokenId<T>, Balance<T>>,
-        // Bonus<Balance<T>>,
         ValueQuery,
     >;
 
@@ -309,10 +343,9 @@ pub mod pallet {
         ChainNotSupport,
         ReceiptAlreadyExists,
         DominatorAlreadyExists,
+        TooEarlyToRegister,
         DominatorInactive,
-        PledgeUnsatisfied,
         InsufficientBalance,
-        InsufficientStashAccount,
         InsufficientStakingAmount,
         InvalidStatus,
         InvalidStaking,
@@ -334,15 +367,17 @@ pub mod pallet {
         T::BlockNumber: Into<u32>,
     {
         fn on_initialize(now: T::BlockNumber) -> Weight {
+            if now % T::DominatorRegisterPoint::get() != Zero::zero() {
+                return Zero::zero();
+            }
             let mut weight: Weight = 0u64 as Weight;
-            // FIXME dominator offline
             for dominator in Dominators::<T>::iter() {
                 let start = dominator.1.start_from;
                 if now == start {
                     continue;
                 }
                 weight = weight.saturating_add(RocksDbWeight::get().reads(1 as Weight));
-                if (now - start) % T::SeasonDuration::get() == 0u32.into() {
+                if (now - start) % T::SeasonDuration::get() == Zero::zero() {
                     let season = ((now - start) / T::SeasonDuration::get()).into();
                     Bonuses::<T>::insert(
                         dominator.0,
@@ -367,20 +402,25 @@ pub mod pallet {
         T::BlockNumber: Into<u32> + From<u32>,
     {
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
-        #[pallet::weight(T::SelfWeightInfo::claim_dominator())]
-        pub fn claim_dominator(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+        #[pallet::weight(T::SelfWeightInfo::register())]
+        pub fn register(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let dominator = ensure_signed(origin)?;
+            let current_block = frame_system::Pallet::<T>::block_number();
+            ensure!(
+                current_block >= T::DominatorRegisterPoint::get(),
+                Error::<T>::TooEarlyToRegister
+            );
             ensure!(
                 !Dominators::<T>::contains_key(&dominator),
                 Error::<T>::DominatorAlreadyExists
             );
-            let current_block = frame_system::Pallet::<T>::block_number();
+            let register_at = current_block - current_block % T::DominatorRegisterPoint::get();
             Dominators::<T>::insert(
                 &dominator,
                 Dominator {
                     staked: Zero::zero(),
                     stablecoins: Vec::new(),
-                    start_from: current_block,
+                    start_from: register_at,
                     sequence: (0, current_block),
                     merkle_root: Default::default(),
                     active: false,
@@ -402,7 +442,7 @@ pub mod pallet {
                 let idx = dex.stablecoins.binary_search(&stablecoin);
                 if !idx.is_ok() {
                     ensure!(
-                        dex.stablecoins.len() < T::DominatorStablecoinLimit::get(),
+                        dex.stablecoins.len() < T::DominatorStablecoinLimit::get() as usize,
                         Error::<T>::OutOfStablecoinLimit
                     );
                     dex.stablecoins
@@ -506,7 +546,7 @@ pub mod pallet {
         //     Ok(().into())
         // }
 
-        #[pallet::weight(T::SelfWeightInfo::authorize_token())]
+        #[pallet::weight(T::SelfWeightInfo::authorize())]
         pub fn authorize(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -539,7 +579,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(T::SelfWeightInfo::revoke_token())]
+        #[pallet::weight(T::SelfWeightInfo::revoke())]
         pub fn revoke(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -617,19 +657,19 @@ pub mod pallet {
                 .verify::<smt::sha256::Sha256Hasher>(&proof.root.into(), new)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
-            let current_season = Self::current_season(dominator.start_from);
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let current_season = Self::current_season(current_block, dominator.start_from);
             match proof.cmd {
                 Command::AskLimit(price, amount, maker_fee, taker_fee, base, quote) => {
-                    let (n, f): (u64, u64) = (price.0.into(), price.1.into());
                     let (price, amount, maker_fee, taker_fee, base, quote): (
-                        Price,
+                        u128,
                         u128,
                         Permill,
                         Permill,
                         u32,
                         u32,
                     ) = (
-                        (n.into(), Perquintill::from_parts(f.into())),
+                        price.into(),
                         amount.into(),
                         Permill::from_parts(maker_fee.into()),
                         Permill::from_parts(taker_fee.into()),
@@ -645,6 +685,8 @@ pub mod pallet {
                         taker_fee,
                         base,
                         quote,
+                        proof.maker_account_delta,
+                        proof.maker_page_delta,
                         dominator_id,
                         &proof.leaves,
                     )?;
@@ -658,16 +700,15 @@ pub mod pallet {
                     })?;
                 }
                 Command::BidLimit(price, amount, maker_fee, taker_fee, base, quote) => {
-                    let (n, f): (u64, u64) = (price.0.into(), price.1.into());
                     let (price, amount, maker_fee, taker_fee, base, quote): (
-                        Price,
+                        u128,
                         u128,
                         Permill,
                         Permill,
                         u32,
                         u32,
                     ) = (
-                        (n.into(), Perquintill::from_parts(f.into())),
+                        price.into(),
                         amount.into(),
                         Permill::from_parts(maker_fee.into()),
                         Permill::from_parts(taker_fee.into()),
@@ -683,6 +724,8 @@ pub mod pallet {
                         taker_fee,
                         base,
                         quote,
+                        proof.maker_account_delta,
+                        proof.maker_page_delta,
                         dominator_id,
                         &proof.leaves,
                     )?;
@@ -759,28 +802,31 @@ pub mod pallet {
                 }
             }
             Dominators::<T>::mutate(&dominator_id, |d| {
-                // TODO unwrap?
                 let update = d.as_mut().unwrap();
                 update.merkle_root = proof.root;
-                update.sequence = (proof.event_id, frame_system::Pallet::<T>::block_number());
+                update.sequence = (proof.event_id, current_block);
             });
             Ok(().into())
         }
 
         fn verify_ask_limit(
-            _price: Price,
+            price: u128,
             amount: u128,
             maker_fee: Permill,
             taker_fee: Permill,
             base: u32,
             quote: u32,
+            maker_accounts: u8,
+            maker_pages: u8,
             dominator: &T::AccountId,
             leaves: &[MerkleLeaf],
         ) -> Result<ClearingResult<T>, DispatchError> {
-            ensure!(leaves.len() >= 3, Error::<T>::ProofsUnsatisfied);
-            let maker_count = leaves.len() - 3;
-            ensure!(maker_count % 2 == 0, Error::<T>::ProofsUnsatisfied);
-            //debug::debug!("ask-limit with number of maker accounts is odd");
+            // orderbook_size, maker_accounts, taker_account, best_price, orderpage, taker_price_page
+            let leaves_count = (5u8 + maker_accounts + maker_pages) as usize;
+            ensure!(leaves.len() == leaves_count, Error::<T>::ProofsUnsatisfied);
+            ensure!(maker_accounts % 2 == 0, Error::<T>::ProofsUnsatisfied);
+            let (b, q) = leaves[0].try_get_symbol::<T>()?;
+            ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
             let (ask0, bid0) = leaves[0].split_old_to_u128();
             let (ask1, bid1) = leaves[0].split_new_to_u128();
             // 0 or remain
@@ -788,53 +834,49 @@ pub mod pallet {
             // equals to traded base
             let bid_delta = bid0 - bid1;
 
-            let taker_base = &leaves[leaves.len() - 2];
+            let taker_base = &leaves[maker_accounts as usize + 1];
             let (bk, taker_b_id) = taker_base.try_get_account::<T>()?;
             let (tba0, tbf0) = taker_base.split_old_to_u128();
             let (tba1, tbf1) = taker_base.split_new_to_u128();
             // equals to traded base
             let tb_delta = (tba0 + tbf0) - (tba1 + tbf1);
 
-            let taker_quote = leaves.last().ok_or_else(|| Error::<T>::ProofsUnsatisfied)?;
+            let taker_quote = &leaves[maker_accounts as usize + 2];
+            let (qk, taker_q_id) = taker_quote.try_get_account::<T>()?;
             let (tqa0, tqf0) = taker_quote.split_old_to_u128();
             let (tqa1, tqf1) = taker_quote.split_new_to_u128();
-            let (qk, taker_q_id) = taker_quote.try_get_account::<T>()?;
             let tq_delta = (tqa1 + tqf1) - (tqa0 + tqf0);
             ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
             ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
 
-            // let taker_paid = (base, tb_delta).into();
             ensure!(
                 Self::has_reserved_on(taker_b_id.clone(), base.into(), tb_delta.into(), &dominator),
                 Error::<T>::ProofsUnsatisfied
             );
             // the delta of taker base available account(a.k.a base freezed of taker), equals to the amount of cmd
-            // let taker_ba_delta = taker_ba0 - taker_ba1;
-
             if ask_delta != 0 {
                 ensure!(amount == tba0 - tba1, Error::<T>::ProofsUnsatisfied);
             } else {
                 ensure!(tbf0 == tbf1, Error::<T>::ProofsUnsatisfied);
             }
-            //debug::debug!("ask-limit taker base frozen account == cmd");
             ensure!(bid_delta == tb_delta, Error::<T>::ProofsUnsatisfied);
             let mut mb_delta = 0u128;
             let mut mq_delta = 0u128;
             let mut delta = Vec::new();
-            for i in 0..maker_count / 2 {
+            for i in 0..maker_accounts as usize / 2 {
                 // base first
                 let maker_base = &leaves[i * 2 + 1];
                 let (bk, maker_b_id) = maker_base.try_get_account::<T>()?;
-                let mb0 = maker_base.split_old_to_u128sum();
-                let mb1 = maker_base.split_new_to_u128sum();
+                let mb0 = maker_base.split_old_to_sum();
+                let mb1 = maker_base.split_new_to_sum();
                 let base_incr = mb1 - mb0;
                 mb_delta += base_incr;
                 // then quote account
                 let maker_quote = &leaves[i * 2 + 2];
                 let (qk, maker_q_id) = maker_quote.try_get_account::<T>()?;
                 ensure!(base == bk && quote == qk, Error::<T>::ProofsUnsatisfied);
-                let mq0 = maker_quote.split_old_to_u128sum();
-                let mq1 = maker_quote.split_new_to_u128sum();
+                let mq0 = maker_quote.split_old_to_sum();
+                let mq1 = maker_quote.split_new_to_sum();
                 let quote_decr = mq0 - mq1;
                 mq_delta += quote_decr;
                 // the accounts should be owned by same user
@@ -853,16 +895,13 @@ pub mod pallet {
                     base_value: mb1.into(),
                     quote_value: mq1.into(),
                 });
-                // delta.push((maker_b_id, (base, mb1).into(), (quote, mq1).into()));
             }
-            //debug::debug!("ask-limit all makers ok");
             // FIXME ceil
             let base_charged = maker_fee.mul_ceil(tb_delta);
             ensure!(
                 mb_delta + base_charged == tb_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            //debug::debug!("ask-limit traded_base == base_fee + sum_of_maker_base_delta");
             // FIXME ceil
             let quote_charged = taker_fee.mul_ceil(mq_delta);
             ensure!(
@@ -874,6 +913,91 @@ pub mod pallet {
                 base_value: (tba1 + tbf1).into(),
                 quote_value: (tqa1 + tqf1).into(),
             });
+            let best_price = &leaves[maker_accounts as usize + 3];
+            let (b, q) = best_price.try_get_symbol::<T>()?;
+            ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
+            let (best_ask0, best_bid0) = best_price.split_old_to_u128();
+            let (best_ask1, best_bid1) = best_price.split_new_to_u128();
+            ensure!(
+                best_ask0 >= best_ask1 && best_bid0 >= best_bid1,
+                Error::<T>::ProofsUnsatisfied
+            );
+
+            let taker_price_page = leaves.last().unwrap();
+            let (b, q, p) = taker_price_page.try_get_orderpage::<T>()?;
+            ensure!(
+                b == base && q == quote && p == price,
+                Error::<T>::ProofsUnsatisfied
+            );
+            if bid_delta != 0 {
+                // trading happened
+                ensure!(
+                    maker_pages > 0 && price <= best_bid0,
+                    Error::<T>::ProofsUnsatisfied
+                );
+                // best_bid0 >= page0 > page1 > .. > pagen >= best_bid1
+                let mut pre_best = best_bid0 + 1;
+                let mut taken_bids = 0u128;
+                for i in 0..maker_pages as usize - 1 {
+                    let page = &leaves[maker_accounts as usize + 4 + i];
+                    let (b, q, p) = page.try_get_orderpage::<T>()?;
+                    ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
+                    ensure!(pre_best > p, Error::<T>::ProofsUnsatisfied);
+                    pre_best = p;
+                    ensure!(page.split_new_to_sum() == 0, Error::<T>::ProofsUnsatisfied);
+                    taken_bids += page.split_old_to_sum();
+                }
+                let vanity_maker = &leaves[maker_accounts as usize + 4 + maker_pages as usize - 1];
+                let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
+                ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
+                ensure!(
+                    pre_best > p && p >= best_bid1,
+                    Error::<T>::ProofsUnsatisfied
+                );
+                if ask_delta != 0 {
+                    // partial_filled
+                    ensure!(
+                        best_ask1 == price && p == price,
+                        Error::<T>::ProofsUnsatisfied
+                    );
+                    let prv_is_maker = taker_price_page.split_old_to_sum();
+                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    ensure!(
+                        taken_bids + prv_is_maker + now_is_taker == amount,
+                        Error::<T>::ProofsUnsatisfied
+                    );
+                } else {
+                    // filled or conditional_canceled
+                    ensure!(best_ask1 == best_ask0, Error::<T>::ProofsUnsatisfied);
+                    let prv_is_maker = taker_price_page.split_old_to_sum();
+                    let now_is_maker = taker_price_page.split_new_to_sum();
+                    ensure!(
+                        tb_delta == taken_bids + prv_is_maker - now_is_maker,
+                        Error::<T>::ProofsUnsatisfied
+                    );
+                }
+            } else {
+                // no trading
+                ensure!(
+                    maker_pages == 0 && best_bid1 == best_bid0,
+                    Error::<T>::ProofsUnsatisfied
+                );
+                if ask_delta != 0 {
+                    // placed
+                    let prv_is_taker = taker_price_page.split_old_to_sum();
+                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    ensure!(
+                        amount == now_is_taker - prv_is_taker,
+                        Error::<T>::ProofsUnsatisfied
+                    );
+                } else {
+                    // conditional_canceled
+                    ensure!(best_ask1 == best_ask0, Error::<T>::ProofsUnsatisfied);
+                    let prv_is_taker = taker_price_page.split_old_to_sum();
+                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    ensure!(prv_is_taker == now_is_taker, Error::<T>::ProofsUnsatisfied);
+                }
+            }
             Ok(ClearingResult {
                 users_mutation: delta,
                 base_fee: base_charged.into(),
@@ -882,44 +1006,38 @@ pub mod pallet {
         }
 
         fn verify_bid_limit(
-            _price: Price,
+            price: u128,
             amount: u128,
             maker_fee: Permill,
             taker_fee: Permill,
             base: u32,
             quote: u32,
+            maker_accounts: u8,
+            maker_pages: u8,
             dominator: &T::AccountId,
             leaves: &[MerkleLeaf],
         ) -> Result<ClearingResult<T>, DispatchError> {
-            ensure!(leaves.len() >= 3, Error::<T>::ProofsUnsatisfied);
-            let maker_count = leaves.len() - 3;
-            ensure!(maker_count % 2 == 0, Error::<T>::ProofsUnsatisfied);
-            //debug::debug!("bid-limit with number of maker accounts is odd");
+            // orderbook_size, maker_accounts, taker_account, best_price, orderpage, taker_price_page
+            let leaves_count = (5u8 + maker_accounts + maker_pages) as usize;
+            ensure!(leaves.len() == leaves_count, Error::<T>::ProofsUnsatisfied);
+            ensure!(maker_accounts % 2 == 0, Error::<T>::ProofsUnsatisfied);
             let (ask0, bid0) = leaves[0].split_old_to_u128();
             let (ask1, bid1) = leaves[0].split_new_to_u128();
             let ask_delta = ask0 - ask1;
             let bid_delta = bid1 - bid0;
 
-            let taker_base = &leaves[leaves.len() - 2];
+            let taker_base = &leaves[maker_accounts as usize + 1];
             let (tba0, tbf0) = taker_base.split_old_to_u128();
             let (tba1, tbf1) = taker_base.split_new_to_u128();
             let tb_delta = (tba1 + tbf1) - (tba0 + tbf0);
             let (bk, taker_b_id) = taker_base.try_get_account::<T>()?;
-            let taker_quote = leaves.last().ok_or_else(|| Error::<T>::ProofsUnsatisfied)?;
+            let taker_quote = &leaves[maker_accounts as usize + 2];
             let (tqa0, tqf0) = taker_quote.split_old_to_u128();
             let (tqa1, tqf1) = taker_quote.split_new_to_u128();
             let (qk, taker_q_id) = taker_quote.try_get_account::<T>()?;
             let tq_delta = (tqa0 + tqf0) - (tqa1 + tqf1);
             ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
             ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
-
-            // unsatisfied:
-            // if bid_delta != 0 {
-            //     ensure!(frozen_vol == tqa0 - tqa1, Error::<T>::ProofsUnsatisfied);
-            // } else {
-            //     ensure!(tqf0 == tqf1, Error::<T>::ProofsUnsatisfied);
-            // }
-
             ensure!(
                 Self::has_reserved_on(
                     taker_q_id.clone(),
@@ -932,12 +1050,12 @@ pub mod pallet {
             let mut mb_delta = 0u128;
             let mut mq_delta = 0u128;
             let mut delta = Vec::new();
-            for i in 0..maker_count / 2 {
+            for i in 0..maker_accounts as usize / 2 {
                 // base first
                 let maker_base = &leaves[i * 2 + 1];
                 let (bk, maker_b_id) = maker_base.try_get_account::<T>()?;
-                let mb0 = maker_base.split_old_to_u128sum();
-                let mb1 = maker_base.split_new_to_u128sum();
+                let mb0 = maker_base.split_old_to_sum();
+                let mb1 = maker_base.split_new_to_sum();
                 let base_decr = mb0 - mb1;
                 mb_delta += base_decr;
                 // then quote
@@ -945,8 +1063,8 @@ pub mod pallet {
                 let (qk, maker_q_id) = maker_quote.try_get_account::<T>()?;
                 ensure!(quote == qk && base == bk, Error::<T>::ProofsUnsatisfied);
                 ensure!(maker_b_id == maker_q_id, Error::<T>::ProofsUnsatisfied);
-                let mq0 = maker_quote.split_old_to_u128sum();
-                let mq1 = maker_quote.split_new_to_u128sum();
+                let mq0 = maker_quote.split_old_to_sum();
+                let mq1 = maker_quote.split_new_to_sum();
                 let quote_incr = mq1 - mq0;
                 mq_delta += quote_incr;
                 ensure!(
@@ -964,23 +1082,19 @@ pub mod pallet {
                     quote_value: mq1.into(),
                 });
             }
-            //debug::debug!("bid-limit makers ok");
             // FIXME ceil
             let quote_charged = maker_fee.mul_ceil(tq_delta);
             ensure!(
                 mq_delta + quote_charged == tq_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            //debug::debug!("bid-limit maker_quote_delta + quote_charged == traded_quote");
             // FIXME ceil
             let base_charged = taker_fee.mul_ceil(mb_delta);
             ensure!(
                 tb_delta + base_charged == mb_delta,
                 Error::<T>::ProofsUnsatisfied
             );
-            //debug::debug!("bid-limit taker_base_available_delta + base_charged == traded_base");
             ensure!(ask_delta == mb_delta, Error::<T>::ProofsUnsatisfied);
-            //debug::debug!("bid-limit orderbook_ask_size_delta == traded_base");
             if bid_delta != 0 {
                 ensure!(
                     bid_delta == amount - mb_delta,
@@ -989,12 +1103,97 @@ pub mod pallet {
             } else {
                 // TODO to avoid divide
             }
-            //debug::debug!("bid-limit orderbook_bid_size_delta == untraded_base");
             delta.push(TokenMutation {
                 who: taker_b_id,
                 base_value: (tba1 + tbf1).into(),
                 quote_value: (tqa1 + tqf1).into(),
             });
+            let best_price = &leaves[maker_accounts as usize + 3];
+            let (b, q) = best_price.try_get_symbol::<T>()?;
+            ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
+            let (best_ask0, best_bid0) = best_price.split_old_to_u128();
+            let (best_ask1, best_bid1) = best_price.split_new_to_u128();
+            ensure!(
+                best_ask1 >= best_ask0 && best_bid1 >= best_bid0,
+                Error::<T>::ProofsUnsatisfied
+            );
+
+            let taker_price_page = leaves.last().unwrap();
+            let (b, q, p) = taker_price_page.try_get_orderpage::<T>()?;
+            ensure!(
+                b == base && q == quote && p == price,
+                Error::<T>::ProofsUnsatisfied
+            );
+
+            if ask_delta != 0 {
+                // trading happened
+                ensure!(
+                    maker_pages > 0 && price >= best_ask0,
+                    Error::<T>::ProofsUnsatisfied
+                );
+                // best_ask0 <= page0 < page1 < .. < pagen <= best_ask1
+                let mut pre_best = best_ask0;
+                let mut taken_asks = 0u128;
+                for i in 0..maker_pages as usize - 1 {
+                    let page = &leaves[maker_accounts as usize + 4 + i];
+                    let (b, q, p) = page.try_get_orderpage::<T>()?;
+                    ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
+                    ensure!(pre_best <= p, Error::<T>::ProofsUnsatisfied);
+                    pre_best = p;
+                    ensure!(page.split_new_to_sum() == 0, Error::<T>::ProofsUnsatisfied);
+                    taken_asks += page.split_old_to_sum();
+                }
+                let vanity_maker = &leaves[maker_accounts as usize + 4 + maker_pages as usize - 1];
+                let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
+                ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
+                ensure!(
+                    pre_best < p && p <= best_bid1,
+                    Error::<T>::ProofsUnsatisfied
+                );
+                if bid_delta != 0 {
+                    // partial_filled
+                    ensure!(
+                        best_bid1 == price && p == price,
+                        Error::<T>::ProofsUnsatisfied
+                    );
+                    let prv_is_maker = taker_price_page.split_old_to_sum();
+                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    ensure!(
+                        taken_asks + prv_is_maker + now_is_taker == amount,
+                        Error::<T>::ProofsUnsatisfied
+                    );
+                } else {
+                    // filled or conditional_canceled
+                    ensure!(best_bid1 == best_bid0, Error::<T>::ProofsUnsatisfied);
+                    let prv_is_maker = taker_price_page.split_old_to_sum();
+                    let now_is_maker = taker_price_page.split_new_to_sum();
+                    ensure!(
+                        tb_delta + base_charged == taken_asks + prv_is_maker - now_is_maker,
+                        Error::<T>::ProofsUnsatisfied
+                    );
+                }
+            } else {
+                // no trading
+                ensure!(
+                    maker_pages == 0 && best_ask1 == best_ask0,
+                    Error::<T>::ProofsUnsatisfied
+                );
+                if bid_delta != 0 {
+                    // placed
+                    let prv_is_taker = taker_price_page.split_old_to_sum();
+                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    ensure!(
+                        amount == now_is_taker - prv_is_taker,
+                        Error::<T>::ProofsUnsatisfied
+                    );
+                } else {
+                    // conditional_canceled
+                    ensure!(best_bid1 == best_bid0, Error::<T>::ProofsUnsatisfied);
+                    let prv_is_taker = taker_price_page.split_old_to_sum();
+                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    ensure!(prv_is_taker == now_is_taker, Error::<T>::ProofsUnsatisfied);
+                }
+            }
             Ok(ClearingResult {
                 users_mutation: delta,
                 base_fee: base_charged.into(),
@@ -1063,7 +1262,7 @@ pub mod pallet {
             account: &T::AccountId,
             leaves: &[MerkleLeaf],
         ) -> Result<(), DispatchError> {
-            ensure!(leaves.len() == 3, Error::<T>::ProofsUnsatisfied);
+            ensure!(leaves.len() == 5, Error::<T>::ProofsUnsatisfied);
             let (b, q) = leaves[0].try_get_symbol::<T>()?;
             ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
             let (ask0, bid0) = leaves[0].split_old_to_u128();
@@ -1086,6 +1285,26 @@ pub mod pallet {
             let (qa0, qf0) = leaves[2].split_old_to_u128();
             let (qa1, qf1) = leaves[2].split_new_to_u128();
             ensure!(qa0 + qf0 == qa1 + qf1, Error::<T>::ProofsUnsatisfied);
+
+            let (best_ask0, best_bid0) = leaves[3].split_old_to_u128();
+            let (b, q, cancel_at) = leaves[4].try_get_orderpage::<T>()?;
+            ensure!(
+                b == base && q == quote && (cancel_at >= best_ask0 || cancel_at <= best_bid0),
+                Error::<T>::ProofsUnsatisfied,
+            );
+            let before_cancel = leaves[4].split_old_to_sum();
+            let after_cancel = leaves[4].split_new_to_sum();
+            if cancel_at >= best_ask0 {
+                ensure!(
+                    ask_delta == after_cancel - before_cancel,
+                    Error::<T>::ProofsUnsatisfied
+                );
+            } else {
+                ensure!(
+                    bid_delta == after_cancel - before_cancel,
+                    Error::<T>::ProofsUnsatisfied
+                );
+            }
             Ok(())
         }
 
@@ -1221,7 +1440,8 @@ pub mod pallet {
                         amount,
                         &dominator_id,
                     )?;
-                    let current_season = Self::current_season(dominator.start_from);
+                    let current_block = frame_system::Pallet::<T>::block_number();
+                    let current_season = Self::current_season(current_block, dominator.start_from);
                     let season_step_into = if staking.amount.is_zero() {
                         current_season + 1
                     } else {
@@ -1276,7 +1496,8 @@ pub mod pallet {
                         amount,
                         &dominator_id,
                     )?;
-                    let current_season = Self::current_season(dominator.start_from);
+                    let current_block = frame_system::Pallet::<T>::block_number();
+                    let current_season = Self::current_season(current_block, dominator.start_from);
                     let season_step_into = if remain.is_zero() {
                         current_season + 1
                     } else {
@@ -1302,8 +1523,7 @@ pub mod pallet {
             })
         }
 
-        fn current_season(claim_at: T::BlockNumber) -> Season {
-            let now = frame_system::Pallet::<T>::block_number();
+        fn current_season(now: T::BlockNumber, claim_at: T::BlockNumber) -> Season {
             if now <= claim_at {
                 return 0;
             }
