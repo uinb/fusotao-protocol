@@ -817,12 +817,12 @@ pub mod pallet {
             base: u32,
             quote: u32,
             maker_accounts: u8,
-            maker_pages: u8,
+            pages: u8,
             dominator: &T::AccountId,
             leaves: &[MerkleLeaf],
         ) -> Result<ClearingResult<T>, DispatchError> {
-            // orderbook_size, maker_accounts, taker_account, best_price, orderpage, taker_price_page
-            let leaves_count = (5u8 + maker_accounts + maker_pages) as usize;
+            // v2: orderbook_size, maker_accounts, taker_account, best_price, orderpage
+            let leaves_count = (4u8 + maker_accounts + pages) as usize;
             ensure!(leaves.len() == leaves_count, Error::<T>::ProofsUnsatisfied);
             ensure!(maker_accounts % 2 == 0, Error::<T>::ProofsUnsatisfied);
             let (b, q) = leaves[0].try_get_symbol::<T>()?;
@@ -923,22 +923,22 @@ pub mod pallet {
                 Error::<T>::ProofsUnsatisfied
             );
 
-            let taker_price_page = leaves.last().unwrap();
-            let (b, q, p) = taker_price_page.try_get_orderpage::<T>()?;
-            ensure!(
-                b == base && q == quote && p == price,
-                Error::<T>::ProofsUnsatisfied
-            );
+            // let taker_price_page = leaves.last().unwrap();
+            // let (b, q, p) = taker_price_page.try_get_orderpage::<T>()?;
+            // ensure!(
+            //     b == base && q == quote && p == price,
+            //     Error::<T>::ProofsUnsatisfied
+            // );
             if bid_delta != 0 {
                 // trading happened
                 ensure!(
-                    maker_pages > 0 && price <= best_bid0,
+                    pages > 0 && price <= best_bid0,
                     Error::<T>::ProofsUnsatisfied
                 );
                 // best_bid0 >= page0 > page1 > .. > pagen >= best_bid1
                 let mut pre_best = best_bid0 + 1;
                 let mut taken_bids = 0u128;
-                for i in 0..maker_pages as usize - 1 {
+                for i in 0..pages as usize - 1 {
                     let page = &leaves[maker_accounts as usize + 4 + i];
                     let (b, q, p) = page.try_get_orderpage::<T>()?;
                     ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
@@ -947,30 +947,38 @@ pub mod pallet {
                     ensure!(page.split_new_to_sum() == 0, Error::<T>::ProofsUnsatisfied);
                     taken_bids += page.split_old_to_sum();
                 }
-                let vanity_maker = &leaves[maker_accounts as usize + 4 + maker_pages as usize - 1];
-                let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
-                ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
-                ensure!(
-                    pre_best > p && p >= best_bid1,
-                    Error::<T>::ProofsUnsatisfied
-                );
+
                 if ask_delta != 0 {
                     // partial_filled
+                    let taker_page = leaves.last().unwrap();
+                    let (b, q, p) = taker_page.try_get_orderpage::<T>()?;
+                    ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
+                    ensure!(
+                        pre_best > p && p >= best_bid1,
+                        Error::<T>::ProofsUnsatisfied
+                    );
                     ensure!(
                         best_ask1 == price && p == price,
                         Error::<T>::ProofsUnsatisfied
                     );
-                    let prv_is_maker = taker_price_page.split_old_to_sum();
-                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    let prv_is_maker = taker_page.split_old_to_sum();
+                    let now_is_taker = taker_page.split_new_to_sum();
                     ensure!(
                         taken_bids + prv_is_maker + now_is_taker == amount,
                         Error::<T>::ProofsUnsatisfied
                     );
                 } else {
                     // filled or conditional_canceled
+                    let vanity_maker = leaves.last().unwrap();
+                    let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
+                    ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
+                    ensure!(
+                        pre_best > p && p >= best_bid1,
+                        Error::<T>::ProofsUnsatisfied
+                    );
                     ensure!(best_ask1 == best_ask0, Error::<T>::ProofsUnsatisfied);
-                    let prv_is_maker = taker_price_page.split_old_to_sum();
-                    let now_is_maker = taker_price_page.split_new_to_sum();
+                    let prv_is_maker = vanity_maker.split_old_to_sum();
+                    let now_is_maker = vanity_maker.split_new_to_sum();
                     ensure!(
                         tb_delta == taken_bids + prv_is_maker - now_is_maker,
                         Error::<T>::ProofsUnsatisfied
@@ -978,24 +986,21 @@ pub mod pallet {
                 }
             } else {
                 // no trading
-                ensure!(
-                    maker_pages == 0 && best_bid1 == best_bid0,
-                    Error::<T>::ProofsUnsatisfied
-                );
+                ensure!(best_bid1 == best_bid0, Error::<T>::ProofsUnsatisfied);
                 if ask_delta != 0 {
                     // placed
-                    let prv_is_taker = taker_price_page.split_old_to_sum();
-                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    let vanity_maker = leaves.last().unwrap();
+                    let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
                     ensure!(
-                        amount == now_is_taker - prv_is_taker,
+                        b == base && q == quote && p > best_bid1,
                         Error::<T>::ProofsUnsatisfied
                     );
-                } else {
-                    // conditional_canceled
-                    ensure!(best_ask1 == best_ask0, Error::<T>::ProofsUnsatisfied);
-                    let prv_is_taker = taker_price_page.split_old_to_sum();
-                    let now_is_taker = taker_price_page.split_new_to_sum();
-                    ensure!(prv_is_taker == now_is_taker, Error::<T>::ProofsUnsatisfied);
+                    let prv_is_maker = vanity_maker.split_old_to_sum();
+                    let now_is_maker = vanity_maker.split_new_to_sum();
+                    ensure!(
+                        amount == now_is_maker - prv_is_maker,
+                        Error::<T>::ProofsUnsatisfied
+                    );
                 }
             }
             Ok(ClearingResult {
@@ -1013,12 +1018,12 @@ pub mod pallet {
             base: u32,
             quote: u32,
             maker_accounts: u8,
-            maker_pages: u8,
+            pages: u8,
             dominator: &T::AccountId,
             leaves: &[MerkleLeaf],
         ) -> Result<ClearingResult<T>, DispatchError> {
-            // orderbook_size, maker_accounts, taker_account, best_price, orderpage, taker_price_page
-            let leaves_count = (5u8 + maker_accounts + maker_pages) as usize;
+            // orderbook_size, maker_accounts, taker_account, best_price, orderpage
+            let leaves_count = (4u8 + maker_accounts + pages) as usize;
             ensure!(leaves.len() == leaves_count, Error::<T>::ProofsUnsatisfied);
             ensure!(maker_accounts % 2 == 0, Error::<T>::ProofsUnsatisfied);
             let (ask0, bid0) = leaves[0].split_old_to_u128();
@@ -1100,8 +1105,6 @@ pub mod pallet {
                     bid_delta == amount - mb_delta,
                     Error::<T>::ProofsUnsatisfied
                 );
-            } else {
-                // TODO to avoid divide
             }
             delta.push(TokenMutation {
                 who: taker_b_id,
@@ -1118,23 +1121,17 @@ pub mod pallet {
                 Error::<T>::ProofsUnsatisfied
             );
 
-            let taker_price_page = leaves.last().unwrap();
-            let (b, q, p) = taker_price_page.try_get_orderpage::<T>()?;
-            ensure!(
-                b == base && q == quote && p == price,
-                Error::<T>::ProofsUnsatisfied
-            );
-
             if ask_delta != 0 {
                 // trading happened
                 ensure!(
-                    maker_pages > 0 && price >= best_ask0,
+                    pages > 0 && price >= best_ask0,
                     Error::<T>::ProofsUnsatisfied
                 );
+
                 // best_ask0 <= page0 < page1 < .. < pagen <= best_ask1
                 let mut pre_best = best_ask0;
                 let mut taken_asks = 0u128;
-                for i in 0..maker_pages as usize - 1 {
+                for i in 0..pages as usize - 1 {
                     let page = &leaves[maker_accounts as usize + 4 + i];
                     let (b, q, p) = page.try_get_orderpage::<T>()?;
                     ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
@@ -1143,15 +1140,14 @@ pub mod pallet {
                     ensure!(page.split_new_to_sum() == 0, Error::<T>::ProofsUnsatisfied);
                     taken_asks += page.split_old_to_sum();
                 }
-                let vanity_maker = &leaves[maker_accounts as usize + 4 + maker_pages as usize - 1];
-                let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
-                ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
-                ensure!(
-                    pre_best < p && p <= best_bid1,
-                    Error::<T>::ProofsUnsatisfied
-                );
                 if bid_delta != 0 {
                     // partial_filled
+                    let taker_price_page = leaves.last().unwrap();
+                    let (b, q, p) = taker_price_page.try_get_orderpage::<T>()?;
+                    ensure!(
+                        b == base && q == quote && p == price,
+                        Error::<T>::ProofsUnsatisfied
+                    );
                     ensure!(
                         best_bid1 == price && p == price,
                         Error::<T>::ProofsUnsatisfied
@@ -1164,9 +1160,15 @@ pub mod pallet {
                     );
                 } else {
                     // filled or conditional_canceled
+                    let vanity_maker = leaves.last().unwrap();
+                    let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
+                    ensure!(
+                        b == base && q == quote && p == price,
+                        Error::<T>::ProofsUnsatisfied
+                    );
                     ensure!(best_bid1 == best_bid0, Error::<T>::ProofsUnsatisfied);
-                    let prv_is_maker = taker_price_page.split_old_to_sum();
-                    let now_is_maker = taker_price_page.split_new_to_sum();
+                    let prv_is_maker = vanity_maker.split_old_to_sum();
+                    let now_is_maker = vanity_maker.split_new_to_sum();
                     ensure!(
                         tb_delta + base_charged == taken_asks + prv_is_maker - now_is_maker,
                         Error::<T>::ProofsUnsatisfied
@@ -1174,24 +1176,21 @@ pub mod pallet {
                 }
             } else {
                 // no trading
-                ensure!(
-                    maker_pages == 0 && best_ask1 == best_ask0,
-                    Error::<T>::ProofsUnsatisfied
-                );
+                ensure!(best_ask1 == best_ask0, Error::<T>::ProofsUnsatisfied);
                 if bid_delta != 0 {
                     // placed
-                    let prv_is_taker = taker_price_page.split_old_to_sum();
-                    let now_is_taker = taker_price_page.split_new_to_sum();
+                    let taker_price_page = leaves.last().unwrap();
+                    let (b, q, p) = taker_price_page.try_get_orderpage::<T>()?;
                     ensure!(
-                        amount == now_is_taker - prv_is_taker,
+                        b == base && q == quote && p == price,
                         Error::<T>::ProofsUnsatisfied
                     );
-                } else {
-                    // conditional_canceled
-                    ensure!(best_bid1 == best_bid0, Error::<T>::ProofsUnsatisfied);
-                    let prv_is_taker = taker_price_page.split_old_to_sum();
-                    let now_is_taker = taker_price_page.split_new_to_sum();
-                    ensure!(prv_is_taker == now_is_taker, Error::<T>::ProofsUnsatisfied);
+                    let prv_is_maker = taker_price_page.split_old_to_sum();
+                    let now_is_maker = taker_price_page.split_new_to_sum();
+                    ensure!(
+                        amount == now_is_maker - prv_is_maker,
+                        Error::<T>::ProofsUnsatisfied
+                    );
                 }
             }
             Ok(ClearingResult {
