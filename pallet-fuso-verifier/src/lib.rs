@@ -482,8 +482,15 @@ pub mod pallet {
             let dominator = Dominators::<T>::try_get(&dominator_id)
                 .map_err(|_| Error::<T>::DominatorNotFound)?;
             ensure!(dominator.active, Error::<T>::DominatorInactive);
+            let mut known_root = dominator.merkle_root;
             for proof in proofs.into_iter() {
-                Self::verify_and_update(&dominator_id, &dominator, proof)?;
+                known_root = Self::verify_and_update(
+                    &dominator_id,
+                    &dominator.stablecoins,
+                    known_root,
+                    dominator.start_from.clone(),
+                    proof,
+                )?;
             }
             Ok(Some(0).into())
         }
@@ -568,7 +575,7 @@ pub mod pallet {
                 fund_owner.clone(),
                 token_id,
                 amount,
-                &fund_owner,
+                &dex,
             )?;
             Receipts::<T>::insert(
                 dex.clone(),
@@ -634,9 +641,11 @@ pub mod pallet {
         #[transactional]
         fn verify_and_update(
             dominator_id: &T::AccountId,
-            dominator: &Dominator<TokenId<T>, Balance<T>, T::BlockNumber>,
+            stablecoins: &[TokenId<T>],
+            known_root: [u8; 32],
+            claim_at: T::BlockNumber,
             proof: Proof<T::AccountId>,
-        ) -> DispatchResultWithPostInfo {
+        ) -> Result<[u8; 32], DispatchError> {
             let p0 = smt::CompiledMerkleProof(proof.proof_of_exists.clone());
             let old = proof
                 .leaves
@@ -644,7 +653,7 @@ pub mod pallet {
                 .map(|v| (sha2_256(&v.key).into(), v.old_v.into()))
                 .collect::<Vec<_>>();
             let r = p0
-                .verify::<smt::sha256::Sha256Hasher>(&dominator.merkle_root.into(), old)
+                .verify::<smt::sha256::Sha256Hasher>(&known_root.into(), old)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
             let p1 = smt::CompiledMerkleProof(proof.proof_of_cmd.clone());
@@ -658,7 +667,7 @@ pub mod pallet {
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
             let current_block = frame_system::Pallet::<T>::block_number();
-            let current_season = Self::current_season(current_block, dominator.start_from);
+            let current_season = Self::current_season(current_block, claim_at);
             match proof.cmd {
                 Command::AskLimit(price, amount, maker_fee, taker_fee, base, quote) => {
                     let (price, amount, maker_fee, taker_fee, base, quote): (
@@ -676,7 +685,7 @@ pub mod pallet {
                         base.into(),
                         quote.into(),
                     );
-                    let quote_accepted = dominator.stablecoins.binary_search(&quote.into());
+                    let quote_accepted = stablecoins.binary_search(&quote.into());
                     ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
                     let cr = Self::verify_ask_limit(
                         price,
@@ -715,7 +724,7 @@ pub mod pallet {
                         base.into(),
                         quote.into(),
                     );
-                    let quote_accepted = dominator.stablecoins.binary_search(&quote.into());
+                    let quote_accepted = stablecoins.binary_search(&quote.into());
                     ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
                     let cr = Self::verify_bid_limit(
                         price,
@@ -740,7 +749,7 @@ pub mod pallet {
                 }
                 Command::Cancel(base, quote) => {
                     let (base, quote): (u32, u32) = (base.into(), quote.into());
-                    let quote_accepted = dominator.stablecoins.binary_search(&quote.into());
+                    let quote_accepted = stablecoins.binary_search(&quote.into());
                     ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
                     Self::verify_cancel(base, quote, &proof.user_id, &proof.leaves)?;
                 }
@@ -798,7 +807,7 @@ pub mod pallet {
                     )?;
                     Receipts::<T>::remove(&dominator_id, &proof.user_id);
                     // needn't step forward
-                    return Ok(().into());
+                    return Ok(known_root);
                 }
             }
             Dominators::<T>::mutate(&dominator_id, |d| {
@@ -806,7 +815,7 @@ pub mod pallet {
                 update.merkle_root = proof.root;
                 update.sequence = (proof.event_id, current_block);
             });
-            Ok(().into())
+            Ok(proof.root)
         }
 
         fn verify_ask_limit(
@@ -918,17 +927,7 @@ pub mod pallet {
             ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
             let (best_ask0, best_bid0) = best_price.split_old_to_u128();
             let (best_ask1, best_bid1) = best_price.split_new_to_u128();
-            ensure!(
-                best_ask0 >= best_ask1 && best_bid0 >= best_bid1,
-                Error::<T>::ProofsUnsatisfied
-            );
 
-            // let taker_price_page = leaves.last().unwrap();
-            // let (b, q, p) = taker_price_page.try_get_orderpage::<T>()?;
-            // ensure!(
-            //     b == base && q == quote && p == price,
-            //     Error::<T>::ProofsUnsatisfied
-            // );
             if bid_delta != 0 {
                 // trading happened
                 ensure!(
@@ -1116,10 +1115,6 @@ pub mod pallet {
             ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
             let (best_ask0, best_bid0) = best_price.split_old_to_u128();
             let (best_ask1, best_bid1) = best_price.split_new_to_u128();
-            ensure!(
-                best_ask1 >= best_ask0 && best_bid1 >= best_bid0,
-                Error::<T>::ProofsUnsatisfied
-            );
 
             if ask_delta != 0 {
                 // trading happened
@@ -1127,7 +1122,6 @@ pub mod pallet {
                     pages > 0 && price >= best_ask0,
                     Error::<T>::ProofsUnsatisfied
                 );
-
                 // best_ask0 <= page0 < page1 < .. < pagen <= best_ask1
                 let mut pre_best = best_ask0;
                 let mut taken_asks = 0u128;
@@ -1148,10 +1142,7 @@ pub mod pallet {
                         b == base && q == quote && p == price,
                         Error::<T>::ProofsUnsatisfied
                     );
-                    ensure!(
-                        best_bid1 == price && p == price,
-                        Error::<T>::ProofsUnsatisfied
-                    );
+                    ensure!(best_bid1 == price, Error::<T>::ProofsUnsatisfied);
                     let prv_is_maker = taker_price_page.split_old_to_sum();
                     let now_is_taker = taker_price_page.split_new_to_sum();
                     ensure!(
