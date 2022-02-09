@@ -202,9 +202,8 @@ pub mod pallet {
     }
 
     #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
-    pub struct Dominator<TokenId, Balance, BlockNumber> {
+    pub struct Dominator<Balance, BlockNumber> {
         pub staked: Balance,
-        pub stablecoins: Vec<TokenId>,
         pub merkle_root: [u8; 32],
         pub start_from: BlockNumber,
         pub sequence: (u64, BlockNumber),
@@ -224,11 +223,10 @@ pub mod pallet {
     }
 
     #[derive(Clone, RuntimeDebug)]
-    struct Distribution<AccountId, Balance> {
-        dominator: AccountId,
+    struct Distribution<T: Config> {
         from_season: Season,
         to_season: Season,
-        staking: Balance,
+        staking: Balance<T>,
     }
 
     #[pallet::config]
@@ -276,7 +274,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         T::AccountId,
-        Dominator<TokenId<T>, Balance<T>, T::BlockNumber>,
+        Dominator<Balance<T>, T::BlockNumber>,
         OptionQuery,
     >;
 
@@ -419,7 +417,6 @@ pub mod pallet {
                 &dominator,
                 Dominator {
                     staked: Zero::zero(),
-                    stablecoins: Vec::new(),
                     start_from: register_at,
                     sequence: (0, current_block),
                     merkle_root: Default::default(),
@@ -427,49 +424,6 @@ pub mod pallet {
                 },
             );
             Self::deposit_event(Event::DominatorClaimed(dominator));
-            Ok(().into())
-        }
-
-        #[pallet::weight(T::SelfWeightInfo::add_stablecoin())]
-        pub fn add_stablecoin(
-            origin: OriginFor<T>,
-            stablecoin: TokenId<T>,
-        ) -> DispatchResultWithPostInfo {
-            let dominator_id = ensure_signed(origin)?;
-            Dominators::<T>::try_mutate_exists(&dominator_id, |dominator| -> DispatchResult {
-                ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-                let mut dex = dominator.take().unwrap();
-                let idx = dex.stablecoins.binary_search(&stablecoin);
-                if !idx.is_ok() {
-                    ensure!(
-                        dex.stablecoins.len() < T::DominatorStablecoinLimit::get() as usize,
-                        Error::<T>::OutOfStablecoinLimit
-                    );
-                    dex.stablecoins
-                        .insert(idx.unwrap_or_else(|x| x), stablecoin);
-                }
-                dominator.replace(dex);
-                return Ok(());
-            })?;
-            Ok(().into())
-        }
-
-        #[pallet::weight(T::SelfWeightInfo::remove_stablecoin())]
-        pub fn remove_stablecoin(
-            origin: OriginFor<T>,
-            stablecoin: TokenId<T>,
-        ) -> DispatchResultWithPostInfo {
-            let dominator_id = ensure_signed(origin)?;
-            Dominators::<T>::try_mutate_exists(&dominator_id, |dominator| -> DispatchResult {
-                ensure!(dominator.is_some(), Error::<T>::DominatorNotFound);
-                let mut dex = dominator.take().unwrap();
-                let idx = dex.stablecoins.binary_search(&stablecoin);
-                if idx.is_ok() {
-                    dex.stablecoins.remove(idx.unwrap());
-                }
-                dominator.replace(dex);
-                return Ok(());
-            })?;
             Ok(().into())
         }
 
@@ -486,7 +440,6 @@ pub mod pallet {
             for proof in proofs.into_iter() {
                 known_root = Self::verify_and_update(
                     &dominator_id,
-                    &dominator.stablecoins,
                     known_root,
                     dominator.start_from.clone(),
                     proof,
@@ -521,37 +474,31 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // #[transactional]
-        // #[pallet::weight(1_000_000_000_000)]
-        // pub fn claim_shares(
-        //     origin: OriginFor<T>,
-        //     dominator: <T::Lookup as StaticLookup>::Source,
-        //     token: TokenId<T>,
-        // ) -> DispatchResultWithPostInfo {
-        //     let signer = ensure_signed(origin)?;
-        //     let dex = T::Lookup::lookup(dominator)?;
-        //     let dominator =
-        //         Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
-        //     let staking =
-        //         Stakings::<T>::try_get(&dex, &signer).map_err(|_| Error::<T>::InvalidStaking)?;
-        //     let current_block = frame_system::Pallet::<T>::block_number();
-        //     let current_season = (current_block - dominator.start_from) / T::SeasonDuration::get();
-        //     let distribution = Distribution {
-        //         dominator: dex.clone(),
-        //         from_season: staking.from_season,
-        //         to_season: current_season.into(),
-        //         staking: staking.amount,
-        //     };
-        //     let step_into =
-        //         Self::take_shares(&signer, &distribution).map_err(|_| Error::<T>::InvalidStatus)?;
-        //     Stakings::<T>::try_mutate(&dex, &signer, |s| -> DispatchResult {
-        //         let mut mutation = s.take().unwrap();
-        //         mutation.start_season = step_into;
-        //         s.replace(mutation);
-        //         Ok(())
-        //     })?;
-        //     Ok(().into())
-        // }
+        // TODO weight
+        #[transactional]
+        #[pallet::weight(1_000_000_000_000)]
+        pub fn claim_shares(
+            origin: OriginFor<T>,
+            dominator: <T::Lookup as StaticLookup>::Source,
+        ) -> DispatchResultWithPostInfo {
+            let signer = ensure_signed(origin)?;
+            let dex = T::Lookup::lookup(dominator)?;
+            let dominator =
+                Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
+            let staking =
+                Stakings::<T>::try_get(&dex, &signer).map_err(|_| Error::<T>::InvalidStaking)?;
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let current_season = Self::current_season(current_block, dominator.start_from);
+            let distribution = Distribution {
+                from_season: staking.from_season,
+                to_season: current_season,
+                staking: staking.amount,
+            };
+            Stakings::<T>::try_mutate(&dex, &signer, |s| -> DispatchResult {
+                Ok(s.from_season = Self::take_shares(&signer, &dex, &distribution)?)
+            })?;
+            Ok(().into())
+        }
 
         #[pallet::weight(T::SelfWeightInfo::authorize())]
         pub fn authorize(
@@ -641,7 +588,6 @@ pub mod pallet {
         #[transactional]
         fn verify_and_update(
             dominator_id: &T::AccountId,
-            stablecoins: &[TokenId<T>],
             known_root: [u8; 32],
             claim_at: T::BlockNumber,
             proof: Proof<T::AccountId>,
@@ -685,8 +631,10 @@ pub mod pallet {
                         base.into(),
                         quote.into(),
                     );
-                    let quote_accepted = stablecoins.binary_search(&quote.into());
-                    ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
+                    ensure!(
+                        T::Asset::is_stable(&quote.into()),
+                        Error::<T>::UnsupportedQuoteCurrency
+                    );
                     let cr = Self::verify_ask_limit(
                         price,
                         amount,
@@ -724,8 +672,10 @@ pub mod pallet {
                         base.into(),
                         quote.into(),
                     );
-                    let quote_accepted = stablecoins.binary_search(&quote.into());
-                    ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
+                    ensure!(
+                        T::Asset::is_stable(&quote.into()),
+                        Error::<T>::UnsupportedQuoteCurrency
+                    );
                     let cr = Self::verify_bid_limit(
                         price,
                         amount,
@@ -749,8 +699,6 @@ pub mod pallet {
                 }
                 Command::Cancel(base, quote) => {
                     let (base, quote): (u32, u32) = (base.into(), quote.into());
-                    let quote_accepted = stablecoins.binary_search(&quote.into());
-                    ensure!(quote_accepted.is_ok(), Error::<T>::UnsupportedQuoteCurrency);
                     Self::verify_cancel(base, quote, &proof.user_id, &proof.leaves)?;
                 }
                 Command::TransferOut(currency, amount) => {
@@ -1334,33 +1282,33 @@ pub mod pallet {
         #[transactional]
         fn take_shares(
             staker: &T::AccountId,
-            distributions: &Distribution<T::AccountId, Balance<T>>,
+            dominator: &T::AccountId,
+            distributions: &Distribution<T>,
         ) -> Result<Season, DispatchError> {
-            Ok(0)
-            // if distributions.to_season == distributions.from_season {
-            //     return Ok(distributions.from_season);
-            // }
-            // let mut shares: BTreeMap<TokenId<T>, u128> = BTreeMap::new();
-            // for season in distributions.from_season..distributions.to_season {
-            //     let bonus = Bonuses::<T>::get(&distributions.dominator, season);
-            //     if bonus.0.is_zero() {
-            //         continue;
-            //     }
-            //     let staking: u128 = distributions.staking.into();
-            //     let total_staking: u128 = bonus.0.into();
-            //     for (token_id, profit) in bonus.1.into_iter() {
-            //         let profit = profit.into();
-            //         let r: Perquintill = PerThing::from_rational(staking, total_staking);
-            //         shares
-            //             .entry(token_id)
-            //             .and_modify(|share| *share += r * profit)
-            //             .or_insert(r * profit);
-            //     }
-            // }
-            // for (token_id, profit) in shares {
-            //     T::Asset::try_mutate_account(&token_id, staker, |b| Ok(b.0 += profit.into()))?;
-            // }
-            // Ok(distributions.to_season)
+            if distributions.to_season == distributions.from_season {
+                return Ok(distributions.from_season);
+            }
+            let mut shares: BTreeMap<TokenId<T>, u128> = BTreeMap::new();
+            for season in distributions.from_season..distributions.to_season {
+                let bonus = Bonuses::<T>::get(dominator, season);
+                if bonus.staked.is_zero() || bonus.profit.is_empty() {
+                    continue;
+                }
+                // TODO associated type
+                let staking: u128 = distributions.staking.into();
+                let total_staking: u128 = bonus.staked.into();
+                let r: Perquintill = Perquintill::from_rational(staking, total_staking);
+                for (token_id, profit) in bonus.profit.into_iter() {
+                    shares
+                        .entry(token_id)
+                        .and_modify(|share| *share += r * profit.into())
+                        .or_insert(r * profit.into());
+                }
+            }
+            for (token_id, profit) in shares {
+                T::Asset::try_mutate_account(&token_id, staker, |b| Ok(b.0 += profit.into()))?;
+            }
+            Ok(distributions.to_season)
         }
 
         #[transactional]
@@ -1435,8 +1383,12 @@ pub mod pallet {
                     let season_step_into = if staking.amount.is_zero() {
                         current_season + 1
                     } else {
-                        // TODO put into pending distributions
-                        current_season
+                        let distribution = Distribution {
+                            from_season: staking.from_season,
+                            to_season: current_season,
+                            staking: staking.amount,
+                        };
+                        Self::take_shares(staker, dominator_id, &distribution)?
                     };
                     staking.amount += amount;
                     staking.from_season = season_step_into;
@@ -1491,8 +1443,12 @@ pub mod pallet {
                     let season_step_into = if remain.is_zero() {
                         current_season + 1
                     } else {
-                        // TODO put into pending distributions
-                        current_season
+                        let distribution = Distribution {
+                            from_season: staking.from_season,
+                            to_season: current_season,
+                            staking: staking.amount,
+                        };
+                        Self::take_shares(staker, dominator_id, &distribution)?
                     };
                     staking.amount = remain;
                     staking.from_season = season_step_into;
