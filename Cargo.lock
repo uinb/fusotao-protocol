@@ -2230,8 +2230,8 @@ dependencies = [
 
 [[package]]
 name = "sparse-merkle-tree"
-version = "0.5.2"
-source = "git+https://github.com/uinb/sparse-merkle-tree#2e3163308348dc5293aafebbfd7d89f29c71cf87"
+version = "0.1.6"
+source = "git+https://github.com/uinb/sparse-merkle-tree?tag=v0.1.6#88a79b844fa2c11be5e4aa7e6c60802a17565c40"
 dependencies = [
  "cfg-if 0.1.10",
  "generic-array 0.14.4",
