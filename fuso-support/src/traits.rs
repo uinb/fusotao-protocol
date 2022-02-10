@@ -12,15 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use codec::{Codec, FullCodec};
+use codec::Codec;
 use frame_support::{traits::BalanceStatus, Parameter};
 use sp_runtime::{
-    traits::{AtLeast32BitUnsigned, MaybeDisplay, MaybeSerializeDeserialize, Member},
+    traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member},
     DispatchError, DispatchResult,
 };
-use sp_std::{fmt::Debug, vec::Vec};
-
-pub use crate::external_chain::ExternalChainAddress;
 
 pub trait Token<AccountId> {
     type Balance: Member
@@ -29,7 +26,6 @@ pub trait Token<AccountId> {
         + Default
         + Copy
         + Codec
-        + Debug
         + MaybeSerializeDeserialize;
 
     type TokenId: Member
@@ -38,10 +34,11 @@ pub trait Token<AccountId> {
         + Default
         + Copy
         + Codec
-        + Debug
         + MaybeSerializeDeserialize;
 
     fn native_token_id() -> Self::TokenId;
+
+    fn is_stable(token_id: &Self::TokenId) -> bool;
 
     fn free_balance(token: &Self::TokenId, who: &AccountId) -> Self::Balance;
 
@@ -160,61 +157,4 @@ pub trait NamedReservableToken<AccountId>: Token<AccountId> {
         value: Self::Balance,
         status: BalanceStatus,
     ) -> sp_std::result::Result<Self::Balance, DispatchError>;
-}
-
-pub trait ProofOfSecurity<AccountId> {
-    type ExternalChainAddress: Parameter
-        + Member
-        + MaybeSerializeDeserialize
-        + Debug
-        + MaybeDisplay
-        + Ord
-        + Default;
-
-    fn pos_enabled() -> bool;
-}
-
-pub trait Referendum<BlockNumber, Index, Members> {
-    fn proposal(start_include: BlockNumber) -> Index;
-
-    fn get_round() -> Index;
-
-    fn get_result(index: Index) -> Option<Vec<Members>>;
-}
-
-pub type ExternalTransactionId = u64;
-
-pub trait Inspector<T: frame_system::Config> {
-    type ExternalChainBalance: AtLeast32BitUnsigned
-        + FullCodec
-        + Parameter
-        + Member
-        + Copy
-        + MaybeDisplay
-        + MaybeSerializeDeserialize
-        + Default
-        + Debug;
-
-    type ExternalChainTxHash: Clone
-        + Parameter
-        + Member
-        + MaybeSerializeDeserialize
-        + Debug
-        + MaybeDisplay
-        + Ord
-        + Default;
-
-    fn expect_transaction(
-        to: ExternalChainAddress,
-        memo: Vec<u8>,
-        amount: Self::ExternalChainBalance,
-    );
-
-    fn approve(
-        from: ExternalChainAddress,
-        to: ExternalChainAddress,
-        memo: Vec<u8>,
-        amount: Self::ExternalChainBalance,
-        external_transaction_hash: Self::ExternalChainTxHash,
-    );
 }

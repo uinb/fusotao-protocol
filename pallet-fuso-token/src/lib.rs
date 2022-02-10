@@ -30,7 +30,7 @@ pub mod pallet {
         transactional,
     };
     use frame_system::pallet_prelude::*;
-    use fuso_support::traits::{NamedReservableToken, ReservableToken, Token};
+    use fuso_support::traits::{ReservableToken, Token};
     use pallet_octopus_support::traits::AssetIdAndNameProvider;
     use scale_info::TypeInfo;
     use sp_runtime::traits::{
@@ -38,7 +38,7 @@ pub mod pallet {
         Saturating, StaticLookup, Zero,
     };
     use sp_runtime::DispatchResult;
-    use sp_std::{cmp, fmt::Debug, vec::Vec};
+    use sp_std::vec::Vec;
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
     pub struct TokenAccountData<Balance> {
@@ -50,6 +50,7 @@ pub mod pallet {
     pub struct TokenInfo<Balance> {
         pub total: Balance,
         pub symbol: Vec<u8>,
+        pub stable: bool,
     }
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
@@ -71,7 +72,6 @@ pub mod pallet {
             + PartialEq
             + Copy
             + Codec
-            + Debug
             + MaybeSerializeDeserialize;
 
         #[pallet::constant]
@@ -159,7 +159,7 @@ pub mod pallet {
             ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
             let name = name.unwrap();
             ensure!(
-                name.len() >= 2 && name.len() <= 5,
+                name.len() >= 2 && name.len() <= 8,
                 Error::<T>::InvalidTokenName
             );
             let id = Self::next_token_id();
@@ -171,8 +171,28 @@ pub mod pallet {
                     reserved: Zero::zero(),
                 },
             );
-            Tokens::<T>::insert(id, TokenInfo { total, symbol });
+            Tokens::<T>::insert(
+                id,
+                TokenInfo {
+                    total,
+                    symbol,
+                    stable: false,
+                },
+            );
             Self::deposit_event(Event::TokenIssued(id, origin, total));
+            Ok(().into())
+        }
+
+        #[pallet::weight(0)]
+        pub fn mark_stable(origin: OriginFor<T>, id: T::TokenId) -> DispatchResultWithPostInfo {
+            let _ = ensure_root(origin)?;
+            Tokens::<T>::try_mutate_exists(id, |info| -> DispatchResult {
+                ensure!(info.is_some(), Error::<T>::InvalidToken);
+                let mut token_info = info.take().unwrap();
+                token_info.stable = true;
+                info.replace(token_info);
+                Ok(())
+            })?;
             Ok(().into())
         }
 
@@ -186,7 +206,7 @@ pub mod pallet {
             let origin = ensure_signed(origin)?;
             ensure!(!amount.is_zero(), Error::<T>::AmountZero);
             let target = T::Lookup::lookup(target)?;
-            <Balances<T>>::try_mutate_exists((&token, &origin), |from| -> DispatchResult {
+            Balances::<T>::try_mutate_exists((&token, &origin), |from| -> DispatchResult {
                 ensure!(from.is_some(), Error::<T>::BalanceZero);
                 let mut account = from.take().unwrap();
                 account.free = account
@@ -199,7 +219,7 @@ pub mod pallet {
                         from.replace(account);
                     }
                 }
-                <Balances<T>>::try_mutate_exists((&token, &target), |to| -> DispatchResult {
+                Balances::<T>::try_mutate_exists((&token, &target), |to| -> DispatchResult {
                     let mut account = to.take().unwrap_or(TokenAccountData {
                         free: Zero::zero(),
                         reserved: Zero::zero(),
@@ -424,6 +444,16 @@ pub mod pallet {
 
         fn native_token_id() -> Self::TokenId {
             T::NativeTokenId::get()
+        }
+
+        fn is_stable(token: &T::TokenId) -> bool {
+            if *token == Self::native_token_id() {
+                false
+            } else {
+                Self::get_token_info(token)
+                    .map(|t| t.stable)
+                    .unwrap_or(false)
+            }
         }
 
         fn free_balance(token: &T::TokenId, who: &T::AccountId) -> Self::Balance {
