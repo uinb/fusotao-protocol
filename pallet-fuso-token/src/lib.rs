@@ -54,17 +54,11 @@ pub mod pallet {
     }
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, Debug, TypeInfo)]
-    pub struct TokenInfo<Balance> {
-        pub total: Balance,
-        pub symbol: Vec<u8>,
-        pub stable: bool,
+    pub enum XToken<TokenId, Balance> {
+        //(token_id, symbol, contract_address, total, stable
+        NEP141(TokenId, Vec<u8>, Vec<u8>, Balance, bool),
     }
 
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
-    pub enum XToken<TokenId, Balance> {
-        //symbol, nep141 contract name
-        NEP141(TokenId, Vec<u8>, Vec<u8>, Balance, u8),
-    }
 
     pub type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
 
@@ -116,17 +110,12 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn get_token_info)]
     pub type Tokens<T: Config> =
-        StorageMap<_, Twox64Concat, T::TokenId, TokenInfo<BalanceOf<T>>, OptionQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn get_token_by_id)]
-    pub type TokenById<T: Config> =
         StorageMap<_, Twox64Concat, T::TokenId, XToken<T::TokenId, BalanceOf<T>>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn get_token_by_name)]
     pub type TokenByName<T: Config> =
-        StorageMap<_, Twox64Concat, Vec<u8>, XToken<T::TokenId, BalanceOf<T>>, OptionQuery>;
+        StorageMap<_, Twox64Concat, Vec<u8>, T::TokenId, OptionQuery>;
 
     #[pallet::type_value]
     pub fn DefaultNextTokenId<T: Config>() -> T::TokenId {
@@ -196,7 +185,10 @@ pub mod pallet {
             Tokens::<T>::try_mutate_exists(id, |info| -> DispatchResult {
                 ensure!(info.is_some(), Error::<T>::InvalidToken);
                 let mut token_info = info.take().unwrap();
-                token_info.stable = true;
+				match token_info {
+					XToken::NEP141(_, _, _, _, mut stable) => {stable = true}
+					_ => {}
+				}
                 info.replace(token_info);
                 Ok(())
             })?;
@@ -258,6 +250,7 @@ pub mod pallet {
 
         fn create_token(name: &[u8]) -> T::TokenId {
             let token_id = Self::next_token_id();
+            NextTokenId::<T>::mutate(|id| *id += One::one());
             let name = name.as_ref().to_vec();
             let token = XToken::<T::TokenId, BalanceOf<T>>::NEP141(
                 token_id,
@@ -266,8 +259,16 @@ pub mod pallet {
                 Zero::zero(),
                 18u8,
             );
-            TokenByName::<T>::insert(name, token.clone());
+            TokenByName::<T>::insert(name.clone(), token.clone());
             TokenById::<T>::insert(token_id, token.clone());
+            Tokens::<T>::insert(
+                token_id,
+                TokenInfo {
+                    total: Zero::zero(),
+                    symbol: name,
+                    stable: false,
+                },
+            );
             token_id
         }
 
@@ -285,7 +286,7 @@ pub mod pallet {
                     .checked_add(&amount)
                     .ok_or(Error::<T>::Overflow)?;
                 Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
-                    ensure!(token_info.is_some(), Error::<T>::BalanceZero);
+                    ensure!(token_info.is_some(), Error::<T>::InvalidToken);
                     let mut info = token_info.take().unwrap();
                     info.total = info
                         .total
@@ -617,7 +618,7 @@ pub mod pallet {
         }
     }
 
-    /*impl<T: Config> AssetIdAndNameProvider<T::TokenId> for Pallet<T> {
+    impl<T: Config> AssetIdAndNameProvider<T::TokenId> for Pallet<T> {
         type Err = ();
 
         fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
@@ -631,11 +632,11 @@ pub mod pallet {
         }
 
         fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
-            let tokenResult = Self::get_token_by_id(token_id);
+            let tokenResult = Self::get_token_info(token_id);
             match tokenResult {
                 Some(XToken::NEP141(_, _, name, _, _)) => Ok(name),
-                _ => Err(())
+                _ => Err(()),
             }
         }
-    }*/
+    }
 }
