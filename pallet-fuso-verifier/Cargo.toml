@@ -28,6 +28,9 @@ smt = { git = "https://github.com/uinb/sparse-merkle-tree", tag = "v0.1.6", pack
 
 [dev-dependencies]
 sp-core = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
+pallet-fuso-token = { defualt-features = false, path = "../pallet-fuso-token"}
+pallet-balances = { defaut-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
+sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
 
 [features]
 default = ["std"]

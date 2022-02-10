@@ -13,8 +13,15 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate sp_runtime;
+
 pub use pallet::*;
 pub mod weights;
+
+#[cfg(test)]
+pub mod mock;
+#[cfg(test)]
+pub mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -235,18 +242,6 @@ pub mod pallet {
             })?;
             Self::deposit_event(Event::TokenTransfered(token, origin, target, amount));
             Ok(().into())
-        }
-    }
-
-    impl<T: Config> AssetIdAndNameProvider<u32> for Pallet<T> {
-        type Err = ();
-
-        fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<u32, Self::Err> {
-            unimplemented!()
-        }
-
-        fn try_get_asset_name(asset_id: u32) -> Result<Vec<u8>, Self::Err> {
-            unimplemented!()
         }
     }
 

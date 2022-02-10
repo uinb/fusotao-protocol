@@ -15,9 +15,15 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "256"]
 
-pub use pallet::*;
+extern crate sp_runtime;
 
+pub use pallet::*;
 pub mod weights;
+
+#[cfg(test)]
+pub mod mock;
+#[cfg(test)]
+pub mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -344,6 +350,7 @@ pub mod pallet {
         StakingNotExists,
         DistributionOngoing,
         OutOfStablecoinLimit,
+        OutOfDominatorSizeLimit,
         LittleStakingAmount,
         UnsupportedQuoteCurrency,
     }
@@ -406,6 +413,12 @@ pub mod pallet {
                 !Dominators::<T>::contains_key(&dominator),
                 Error::<T>::DominatorAlreadyExists
             );
+            let dominator_count = Dominators::<T>::iter_keys().count();
+            ensure!(
+                dominator_count < T::MaxDominators::get() as usize,
+                Error::<T>::OutOfDominatorSizeLimit
+            );
+
             let register_at = current_block - current_block % T::DominatorRegisterPoint::get();
             Dominators::<T>::insert(
                 &dominator,
