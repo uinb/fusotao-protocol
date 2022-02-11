@@ -262,16 +262,15 @@ pub mod pallet {
                     .ok_or(Error::<T>::Overflow)?;
                 Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
                     ensure!(token_info.is_some(), Error::<T>::InvalidToken);
-                    let info = token_info.take().unwrap();
-                    let new_info: XToken<BalanceOf<T>> = match info {
-                        XToken::NEP141(name, contract_address, total, stable) => {
-                            let new_total = total
+                    let mut info = token_info.take().unwrap();
+                    match info {
+                        XToken::NEP141(_, _, ref mut total, _) => {
+                            *total = total
                                 .checked_add(&amount)
                                 .ok_or(Error::<T>::InsufficientBalance)?;
-                            XToken::NEP141(name, contract_address, new_total, stable)
                         }
-                    };
-                    token_info.replace(new_info);
+                    }
+                    token_info.replace(info);
                     Ok(())
                 })?;
                 to.replace(account);
@@ -306,20 +305,12 @@ pub mod pallet {
                     ensure!(token_info.is_some(), Error::<T>::BalanceZero);
                     let mut info = token_info.take().unwrap();
                     match info {
-                        XToken::NEP141(ref name, ref contract_address, ref mut total, stable) => {
+                        XToken::NEP141(_, _, ref mut total, _) => {
                             *total = total
                                 .checked_sub(&amount)
                                 .ok_or(Error::<T>::InsufficientBalance)?;
                         }
                     }
-                    // let new_info: XToken<BalanceOf<T>> = match info {
-                    //     XToken::NEP141(name, contract_address, total, stable) => {
-                    //         let new_total = total
-                    //             .checked_sub(&amount)
-                    //             .ok_or(Error::<T>::InsufficientBalance)?;
-                    //         XToken::NEP141(name, contract_address, new_total, stable)
-                    //     }
-                    // };
                     token_info.replace(info);
                     Ok(())
                 })?;
