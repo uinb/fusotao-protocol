@@ -185,8 +185,7 @@ pub mod pallet {
                 ensure!(info.is_some(), Error::<T>::InvalidToken);
                 let mut token_info = info.take().unwrap();
                 match token_info {
-                    XToken::NEP141(_, _, _, mut stable) => stable = true,
-                    _ => {}
+                    XToken::NEP141(_, _, _, ref mut stable) => *stable = true,
                 }
                 info.replace(token_info);
                 Ok(())
@@ -237,7 +236,6 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-
         fn create_token(name: &[u8]) -> T::TokenId {
             let token_id = Self::next_token_id();
             NextTokenId::<T>::mutate(|id| *id += One::one());
@@ -264,7 +262,7 @@ pub mod pallet {
                     .ok_or(Error::<T>::Overflow)?;
                 Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
                     ensure!(token_info.is_some(), Error::<T>::InvalidToken);
-                    let mut info = token_info.take().unwrap();
+                    let info = token_info.take().unwrap();
                     let new_info: XToken<BalanceOf<T>> = match info {
                         XToken::NEP141(name, contract_address, total, stable) => {
                             let new_total = total
@@ -307,15 +305,22 @@ pub mod pallet {
                 Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
                     ensure!(token_info.is_some(), Error::<T>::BalanceZero);
                     let mut info = token_info.take().unwrap();
-                    let new_info: XToken<BalanceOf<T>> = match info {
-                        XToken::NEP141(name, contract_address, total, stable) => {
-                            let new_total = total
+                    match info {
+                        XToken::NEP141(ref name, ref contract_address, ref mut total, stable) => {
+                            *total = total
                                 .checked_sub(&amount)
                                 .ok_or(Error::<T>::InsufficientBalance)?;
-                            XToken::NEP141(name, contract_address, new_total, stable)
                         }
-                    };
-                    token_info.replace(new_info);
+                    }
+                    // let new_info: XToken<BalanceOf<T>> = match info {
+                    //     XToken::NEP141(name, contract_address, total, stable) => {
+                    //         let new_total = total
+                    //             .checked_sub(&amount)
+                    //             .ok_or(Error::<T>::InsufficientBalance)?;
+                    //         XToken::NEP141(name, contract_address, new_total, stable)
+                    //     }
+                    // };
+                    token_info.replace(info);
                     Ok(())
                 })?;
                 Ok(())
@@ -414,17 +419,17 @@ pub mod pallet {
                 )?
             } else {
                 Balances::<T>::try_mutate_exists((token, who), |t| -> Result<R, DispatchError> {
-                   	let mut b = t.take().unwrap_or_default();
+                    let mut b = t.take().unwrap_or_default();
                     let mut v = (b.free, b.reserved);
                     let r = f(&mut v)?;
                     b.free = v.0;
                     b.reserved = v.1;
-					match b.free == Zero::zero() && b.reserved == Zero::zero() {
-						true => {}
-						false => {
-							t.replace(b);
-						}
-					}
+                    match b.free == Zero::zero() && b.reserved == Zero::zero() {
+                        true => {}
+                        false => {
+                            t.replace(b);
+                        }
+                    }
                     Ok(r)
                 })
             }
@@ -627,8 +632,8 @@ pub mod pallet {
 
         fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
             let name = name.as_ref();
-            let tokenResult = Self::get_token_by_name(name.clone().to_vec());
-            let token_id = match tokenResult {
+            let token_result = Self::get_token_by_name(name.clone().to_vec());
+            let token_id = match token_result {
                 Some(token_id) => token_id,
                 _ => Self::create_token(name),
             };
@@ -636,10 +641,10 @@ pub mod pallet {
         }
 
         fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
-            let tokenResult = Self::get_token_info(token_id);
-            match tokenResult {
+            let token_result = Self::get_token_info(token_id);
+            match token_result {
                 Some(XToken::NEP141(name, _, _, _)) => Ok(name),
-                _ => Err(()),
+                None => Err(()),
             }
         }
     }

@@ -15,9 +15,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "256"]
 
-extern crate pallet_fuso_token;
-extern crate sp_runtime;
-
 pub use pallet::*;
 pub mod weights;
 
@@ -350,8 +347,6 @@ pub mod pallet {
         InvalidStaking,
         StakingNotExists,
         DistributionOngoing,
-        OutOfStablecoinLimit,
-        OutOfDominatorSizeLimit,
         LittleStakingAmount,
         UnsupportedQuoteCurrency,
     }
@@ -414,12 +409,6 @@ pub mod pallet {
                 !Dominators::<T>::contains_key(&dominator),
                 Error::<T>::DominatorAlreadyExists
             );
-            let dominator_count = Dominators::<T>::iter_keys().count();
-            ensure!(
-                dominator_count < T::MaxDominators::get() as usize,
-                Error::<T>::OutOfDominatorSizeLimit
-            );
-
             let register_at = current_block - current_block % T::DominatorRegisterPoint::get();
             Dominators::<T>::insert(
                 &dominator,
