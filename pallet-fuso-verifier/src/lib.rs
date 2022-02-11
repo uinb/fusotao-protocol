@@ -37,7 +37,7 @@ pub mod pallet {
         traits::{ReservableToken, Token},
     };
     use scale_info::TypeInfo;
-    use sp_io::hashing::sha2_256;
+    use sp_io::hashing::blake2_256 as hashing;
     use sp_runtime::{
         traits::{CheckedAdd, CheckedSub, StaticLookup, Zero},
         Permill, Perquintill, RuntimeDebug,
@@ -594,16 +594,16 @@ pub mod pallet {
                 .leaves
                 .iter()
                 .map(|v| {
-                    let key = sha2_256(&v.key).into();
+                    let key = hashing(&v.key).into();
                     ((key, v.old_v.into()), (key, v.new_v.into()))
                 })
                 .unzip();
             let r = mp
-                .verify::<smt::sha256::Sha256Hasher>(&known_root.into(), old)
+                .verify::<smt::blake2b::Blake2bHasher>(&known_root.into(), old)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
             let r = mp
-                .verify::<smt::sha256::Sha256Hasher>(&proof.root.into(), new)
+                .verify::<smt::blake2b::Blake2bHasher>(&proof.root.into(), new)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
             let current_block = frame_system::Pallet::<T>::block_number();
