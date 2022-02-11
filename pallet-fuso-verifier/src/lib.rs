@@ -35,7 +35,7 @@ pub mod pallet {
     use scale_info::TypeInfo;
     use sp_io::hashing::sha2_256;
     use sp_runtime::{
-        traits::{CheckedSub, StaticLookup, Zero},
+        traits::{CheckedAdd, CheckedSub, StaticLookup, Zero},
         Permill, Perquintill, RuntimeDebug,
     };
     use sp_std::{
@@ -190,8 +190,7 @@ pub mod pallet {
         pub leaves: Vec<MerkleLeaf>,
         pub maker_page_delta: u8,
         pub maker_account_delta: u8,
-        pub proof_of_exists: Vec<u8>,
-        pub proof_of_cmd: Vec<u8>,
+        pub merkle_proof: Vec<u8>,
         pub root: [u8; 32],
     }
 
@@ -248,12 +247,6 @@ pub mod pallet {
 
         #[pallet::constant]
         type MinimalStakingAmount: Get<Balance<Self>>;
-
-        #[pallet::constant]
-        type MaxDominators: Get<u32>;
-
-        #[pallet::constant]
-        type DominatorStablecoinLimit: Get<u32>;
     }
 
     #[pallet::storage]
@@ -344,6 +337,7 @@ pub mod pallet {
         TooEarlyToRegister,
         DominatorInactive,
         InsufficientBalance,
+        Overflow,
         InsufficientStakingAmount,
         InvalidStatus,
         InvalidStaking,
@@ -592,23 +586,20 @@ pub mod pallet {
             claim_at: T::BlockNumber,
             proof: Proof<T::AccountId>,
         ) -> Result<[u8; 32], DispatchError> {
-            let p0 = smt::CompiledMerkleProof(proof.proof_of_exists.clone());
-            let old = proof
+            let mp = smt::CompiledMerkleProof(proof.merkle_proof.clone());
+            let (old, new): (Vec<_>, Vec<_>) = proof
                 .leaves
                 .iter()
-                .map(|v| (sha2_256(&v.key).into(), v.old_v.into()))
-                .collect::<Vec<_>>();
-            let r = p0
+                .map(|v| {
+                    let key = sha2_256(&v.key).into();
+                    ((key, v.old_v.into()), (key, v.new_v.into()))
+                })
+                .unzip();
+            let r = mp
                 .verify::<smt::sha256::Sha256Hasher>(&known_root.into(), old)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
-            let p1 = smt::CompiledMerkleProof(proof.proof_of_cmd.clone());
-            let new = proof
-                .leaves
-                .iter()
-                .map(|v| (sha2_256(&v.key).into(), v.new_v.into()))
-                .collect::<Vec<_>>();
-            let r = p1
+            let r = mp
                 .verify::<smt::sha256::Sha256Hasher>(&proof.root.into(), new)
                 .map_err(|_| Error::<T>::ProofsUnsatisfied)?;
             ensure!(r, Error::<T>::ProofsUnsatisfied);
@@ -647,14 +638,18 @@ pub mod pallet {
                         dominator_id,
                         &proof.leaves,
                     )?;
-                    for d in cr.users_mutation.iter() {
-                        Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
-                        Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
+                    if cr.users_mutation.len() > 1 {
+                        for d in cr.users_mutation.iter() {
+                            Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
+                            Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
+                        }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
-                    T::Asset::try_mutate_account(&base.into(), dominator_id, |b| {
-                        Ok(b.0 += cr.base_fee)
-                    })?;
+                    if cr.base_fee != Zero::zero() {
+                        T::Asset::try_mutate_account(&base.into(), dominator_id, |b| {
+                            Ok(b.0 += cr.base_fee)
+                        })?;
+                    }
                 }
                 Command::BidLimit(price, amount, maker_fee, taker_fee, base, quote) => {
                     let (price, amount, maker_fee, taker_fee, base, quote): (
@@ -688,14 +683,18 @@ pub mod pallet {
                         dominator_id,
                         &proof.leaves,
                     )?;
-                    for d in cr.users_mutation.iter() {
-                        Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
-                        Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
+                    if cr.users_mutation.len() > 1 {
+                        for d in cr.users_mutation.iter() {
+                            Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
+                            Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
+                        }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
-                    T::Asset::try_mutate_account(&base.into(), dominator_id, |b| {
-                        Ok(b.0 += cr.base_fee)
-                    })?;
+                    if cr.base_fee != Zero::zero() {
+                        T::Asset::try_mutate_account(&base.into(), dominator_id, |b| {
+                            Ok(b.0 += cr.base_fee)
+                        })?;
+                    }
                 }
                 Command::Cancel(base, quote) => {
                     let (base, quote): (u32, u32) = (base.into(), quote.into());
@@ -1327,8 +1326,7 @@ pub mod pallet {
                 to,
                 |ov| -> DispatchResult {
                     T::Asset::reserve(&token, &fund_owner, value)?;
-                    *ov += value;
-                    Ok(())
+                    Ok(*ov = ov.checked_add(&value).ok_or(Error::<T>::Overflow)?)
                 },
             )
         }
@@ -1344,14 +1342,18 @@ pub mod pallet {
             if value.is_zero() {
                 return Ok(());
             }
-            Reserves::<T>::try_mutate(
+            Reserves::<T>::try_mutate_exists(
                 &(reserve_id, fund_owner.clone(), token),
                 from,
                 |ov| -> DispatchResult {
-                    *ov = ov
+                    T::Asset::unreserve(&token, &fund_owner, value)?;
+                    let mut reserve = ov.take().ok_or(Error::<T>::InsufficientBalance)?;
+                    reserve = reserve
                         .checked_sub(&value)
                         .ok_or(Error::<T>::InsufficientBalance)?;
-                    T::Asset::unreserve(&token, &fund_owner, value)?;
+                    if reserve > Zero::zero() {
+                        ov.replace(reserve);
+                    }
                     Ok(())
                 },
             )
@@ -1482,13 +1484,17 @@ pub mod pallet {
             currency: TokenId<T>,
             balance: Balance<T>,
         ) -> DispatchResult {
-            Bonuses::<T>::try_mutate(dominator, season, |b| {
-                b.profit
-                    .entry(currency)
-                    .and_modify(|p| *p += balance)
-                    .or_insert(balance);
+            if balance == Zero::zero() {
                 Ok(())
-            })
+            } else {
+                Bonuses::<T>::try_mutate(dominator, season, |b| {
+                    b.profit
+                        .entry(currency)
+                        .and_modify(|p| *p += balance)
+                        .or_insert(balance);
+                    Ok(())
+                })
+            }
         }
     }
 }
