@@ -25,61 +25,9 @@ pub fn register_and_stablecoin_chainge_should_work() {
         assert_ok!(Verifier::register(Origin::signed(alice.clone())));
         assert_ok!(Verifier::register(Origin::signed(charlie.clone())));
         assert_noop!(
-            Verifier::register(Origin::signed(bob.clone())),
-            Error::<Test>::OutOfDominatorSizeLimit
-        );
-        assert_noop!(
             Verifier::register(Origin::signed(alice.clone())),
             Error::<Test>::DominatorAlreadyExists
         );
-        /* assert_noop!(
-            Verifier::add_stablecoin(Origin::signed(ferdie.clone()), 1),
-            Error::<Test>::DominatorNotFound
-        );
-
-        assert_ok!(Verifier::add_stablecoin(Origin::signed(alice.clone()), 3));
-
-        let alice_dominator: Dominator<u32, u128, u32> = Verifier::dominators(&alice).unwrap();
-        assert!(alice_dominator.stablecoins.contains(&3));
-
-        assert_ok!(Verifier::add_stablecoin(Origin::signed(alice.clone()), 3));
-        let alice_dominator: Dominator<u32, u128, u32> = Verifier::dominators(&alice).unwrap();
-        assert!(alice_dominator.stablecoins.contains(&3));
-        assert_eq!(alice_dominator.stablecoins.len(), 1);
-
-        assert_ok!(Verifier::add_stablecoin(Origin::signed(alice.clone()), 2));
-
-        let alice_dominator: Dominator<u32, u128, u32> = Verifier::dominators(&alice).unwrap();
-        assert!(alice_dominator.stablecoins.contains(&3));
-        assert!(alice_dominator.stablecoins.contains(&2));
-        assert_eq!(alice_dominator.stablecoins.len(), 2);
-
-        assert_ok!(Verifier::remove_stablecoin(
-            Origin::signed(alice.clone()),
-            2
-        ));
-
-        let alice_dominator: Dominator<u32, u128, u32> = Verifier::dominators(&alice).unwrap();
-        assert!(alice_dominator.stablecoins.contains(&3));
-        assert!(!alice_dominator.stablecoins.contains(&2));
-        assert_eq!(alice_dominator.stablecoins.len(), 1);
-
-        assert_ok!(Verifier::add_stablecoin(Origin::signed(alice.clone()), 5));
-
-        let alice_dominator: Dominator<u32, u128, u32> = Verifier::dominators(&alice).unwrap();
-        assert!(alice_dominator.stablecoins.contains(&3));
-        assert!(alice_dominator.stablecoins.contains(&5));
-
-        assert_ok!(Verifier::add_stablecoin(Origin::signed(alice.clone()), 2));
-
-        let alice_dominator: Dominator<u32, u128, u32> = Verifier::dominators(&alice).unwrap();
-        assert_eq!(alice_dominator.stablecoins.len(), 3);
-        assert_ok!(Verifier::add_stablecoin(Origin::signed(alice.clone()), 2));
-
-        assert_noop!(
-            Verifier::add_stablecoin(Origin::signed(alice.clone()), 0),
-            Error::<Test>::OutOfStablecoinLimit
-        );*/
     });
 }
 

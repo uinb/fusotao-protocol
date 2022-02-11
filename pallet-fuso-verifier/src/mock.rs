@@ -96,17 +96,13 @@ parameter_types! {
     pub const SeasonDuration: BlockNumber = 1440;
     pub const MinimalStakingAmount: Balance = 100;
     pub const DominatorRegisterPoint: BlockNumber = 10;
-    pub const MaxDominators: u32 = 2;
-    pub const DominatorStablecoinLimit: u32 = 3;
 }
 
 impl pallet_fuso_verifier::Config for Test {
     type Asset = TokenModule;
     type DominatorOnlineThreshold = DominatorOnlineThreshold;
     type DominatorRegisterPoint = DominatorRegisterPoint;
-    type DominatorStablecoinLimit = DominatorStablecoinLimit;
     type Event = Event;
-    type MaxDominators = MaxDominators;
     type MinimalStakingAmount = MinimalStakingAmount;
     type SeasonDuration = SeasonDuration;
     type SelfWeightInfo = ();
