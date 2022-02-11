@@ -414,7 +414,7 @@ pub mod pallet {
                 )?
             } else {
                 Balances::<T>::try_mutate_exists((token, who), |t| -> Result<R, DispatchError> {
-                   	let b = t.unwrap_or_default();
+                   	let mut b = t.take().unwrap_or_default();
                     let mut v = (b.free, b.reserved);
                     let r = f(&mut v)?;
                     b.free = v.0;
