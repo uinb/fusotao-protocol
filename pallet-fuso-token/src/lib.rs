@@ -237,15 +237,6 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn mutate_account<R>(
-            token: &T::TokenId,
-            who: &T::AccountId,
-            f: impl FnOnce(&mut TokenAccountData<BalanceOf<T>>) -> R,
-        ) -> Result<R, DispatchError> {
-            Balances::<T>::try_mutate((token, who), |account| -> Result<R, DispatchError> {
-                Ok(f(account))
-            })
-        }
 
         fn create_token(name: &[u8]) -> T::TokenId {
             let token_id = Self::next_token_id();
@@ -422,11 +413,18 @@ pub mod pallet {
                     },
                 )?
             } else {
-                Balances::<T>::try_mutate((token, who), |b| -> Result<R, DispatchError> {
+                Balances::<T>::try_mutate_exists((token, who), |t| -> Result<R, DispatchError> {
+                   	let b = t.unwrap_or_default();
                     let mut v = (b.free, b.reserved);
                     let r = f(&mut v)?;
                     b.free = v.0;
                     b.reserved = v.1;
+					match b.free == Zero::zero() && b.reserved == Zero::zero() {
+						true => {}
+						false => {
+							t.replace(b);
+						}
+					}
                     Ok(r)
                 })
             }
