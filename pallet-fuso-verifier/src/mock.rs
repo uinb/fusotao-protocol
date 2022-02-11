@@ -1,8 +1,9 @@
 use super::*;
-use crate as pallet_fuso_token;
+use crate as pallet_fuso_verifier;
 use frame_support::parameter_types;
 use frame_system as system;
 use sp_core::H256;
+use sp_keyring::AccountKeyring;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::{
     generic, impl_opaque_keys,
@@ -90,6 +91,27 @@ impl pallet_fuso_token::Config for Test {
     type Weight = ();
 }
 
+parameter_types! {
+    pub const DominatorOnlineThreshold: Balance = 10_000;
+    pub const SeasonDuration: BlockNumber = 1440;
+    pub const MinimalStakingAmount: Balance = 100;
+    pub const DominatorRegisterPoint: BlockNumber = 10;
+    pub const MaxDominators: u32 = 2;
+    pub const DominatorStablecoinLimit: u32 = 3;
+}
+
+impl pallet_fuso_verifier::Config for Test {
+    type Asset = TokenModule;
+    type DominatorOnlineThreshold = DominatorOnlineThreshold;
+    type DominatorRegisterPoint = DominatorRegisterPoint;
+    type DominatorStablecoinLimit = DominatorStablecoinLimit;
+    type Event = Event;
+    type MaxDominators = MaxDominators;
+    type MinimalStakingAmount = MinimalStakingAmount;
+    type SeasonDuration = SeasonDuration;
+    type SelfWeightInfo = ();
+}
+
 // Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
     pub enum Test where
@@ -99,14 +121,23 @@ frame_support::construct_runtime!(
     {
         System: frame_system,
         Balances: pallet_balances,
-        TokenModule: pallet_fuso_token
+        TokenModule: pallet_fuso_token,
+        Verifier: pallet_fuso_verifier
     }
 );
 
 // Build genesis storage according to the mock runtime.
-pub fn new_test_ext() -> sp_io::TestExternalities {
-    system::GenesisConfig::default()
+pub fn new_tester() -> sp_io::TestExternalities {
+    let mut t = system::GenesisConfig::default()
         .build_storage::<Test>()
-        .unwrap()
-        .into()
+        .unwrap();
+
+    let ferdie = AccountKeyring::Ferdie.into();
+    pallet_balances::GenesisConfig::<Test> {
+        balances: vec![(ferdie, 10000000000000000000)],
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+
+    sp_io::TestExternalities::new(t)
 }
