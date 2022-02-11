@@ -8,7 +8,7 @@ use sp_keyring::{sr25519::Keyring, AccountKeyring};
 use crate::mock::*;
 use crate::Error;
 use crate::Module;
-use pallet_fuso_token::TokenInfo;
+use pallet_fuso_token::XToken;
 use sp_runtime::MultiAddress;
 
 type Token = pallet_fuso_token::Pallet<Test>;
@@ -177,8 +177,12 @@ pub fn test_authorize() {
         ));
         let token_info = Token::get_token_info(1);
         assert!(token_info.is_some());
-        let token_info: TokenInfo<u128> = token_info.unwrap();
-        assert_eq!(token_info.total, 10000000000000000000);
+        let token_info: XToken<u128> = token_info.unwrap();
+        match token_info {
+            XToken::NEP141(symbol, contract_address, total, stable) => {
+                assert_eq!(total, 10000000000000000000);
+            }
+        }
         assert_ok!(Verifier::register(Origin::signed(alice.clone())));
         assert_noop!(
             Verifier::authorize(

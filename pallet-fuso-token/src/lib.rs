@@ -53,12 +53,19 @@ pub mod pallet {
         pub reserved: Balance,
     }
 
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, Debug, TypeInfo)]
-    pub enum XToken<TokenId, Balance> {
-        //(token_id, symbol, contract_address, total, stable
-        NEP141(TokenId, Vec<u8>, Vec<u8>, Balance, bool),
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
+    pub enum XToken<Balance> {
+        //( symbol, contract_address, total, stable
+        NEP141(Vec<u8>, Vec<u8>, Balance, bool),
     }
 
+    impl<Balance> XToken<Balance> {
+        pub fn is_stable(&self) -> bool {
+            match *self {
+                XToken::NEP141(_, _, _, stable) => stable,
+            }
+        }
+    }
 
     pub type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
 
@@ -110,12 +117,11 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn get_token_info)]
     pub type Tokens<T: Config> =
-        StorageMap<_, Twox64Concat, T::TokenId, XToken<T::TokenId, BalanceOf<T>>, OptionQuery>;
+        StorageMap<_, Twox64Concat, T::TokenId, XToken<BalanceOf<T>>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn get_token_by_name)]
-    pub type TokenByName<T: Config> =
-        StorageMap<_, Twox64Concat, Vec<u8>, T::TokenId, OptionQuery>;
+    pub type TokenByName<T: Config> = StorageMap<_, Twox64Concat, Vec<u8>, T::TokenId, OptionQuery>;
 
     #[pallet::type_value]
     pub fn DefaultNextTokenId<T: Config>() -> T::TokenId {
@@ -167,14 +173,7 @@ pub mod pallet {
                     reserved: Zero::zero(),
                 },
             );
-            Tokens::<T>::insert(
-                id,
-                TokenInfo {
-                    total,
-                    symbol,
-                    stable: false,
-                },
-            );
+            Tokens::<T>::insert(id, XToken::NEP141(symbol.clone(), symbol, total, false));
             Self::deposit_event(Event::TokenIssued(id, origin, total));
             Ok(().into())
         }
@@ -185,10 +184,10 @@ pub mod pallet {
             Tokens::<T>::try_mutate_exists(id, |info| -> DispatchResult {
                 ensure!(info.is_some(), Error::<T>::InvalidToken);
                 let mut token_info = info.take().unwrap();
-				match token_info {
-					XToken::NEP141(_, _, _, _, mut stable) => {stable = true}
-					_ => {}
-				}
+                match token_info {
+                    XToken::NEP141(_, _, _, mut stable) => stable = true,
+                    _ => {}
+                }
                 info.replace(token_info);
                 Ok(())
             })?;
@@ -252,23 +251,10 @@ pub mod pallet {
             let token_id = Self::next_token_id();
             NextTokenId::<T>::mutate(|id| *id += One::one());
             let name = name.as_ref().to_vec();
-            let token = XToken::<T::TokenId, BalanceOf<T>>::NEP141(
-                token_id,
-                name.clone(),
-                name.clone(),
-                Zero::zero(),
-                18u8,
-            );
-            TokenByName::<T>::insert(name.clone(), token.clone());
-            TokenById::<T>::insert(token_id, token.clone());
-            Tokens::<T>::insert(
-                token_id,
-                TokenInfo {
-                    total: Zero::zero(),
-                    symbol: name,
-                    stable: false,
-                },
-            );
+            let token =
+                XToken::<BalanceOf<T>>::NEP141(name.clone(), name.clone(), Zero::zero(), false);
+            TokenByName::<T>::insert(name.clone(), token_id);
+            Tokens::<T>::insert(token_id, token);
             token_id
         }
 
@@ -288,11 +274,15 @@ pub mod pallet {
                 Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
                     ensure!(token_info.is_some(), Error::<T>::InvalidToken);
                     let mut info = token_info.take().unwrap();
-                    info.total = info
-                        .total
-                        .checked_add(&amount)
-                        .ok_or(Error::<T>::InsufficientBalance)?;
-                    token_info.replace(info);
+                    let new_info: XToken<BalanceOf<T>> = match info {
+                        XToken::NEP141(name, contract_address, total, stable) => {
+                            let new_total = total
+                                .checked_add(&amount)
+                                .ok_or(Error::<T>::InsufficientBalance)?;
+                            XToken::NEP141(name, contract_address, new_total, stable)
+                        }
+                    };
+                    token_info.replace(new_info);
                     Ok(())
                 })?;
                 to.replace(account);
@@ -326,11 +316,15 @@ pub mod pallet {
                 Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
                     ensure!(token_info.is_some(), Error::<T>::BalanceZero);
                     let mut info = token_info.take().unwrap();
-                    info.total = info
-                        .total
-                        .checked_sub(&amount)
-                        .ok_or(Error::<T>::InsufficientBalance)?;
-                    token_info.replace(info);
+                    let new_info: XToken<BalanceOf<T>> = match info {
+                        XToken::NEP141(name, contract_address, total, stable) => {
+                            let new_total = total
+                                .checked_sub(&amount)
+                                .ok_or(Error::<T>::InsufficientBalance)?;
+                            XToken::NEP141(name, contract_address, new_total, stable)
+                        }
+                    };
+                    token_info.replace(new_info);
                     Ok(())
                 })?;
                 Ok(())
@@ -446,9 +440,12 @@ pub mod pallet {
             if *token == Self::native_token_id() {
                 false
             } else {
-                Self::get_token_info(token)
-                    .map(|t| t.stable)
-                    .unwrap_or(false)
+                let token: Option<XToken<BalanceOf<T>>> = Self::get_token_info(token);
+                return if token.is_some() {
+                    token.unwrap().is_stable()
+                } else {
+                    false
+                };
             }
         }
 
@@ -463,7 +460,16 @@ pub mod pallet {
             if *token == Self::native_token_id() {
                 return pallet_balances::Pallet::<T>::total_issuance();
             }
-            Self::get_token_info(token).unwrap_or_default().total
+            let token_info = Self::get_token_info(token);
+
+            if token_info.is_some() {
+                let token = token_info.unwrap();
+                match token {
+                    XToken::NEP141(_, _, total, _) => total,
+                }
+            } else {
+                Zero::zero()
+            }
         }
     }
 
@@ -625,7 +631,7 @@ pub mod pallet {
             let name = name.as_ref();
             let tokenResult = Self::get_token_by_name(name.clone().to_vec());
             let token_id = match tokenResult {
-                Some(XToken::NEP141(token_id, _, _, _, _)) => token_id,
+                Some(token_id) => token_id,
                 _ => Self::create_token(name),
             };
             Ok(token_id)
@@ -634,7 +640,7 @@ pub mod pallet {
         fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
             let tokenResult = Self::get_token_info(token_id);
             match tokenResult {
-                Some(XToken::NEP141(_, _, name, _, _)) => Ok(name),
+                Some(XToken::NEP141(name, _, _, _)) => Ok(name),
                 _ => Err(()),
             }
         }
