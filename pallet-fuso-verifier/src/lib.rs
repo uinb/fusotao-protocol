@@ -1236,12 +1236,12 @@ pub mod pallet {
             let after_cancel = leaves[4].split_new_to_sum();
             if cancel_at >= best_ask0 {
                 ensure!(
-                    ask_delta == after_cancel - before_cancel,
+                    ask_delta == before_cancel - after_cancel,
                     Error::<T>::ProofsUnsatisfied
                 );
             } else {
                 ensure!(
-                    bid_delta == after_cancel - before_cancel,
+                    bid_delta == before_cancel - after_cancel,
                     Error::<T>::ProofsUnsatisfied
                 );
             }
