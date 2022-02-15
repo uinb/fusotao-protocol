@@ -442,6 +442,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        #[transactional]
         #[pallet::weight(T::SelfWeightInfo::verify())]
         pub fn verify(
             origin: OriginFor<T>,
@@ -518,6 +519,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        #[transactional]
         #[pallet::weight(T::SelfWeightInfo::authorize())]
         pub fn authorize(
             origin: OriginFor<T>,
@@ -554,6 +556,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        #[transactional]
         #[pallet::weight(T::SelfWeightInfo::revoke())]
         pub fn revoke(
             origin: OriginFor<T>,
