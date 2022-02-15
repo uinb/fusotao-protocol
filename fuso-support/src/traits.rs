@@ -158,3 +158,28 @@ pub trait NamedReservableToken<AccountId>: Token<AccountId> {
         status: BalanceStatus,
     ) -> sp_std::result::Result<Self::Balance, DispatchError>;
 }
+
+pub trait Rewarding<AccountId, Balance, BlockNumber> {
+    type Volume: Member
+        + Parameter
+        + AtLeast32BitUnsigned
+        + Default
+        + Copy
+        + Codec
+        + MaybeSerializeDeserialize;
+
+    fn era_duration() -> BlockNumber;
+
+    fn total_volume(at: BlockNumber) -> Self::Volume;
+
+    fn acked_reward(who: &AccountId) -> Balance;
+
+    fn save_trading(
+        taker: &AccountId,
+        maker: &AccountId,
+        amount: Self::Volume,
+        at: BlockNumber,
+    ) -> DispatchResult;
+
+    fn claim_rewarding(who: &AccountId) -> sp_std::result::Result<Balance, DispatchError>;
+}

@@ -6,6 +6,7 @@ members = [
     'pallet-fuso-token',
     'pallet-fuso-verifier',
     'pallet-fuso-foundation',
+    'pallet-fuso-reward',
     'fuso-support',
 ]
 

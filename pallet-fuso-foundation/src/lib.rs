@@ -29,7 +29,7 @@ pub mod pallet {
         weights::Weight,
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{Saturating, Zero};
+    use sp_runtime::traits::Zero;
 
     pub type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
 
@@ -83,8 +83,8 @@ pub mod pallet {
                 );
             }
             for (account, balance) in &self.fund_total {
-                pallet_balances::Pallet::<T>::mutate_account(&account, |accountData| {
-                    accountData.reserved = *balance;
+                pallet_balances::Pallet::<T>::mutate_account(&account, |account_data| {
+                    account_data.reserved = *balance;
                 })
                 .unwrap();
             }
