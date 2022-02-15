@@ -20,9 +20,8 @@ pub mod pallet {
     use frame_support::pallet_prelude::DispatchResultWithPostInfo;
     use frame_support::{
         pallet_prelude::*,
-        traits::{Currency, Get},
+        traits::Get,
         transactional,
-        weights::Weight,
     };
     use frame_system::ensure_signed;
     use frame_system::pallet_prelude::*;
