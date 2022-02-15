@@ -2,18 +2,17 @@ use frame_support::traits::BalanceStatus;
 use frame_support::{assert_noop, assert_ok};
 use fuso_support::traits::ReservableToken;
 use pallet_octopus_support::traits::AssetIdAndNameProvider;
-use sp_keyring::{sr25519::Keyring, AccountKeyring};
+use sp_keyring::AccountKeyring;
 use sp_runtime::traits::Zero;
 use sp_runtime::MultiAddress;
 
 use crate::mock::*;
 use crate::Error;
-use crate::Module;
 use crate::Pallet;
 use crate::TokenAccountData;
 use crate::XToken;
 
-type Token = Module<Test>;
+type Token = Pallet<Test>;
 
 #[test]
 fn issuing_token_and_transfer_should_work() {
