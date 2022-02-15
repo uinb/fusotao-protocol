@@ -64,7 +64,7 @@ fn test_foundation() {
         assert_eq!(
             alice_foundation.unwrap(),
             FoundationData {
-				delay_durations: 2,
+                delay_durations: 2,
                 interval_durations: 1,
                 times: 1,
                 amount: 300000000000000000000

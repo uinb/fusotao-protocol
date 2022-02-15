@@ -252,7 +252,7 @@ pub mod pallet {
             token: T::TokenId,
             beneficiary: &T::AccountId,
             amount: BalanceOf<T>,
-            maybe_check_issuer: Option<T::AccountId>,
+            _maybe_check_issuer: Option<T::AccountId>,
         ) -> DispatchResult {
             Balances::<T>::try_mutate_exists((&token, beneficiary), |to| -> DispatchResult {
                 let mut account = to.take().unwrap_or_default();
@@ -285,7 +285,7 @@ pub mod pallet {
             token: T::TokenId,
             target: &T::AccountId,
             amount: BalanceOf<T>,
-            maybe_check_admin: Option<T::AccountId>,
+            _maybe_check_admin: Option<T::AccountId>,
         ) -> Result<BalanceOf<T>, DispatchError> {
             ensure!(!amount.is_zero(), Error::<T>::AmountZero);
             Balances::<T>::try_mutate_exists((&token, target), |from| -> DispatchResult {
@@ -325,38 +325,38 @@ pub mod pallet {
         type AssetId = T::TokenId;
         type Balance = BalanceOf<T>;
 
-        fn total_issuance(asset: Self::AssetId) -> Self::Balance {
+        fn total_issuance(_asset: Self::AssetId) -> Self::Balance {
             Self::Balance::default()
         }
 
-        fn minimum_balance(asset: Self::AssetId) -> Self::Balance {
+        fn minimum_balance(_asset: Self::AssetId) -> Self::Balance {
             Self::Balance::default()
         }
 
-        fn balance(asset: Self::AssetId, who: &T::AccountId) -> Self::Balance {
+        fn balance(_asset: Self::AssetId, _who: &T::AccountId) -> Self::Balance {
             Self::Balance::default()
         }
 
         fn reducible_balance(
-            asset: Self::AssetId,
-            who: &T::AccountId,
-            keep_alive: bool,
+            _asset: Self::AssetId,
+            _who: &T::AccountId,
+            _keep_alive: bool,
         ) -> Self::Balance {
             Self::Balance::default()
         }
 
         fn can_deposit(
-            asset: Self::AssetId,
-            who: &T::AccountId,
-            amount: Self::Balance,
+            _asset: Self::AssetId,
+            _who: &T::AccountId,
+            _amount: Self::Balance,
         ) -> DepositConsequence {
             DepositConsequence::Success
         }
 
         fn can_withdraw(
-            asset: Self::AssetId,
-            who: &T::AccountId,
-            amount: Self::Balance,
+            _asset: Self::AssetId,
+            _who: &T::AccountId,
+            _amount: Self::Balance,
         ) -> WithdrawConsequence<Self::Balance> {
             WithdrawConsequence::Success
         }
