@@ -137,7 +137,7 @@ pub mod pallet {
             amount: Balance<T>,
             account: &T::AccountId,
         ) -> Result<Balance<T>, DispatchError> {
-            Ok(Rewards::<T>::try_mutate(
+            Rewards::<T>::try_mutate(
                 account,
                 |r| -> Result<Balance<T>, DispatchError> {
                     if at == r.last_modify {
@@ -167,7 +167,7 @@ pub mod pallet {
                         Ok(r.confirmed)
                     }
                 },
-            )?)
+            )
         }
     }
 
