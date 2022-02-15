@@ -1301,11 +1301,13 @@ dependencies = [
  "frame-system",
  "fuso-support",
  "pallet-balances",
+ "pallet-fuso-token",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "sp-core",
  "sp-io",
+ "sp-keyring",
  "sp-runtime",
  "sp-std",
 ]

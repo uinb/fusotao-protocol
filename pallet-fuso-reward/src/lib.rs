@@ -15,14 +15,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 pub use pallet::*;
 
+#[cfg(test)]
+pub mod mock;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::pallet_prelude::DispatchResultWithPostInfo;
-    use frame_support::{
-        pallet_prelude::*,
-        traits::Get,
-        transactional,
-    };
+    use frame_support::{pallet_prelude::*, traits::Get, transactional};
     use frame_system::ensure_signed;
     use frame_system::pallet_prelude::*;
     use fuso_support::traits::{Rewarding, Token};
