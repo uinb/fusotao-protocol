@@ -34,7 +34,7 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use fuso_support::{
         constants::*,
-        traits::{ReservableToken, Token},
+        traits::{ReservableToken, Rewarding, Token},
     };
     use scale_info::TypeInfo;
     use sp_io::hashing::blake2_256 as hashing;
@@ -235,6 +235,8 @@ pub mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         type Asset: ReservableToken<Self::AccountId>;
+
+        type Rewarding: Rewarding<Self::AccountId, Balance<Self>, Self::BlockNumber>;
 
         type SelfWeightInfo: WeightInfo;
 
@@ -608,6 +610,7 @@ pub mod pallet {
     #[derive(Clone)]
     struct TokenMutation<AccountId, Balance> {
         pub who: AccountId,
+        pub volume: Balance,
         pub base_value: Balance,
         pub quote_value: Balance,
     }
@@ -681,6 +684,7 @@ pub mod pallet {
                         for d in cr.users_mutation.iter() {
                             Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                             Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
+                            T::Rewarding::save_trading(&d.who, d.volume, current_block)?;
                         }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
@@ -726,6 +730,7 @@ pub mod pallet {
                         for d in cr.users_mutation.iter() {
                             Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                             Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
+                            T::Rewarding::save_trading(&d.who, d.volume, current_block)?;
                         }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
@@ -887,6 +892,7 @@ pub mod pallet {
                 );
                 delta.push(TokenMutation {
                     who: maker_q_id,
+                    volume: quote_decr.into(),
                     base_value: mb1.into(),
                     quote_value: mq1.into(),
                 });
@@ -905,6 +911,7 @@ pub mod pallet {
             );
             delta.push(TokenMutation {
                 who: taker_b_id,
+                volume: mq_delta.into(),
                 base_value: (tba1 + tbf1).into(),
                 quote_value: (tqa1 + tqf1).into(),
             });
@@ -1068,6 +1075,7 @@ pub mod pallet {
                 );
                 delta.push(TokenMutation {
                     who: maker_b_id,
+                    volume: quote_incr.into(),
                     base_value: mb1.into(),
                     quote_value: mq1.into(),
                 });
@@ -1093,6 +1101,7 @@ pub mod pallet {
             }
             delta.push(TokenMutation {
                 who: taker_b_id,
+                volume: tq_delta.into(),
                 base_value: (tba1 + tbf1).into(),
                 quote_value: (tqa1 + tqf1).into(),
             });

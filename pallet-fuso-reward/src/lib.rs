@@ -32,6 +32,9 @@ pub mod pallet {
     };
     use sp_std::result::Result;
 
+    pub type Volume<T> =
+        <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
+
     pub type Balance<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -67,20 +70,25 @@ pub mod pallet {
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Default)]
-    pub struct Reward<Balance, Era> {
+    pub struct Reward<Balance, Volume, Era> {
         pub confirmed: Balance,
-        pub pending_vol: Balance,
+        pub pending_vol: Volume,
         pub last_modify: Era,
     }
 
     #[pallet::storage]
     #[pallet::getter(fn rewards)]
-    pub type Rewards<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::AccountId, Reward<Balance<T>, Era<T>>, ValueQuery>;
+    pub type Rewards<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Reward<Balance<T>, Volume<T>, Era<T>>,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
     #[pallet::getter(fn volumes)]
-    pub type Volumes<T: Config> = StorageMap<_, Blake2_128Concat, Era<T>, Balance<T>, ValueQuery>;
+    pub type Volumes<T: Config> = StorageMap<_, Blake2_128Concat, Era<T>, Volume<T>, ValueQuery>;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub (super) trait Store)]
@@ -89,13 +97,14 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T>
     where
-        Balance<T>: Into<u128> + From<u128>,
+        Volume<T>: Into<u128>,
+        Balance<T>: From<u128>,
     {
         #[pallet::weight(10000000)]
-        pub fn take_rewarding(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+        pub fn take_reward(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             let at = frame_system::Pallet::<T>::block_number();
-            let reward = Self::claim_rewarding(&who, at)?;
+            let reward = Self::claim_reward(&who, at)?;
             Self::deposit_event(Event::RewardClaimed(who, reward));
             Ok(().into())
         }
@@ -103,21 +112,22 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T>
     where
-        Balance<T>: Into<u128> + From<u128>,
+        Volume<T>: Into<u128>,
+        Balance<T>: From<u128>,
     {
         #[transactional]
-        fn claim_rewarding(
+        fn claim_reward(
             who: &T::AccountId,
             at: T::BlockNumber,
         ) -> Result<Balance<T>, DispatchError> {
             let at = at - at % Self::era_duration();
-            let confirmed = Self::merge_rewarding(at, Zero::zero(), &who)?;
+            let confirmed = Self::rotate_reward(at, Zero::zero(), &who)?;
             if confirmed == Zero::zero() {
                 return Ok(Zero::zero());
             }
             Rewards::<T>::try_mutate_exists(who, |r| -> Result<Balance<T>, DispatchError> {
                 ensure!(r.is_some(), Error::<T>::RewardNotFound);
-                let mut reward: Reward<Balance<T>, Era<T>> = r.take().unwrap();
+                let mut reward: Reward<Balance<T>, Volume<T>, Era<T>> = r.take().unwrap();
                 let confirmed = reward.confirmed;
                 reward.confirmed = Zero::zero();
                 if reward.pending_vol > Zero::zero() {
@@ -132,80 +142,76 @@ pub mod pallet {
             })
         }
 
-        fn merge_rewarding(
+        #[transactional]
+        fn rotate_reward(
             at: T::BlockNumber,
-            amount: Balance<T>,
+            vol: Volume<T>,
             account: &T::AccountId,
         ) -> Result<Balance<T>, DispatchError> {
-            Rewards::<T>::try_mutate(
-                account,
-                |r| -> Result<Balance<T>, DispatchError> {
-                    if at == r.last_modify {
-                        r.pending_vol = r
-                            .pending_vol
-                            .checked_add(&amount)
-                            .ok_or(Error::<T>::Overflow)?;
-                        Ok(r.confirmed)
+            Rewards::<T>::try_mutate(account, |r| -> Result<Balance<T>, DispatchError> {
+                if at == r.last_modify {
+                    r.pending_vol = r
+                        .pending_vol
+                        .checked_add(&vol)
+                        .ok_or(Error::<T>::Overflow)?;
+                    Ok(r.confirmed)
+                } else {
+                    if r.pending_vol == Zero::zero() {
+                        r.pending_vol = vol;
+                        r.last_modify = at;
                     } else {
-                        if r.pending_vol == Zero::zero() {
-                            r.pending_vol = amount;
-                            r.last_modify = at;
-                        } else {
-                            let pending_vol: u128 = r.pending_vol.into();
-                            let total_vol: u128 = Volumes::<T>::get(at).into();
-                            ensure!(total_vol > 0, Error::<T>::DivideByZero);
-                            let p: Perquintill = Perquintill::from_rational(pending_vol, total_vol);
-                            let era_reward: u128 = T::RewardsPerEra::get().into();
-                            let a = p * era_reward;
-                            r.confirmed = r
-                                .confirmed
-                                .checked_add(&a.into())
-                                .ok_or(Error::<T>::Overflow)?;
-                            r.pending_vol = amount;
-                            r.last_modify = at;
-                        }
-                        Ok(r.confirmed)
+                        let pending_vol: u128 = r.pending_vol.into();
+                        let total_vol: u128 = Volumes::<T>::get(at).into();
+                        ensure!(total_vol > 0, Error::<T>::DivideByZero);
+                        let p: Perquintill = Perquintill::from_rational(pending_vol, total_vol);
+                        let era_reward: u128 = T::RewardsPerEra::get().into();
+                        let a = p * era_reward;
+                        r.confirmed = r
+                            .confirmed
+                            .checked_add(&a.into())
+                            .ok_or(Error::<T>::Overflow)?;
+                        r.pending_vol = vol;
+                        r.last_modify = at;
                     }
-                },
-            )
+                    Ok(r.confirmed)
+                }
+            })
         }
     }
 
-    impl<T: Config> Rewarding<T::AccountId, Balance<T>, T::BlockNumber> for Pallet<T>
+    impl<T: Config> Rewarding<T::AccountId, Volume<T>, T::BlockNumber> for Pallet<T>
     where
-        Balance<T>: Into<u128> + From<u128>,
+        Volume<T>: Into<u128>,
+        Balance<T>: From<u128>,
     {
-        type Volume = Balance<T>;
+        type Balance = Balance<T>;
 
         fn era_duration() -> T::BlockNumber {
             T::EraDuration::get()
         }
 
-        fn total_volume(at: T::BlockNumber) -> Self::Volume {
+        fn total_volume(at: T::BlockNumber) -> Volume<T> {
             Self::volumes(at - at % Self::era_duration())
         }
 
-        fn acked_reward(who: &T::AccountId) -> Balance<T> {
+        fn acked_reward(who: &T::AccountId) -> Self::Balance {
             Self::rewards(who).confirmed
         }
 
         #[transactional]
         fn save_trading(
-            taker: &T::AccountId,
-            maker: &T::AccountId,
-            amount: Self::Volume,
+            trader: &T::AccountId,
+            vol: Volume<T>,
             at: T::BlockNumber,
-        ) -> DispatchResult
-        where
-            Balance<T>: Into<u128> + From<u128>,
-        {
-            if amount == Zero::zero() {
+        ) -> DispatchResult {
+            if vol == Zero::zero() {
                 return Ok(());
             }
             let at = at - at % Self::era_duration();
-            Volumes::<T>::try_mutate(&at, |v| v.checked_add(&amount).ok_or(Error::<T>::Overflow))?;
-            Self::merge_rewarding(at, amount, maker)?;
-            Self::merge_rewarding(at, amount, taker)?;
+            Volumes::<T>::try_mutate(&at, |v| -> DispatchResult {
+                Ok(*v = v.checked_add(&vol).ok_or(Error::<T>::Overflow)?)
+            })?;
+            Self::rotate_reward(at, vol, trader)?;
             Ok(())
         }
     }
