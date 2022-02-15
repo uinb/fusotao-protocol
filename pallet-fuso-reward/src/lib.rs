@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+extern crate sp_runtime;
+
 pub use pallet::*;
 
 #[cfg(test)]
@@ -25,10 +27,8 @@ pub mod pallet {
     use frame_system::ensure_signed;
     use frame_system::pallet_prelude::*;
     use fuso_support::traits::{Rewarding, Token};
-    use sp_runtime::{
-        traits::{CheckedAdd, Zero},
-        DispatchResult, Perquintill,
-    };
+    use sp_runtime::{traits::{CheckedAdd, Zero}, DispatchResult, Perquintill, DispatchError};
+	use sp_std::result::Result;
 
     pub type Balance<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
@@ -50,7 +50,9 @@ pub mod pallet {
 
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
-    pub enum Event<T: Config> {}
+    pub enum Event<T: Config> {
+		RewardClaimed(Balance<T>)
+	}
 
     #[pallet::error]
     pub enum Error<T> {
@@ -90,7 +92,9 @@ pub mod pallet {
         #[pallet::weight(10000000)]
         pub fn take_rewarding(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::claim_rewarding(&who)?;
+			let at = frame_system::Pallet::<T>::block_number();
+			let reward = Self::claim_rewarding(&who, at)?;
+			Self::deposit_event(Event::RewardClaimed(reward));
             Ok(().into())
         }
     }
@@ -99,17 +103,43 @@ pub mod pallet {
     where
         Balance<T>: Into<u128> + From<u128>,
     {
-        fn save_rewarding(
+		#[transactional]
+		fn claim_rewarding(
+			who: &T::AccountId,
+			at: T::BlockNumber
+		) -> Result<Balance<T>, DispatchError> {
+			let at = at - at % Self::era_duration();
+			let confirmed = Self::merge_rewarding(at, Zero::zero(), &who)?;
+			if confirmed == Zero::zero() {
+				return Ok(Zero::zero());
+			}
+			Rewards::<T>::try_mutate_exists(who, |r| -> Result<Balance<T>, DispatchError> {
+				ensure!(r.is_some(), Error::<T>::RewardNotFound);
+				let mut reward: Reward<Balance<T>, Era<T>> = r.take().unwrap();
+				let confirmed = reward.confirmed;
+				reward.confirmed = Zero::zero();
+				if reward.pending_vol > Zero::zero() {
+					r.replace(reward);
+				}
+				if confirmed > Zero::zero() {
+					T::Asset::try_mutate_account(&T::Asset::native_token_id(), &who, |b| Ok(b.0 += confirmed))?;
+				}
+				Ok(confirmed)
+			})
+		}
+
+        fn merge_rewarding(
             at: T::BlockNumber,
             amount: Balance<T>,
             account: &T::AccountId,
-        ) -> DispatchResult {
-            Ok(Rewards::<T>::try_mutate(account, |r| -> DispatchResult {
+        ) -> Result<Balance<T>, DispatchError> {
+            Ok(Rewards::<T>::try_mutate(account, |r| -> Result<Balance<T>, DispatchError> {
                 if at == r.last_modify {
-                    Ok(r.pending_vol = r
+                    r.pending_vol = r
                         .pending_vol
                         .checked_add(&amount)
-                        .ok_or(Error::<T>::Overflow)?)
+                        .ok_or(Error::<T>::Overflow)?;
+					Ok(r.confirmed)
                 } else {
                     if r.pending_vol == Zero::zero() {
                         r.pending_vol = amount;
@@ -128,7 +158,7 @@ pub mod pallet {
                         r.pending_vol = amount;
                         r.last_modify = at;
                     }
-                    Ok(())
+                    Ok(r.confirmed)
                 }
             })?)
         }
@@ -167,25 +197,9 @@ pub mod pallet {
             }
             let at = at - at % Self::era_duration();
             Volumes::<T>::try_mutate(&at, |v| v.checked_add(&amount).ok_or(Error::<T>::Overflow))?;
-            Self::save_rewarding(at, amount, maker)?;
-            Self::save_rewarding(at, amount, taker)?;
+            Self::merge_rewarding(at, amount, maker)?;
+            Self::merge_rewarding(at, amount, taker)?;
             Ok(())
-        }
-
-        #[transactional]
-        fn claim_rewarding(
-            who: &T::AccountId,
-        ) -> sp_std::result::Result<Balance<T>, DispatchError> {
-            Rewards::<T>::try_mutate_exists(who, |r| -> DispatchResult {
-                ensure!(r.is_some(), Error::<T>::RewardNotFound);
-                let mut reward: Reward<Balance<T>, Era<T>> = r.take().unwrap();
-                let confirmed = reward.confirmed;
-                reward.confirmed = 0.into();
-                r.replace(reward);
-                T::Asset::try_mutate_account(&0u32.into(), &who, |b| Ok(b.0 += confirmed))?;
-                Ok(())
-            })?;
-            Ok(Zero::zero())
         }
     }
 }

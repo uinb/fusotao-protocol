@@ -180,6 +180,4 @@ pub trait Rewarding<AccountId, Balance, BlockNumber> {
         amount: Self::Volume,
         at: BlockNumber,
     ) -> DispatchResult;
-
-    fn claim_rewarding(who: &AccountId) -> sp_std::result::Result<Balance, DispatchError>;
 }
