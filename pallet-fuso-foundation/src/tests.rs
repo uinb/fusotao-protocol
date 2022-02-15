@@ -28,7 +28,7 @@ fn test_foundation() {
         assert_eq!(
             alice_foundation.unwrap(),
             FoundationData {
-                deny_durations: 2,
+                delay_durations: 2,
                 interval_durations: 1,
                 times: 5,
                 amount: 300000000000000000000
@@ -44,7 +44,7 @@ fn test_foundation() {
         assert_eq!(
             alice_foundation.unwrap(),
             FoundationData {
-                deny_durations: 2,
+                delay_durations: 2,
                 interval_durations: 1,
                 times: 4,
                 amount: 300000000000000000000
@@ -64,7 +64,7 @@ fn test_foundation() {
         assert_eq!(
             alice_foundation.unwrap(),
             FoundationData {
-                deny_durations: 2,
+				delay_durations: 2,
                 interval_durations: 1,
                 times: 1,
                 amount: 300000000000000000000
