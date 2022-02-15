@@ -1,9 +1,8 @@
-use frame_support::{assert_noop, assert_ok};
+use frame_support::{assert_noop, assert_ok, traits::OnInitialize};
 use sp_keyring::AccountKeyring;
 use sp_runtime::traits::Zero;
 use sp_runtime::MultiAddress;
 
-use crate::frame_support::traits::OnInitialize;
 use crate::mock::*;
 use crate::Error;
 use crate::FoundationData;

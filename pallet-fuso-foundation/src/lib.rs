@@ -12,9 +12,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-pub use frame_support;
-pub use pallet::*;
+#![cfg_attr(not(feature = "std"), no_std)]
 
+pub use pallet::*;
 #[cfg(test)]
 pub mod mock;
 #[cfg(test)]
@@ -71,14 +71,14 @@ pub mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
-            for (account, _balance) in &self.fund {
+            for (account, balance) in &self.fund {
                 Foundation::<T>::insert(
                     account,
                     FoundationData {
-                        delay_durations: _balance.0,
-                        interval_durations: _balance.1,
-                        times: _balance.2,
-                        amount: _balance.3,
+                        delay_durations: balance.0,
+                        interval_durations: balance.1,
+                        times: balance.2,
+                        amount: balance.3,
                     },
                 );
             }

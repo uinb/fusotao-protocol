@@ -33,7 +33,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use fuso_support::{
-        constants,
+        constants::*,
         traits::{ReservableToken, Token},
     };
     use scale_info::TypeInfo;
@@ -188,8 +188,6 @@ pub mod pallet {
     pub struct Proof<AccountId> {
         pub event_id: u64,
         pub user_id: AccountId,
-        pub nonce: u32,
-        pub signature: Vec<u8>,
         pub cmd: Command,
         pub leaves: Vec<MerkleLeaf>,
         pub maker_page_delta: u8,
@@ -210,7 +208,7 @@ pub mod pallet {
         pub merkle_root: [u8; 32],
         pub start_from: BlockNumber,
         pub sequence: (u64, BlockNumber),
-        pub active: bool,
+        pub status: u8,
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Default)]
@@ -326,7 +324,7 @@ pub mod pallet {
         DominatorOnline(T::AccountId),
         DominatorOffline(T::AccountId),
         DominatorSlashed(T::AccountId),
-        DomintorEvicted(T::AccountId),
+        DominatorEvicted(T::AccountId),
     }
 
     #[pallet::error]
@@ -417,10 +415,28 @@ pub mod pallet {
                     start_from: register_at,
                     sequence: (0, current_block),
                     merkle_root: Default::default(),
-                    active: false,
+                    status: DOMINATOR_INACTIVE,
                 },
             );
             Self::deposit_event(Event::DominatorClaimed(dominator));
+            Ok(().into())
+        }
+
+        #[pallet::weight(0)]
+        pub fn evict(
+            origin: OriginFor<T>,
+            dominator_id: <T::Lookup as StaticLookup>::Source,
+        ) -> DispatchResultWithPostInfo {
+            let _ = ensure_root(origin)?;
+            let dominator = T::Lookup::lookup(dominator_id)?;
+            Dominators::<T>::try_mutate_exists(&dominator, |d| -> DispatchResult {
+                ensure!(d.is_some(), Error::<T>::DominatorNotFound);
+                let mut dominator = d.take().unwrap();
+                dominator.status = DOMINATOR_EVICTED;
+                d.replace(dominator);
+                Ok(())
+            })?;
+            Self::deposit_event(Event::DominatorEvicted(dominator));
             Ok(().into())
         }
 
@@ -432,7 +448,10 @@ pub mod pallet {
             let dominator_id = ensure_signed(origin)?;
             let dominator = Dominators::<T>::try_get(&dominator_id)
                 .map_err(|_| Error::<T>::DominatorNotFound)?;
-            ensure!(dominator.active, Error::<T>::DominatorInactive);
+            ensure!(
+                dominator.status == DOMINATOR_ACTIVE,
+                Error::<T>::DominatorInactive
+            );
             let mut known_root = dominator.merkle_root;
             for proof in proofs.into_iter() {
                 known_root = Self::verify_and_update(
@@ -508,14 +527,17 @@ pub mod pallet {
             let dex = T::Lookup::lookup(dominator)?;
             let dominator =
                 Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
-            ensure!(dominator.active, Error::<T>::DominatorInactive);
+            ensure!(
+                dominator.status == DOMINATOR_ACTIVE,
+                Error::<T>::DominatorInactive
+            );
             ensure!(
                 T::Asset::can_reserve(&token_id, &fund_owner, amount),
                 Error::<T>::InsufficientBalance
             );
             let block_number = frame_system::Pallet::<T>::block_number();
             Self::reserve(
-                constants::RESERVE_FOR_AUTHORIZING,
+                RESERVE_FOR_AUTHORIZING,
                 fund_owner.clone(),
                 token_id,
                 amount,
@@ -538,26 +560,40 @@ pub mod pallet {
             amount: Balance<T>,
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
-            let dominator = T::Lookup::lookup(dominator)?;
+            let dominator_id = T::Lookup::lookup(dominator)?;
             ensure!(
-                Dominators::<T>::contains_key(&dominator),
-                Error::<T>::DominatorNotFound
-            );
-            ensure!(
-                !Receipts::<T>::contains_key(&dominator, &fund_owner),
-                Error::<T>::ReceiptAlreadyExists,
-            );
-            ensure!(
-                Self::has_reserved_on(fund_owner.clone(), token_id, amount, &dominator),
+                Self::has_reserved_on(fund_owner.clone(), token_id, amount, &dominator_id),
                 Error::<T>::InsufficientBalance
             );
-            let block_number = frame_system::Pallet::<T>::block_number();
-            Receipts::<T>::insert(
-                dominator.clone(),
-                fund_owner.clone(),
-                Receipt::Revoke(token_id, amount, block_number),
-            );
-            Self::deposit_event(Event::TokenRevoked(fund_owner, dominator, token_id, amount));
+            let dominator = Dominators::<T>::try_get(&dominator_id)
+                .map_err(|_| Error::<T>::DominatorNotFound)?;
+            if dominator.status == DOMINATOR_EVICTED {
+                Self::unreserve(
+                    RESERVE_FOR_AUTHORIZING,
+                    fund_owner.clone(),
+                    token_id,
+                    amount,
+                    &dominator_id,
+                )?;
+                Receipts::<T>::remove(dominator_id.clone(), &fund_owner);
+            } else {
+                ensure!(
+                    !Receipts::<T>::contains_key(&dominator_id, &fund_owner),
+                    Error::<T>::ReceiptAlreadyExists,
+                );
+                let block_number = frame_system::Pallet::<T>::block_number();
+                Receipts::<T>::insert(
+                    dominator_id.clone(),
+                    fund_owner.clone(),
+                    Receipt::Revoke(token_id, amount, block_number),
+                );
+            }
+            Self::deposit_event(Event::TokenRevoked(
+                fund_owner,
+                dominator_id,
+                token_id,
+                amount,
+            ));
             Ok(().into())
         }
     }
@@ -716,7 +752,7 @@ pub mod pallet {
                     ensure!(exists, Error::<T>::ReceiptNotExists);
                     Self::verify_transfer_out(currency, amount, &proof.user_id, &proof.leaves)?;
                     Self::unreserve(
-                        constants::RESERVE_FOR_AUTHORIZING,
+                        RESERVE_FOR_AUTHORIZING,
                         proof.user_id.clone(),
                         currency.into(),
                         amount.into(),
@@ -1254,10 +1290,7 @@ pub mod pallet {
             amount: Balance<T>,
             dominator: &T::AccountId,
         ) -> bool {
-            Reserves::<T>::get(
-                &(constants::RESERVE_FOR_AUTHORIZING, who, token_id),
-                dominator,
-            ) >= amount
+            Reserves::<T>::get(&(RESERVE_FOR_AUTHORIZING, who, token_id), dominator) >= amount
         }
 
         #[transactional]
@@ -1268,7 +1301,7 @@ pub mod pallet {
             balance: Balance<T>,
         ) -> DispatchResult {
             Reserves::<T>::try_mutate(
-                &(constants::RESERVE_FOR_AUTHORIZING, who.clone(), token_id),
+                &(RESERVE_FOR_AUTHORIZING, who.clone(), token_id),
                 dominator,
                 |reserved| -> DispatchResult {
                     T::Asset::try_mutate_account(&token_id, who, |b| -> DispatchResult {
@@ -1377,7 +1410,7 @@ pub mod pallet {
                 let mut dominator = exists.take().unwrap();
                 Stakings::<T>::try_mutate(&dominator_id, &staker, |staking| -> DispatchResult {
                     Self::reserve(
-                        constants::RESERVE_FOR_STAKING,
+                        RESERVE_FOR_STAKING,
                         staker.clone(),
                         T::Asset::native_token_id(),
                         amount,
@@ -1400,13 +1433,17 @@ pub mod pallet {
                     Ok(())
                 })?;
                 dominator.staked += amount;
-                dominator.active = dominator.staked >= T::DominatorOnlineThreshold::get();
+                dominator.status = if dominator.staked >= T::DominatorOnlineThreshold::get() {
+                    DOMINATOR_ACTIVE
+                } else {
+                    DOMINATOR_INACTIVE
+                };
                 Self::deposit_event(Event::TaoStaked(
                     staker.clone(),
                     dominator_id.clone(),
                     amount,
                 ));
-                if dominator.active {
+                if dominator.status == DOMINATOR_ACTIVE {
                     Self::deposit_event(Event::DominatorOnline(dominator_id.clone()));
                 }
                 exists.replace(dominator);
@@ -1437,7 +1474,7 @@ pub mod pallet {
                         Error::<T>::LittleStakingAmount
                     );
                     Self::unreserve(
-                        constants::RESERVE_FOR_STAKING,
+                        RESERVE_FOR_STAKING,
                         staker.clone(),
                         T::Asset::native_token_id(),
                         amount,
@@ -1460,13 +1497,17 @@ pub mod pallet {
                     Ok(())
                 })?;
                 dominator.staked = dominator_total_staking;
-                dominator.active = dominator.staked >= T::DominatorOnlineThreshold::get();
+                dominator.status = if dominator.staked >= T::DominatorOnlineThreshold::get() {
+                    DOMINATOR_ACTIVE
+                } else {
+                    DOMINATOR_INACTIVE
+                };
                 Self::deposit_event(Event::TaoUnstaked(
                     staker.clone(),
                     dominator_id.clone(),
                     amount,
                 ));
-                if !dominator.active {
+                if dominator.status == DOMINATOR_INACTIVE {
                     Self::deposit_event(Event::DominatorOffline(dominator_id.clone()));
                 }
                 exists.replace(dominator);
