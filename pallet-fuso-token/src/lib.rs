@@ -42,7 +42,7 @@ pub mod pallet {
     use scale_info::TypeInfo;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Member, One,
-        Saturating, StaticLookup, Zero,
+        StaticLookup, Zero,
     };
     use sp_runtime::DispatchResult;
     use sp_std::vec::Vec;

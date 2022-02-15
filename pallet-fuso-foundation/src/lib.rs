@@ -13,11 +13,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+extern crate sp_std;
+
+pub use frame_support;
 pub use pallet::*;
+
+#[cfg(test)]
+pub mod mock;
+#[cfg(test)]
+pub mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::pallet_prelude::*;
+    use frame_support::storage::types::OptionQuery;
     use frame_support::{
         traits::{Get, ReservableCurrency},
         weights::Weight,
@@ -26,27 +35,30 @@ pub mod pallet {
     use sp_runtime::traits::{Saturating, Zero};
 
     pub type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
-    pub type IdentifierOf<T> = <T as pallet_balances::Config>::ReserveIdentifier;
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_balances::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-        type MaxBlock: Get<Self::BlockNumber>;
-
-        type MinBlock: Get<Self::BlockNumber>;
+        type Duration: Get<Self::BlockNumber>;
     }
-
-    // pub const RESERVABLE_IDENTIFIER = T::AccountId::default();
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub fund: Vec<(
             T::AccountId,
-            (T::BlockNumber, T::BlockNumber, u16, BalanceOf<T>),
+            //delay duration, interval_duration, times, amount per time
+            (u32, u32, u32, BalanceOf<T>),
         )>,
-        //TODO
         pub fund_total: Vec<(T::AccountId, BalanceOf<T>)>,
+    }
+
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
+    pub struct FoundationData<Balance> {
+        pub delay_durations: u32,
+        pub interval_durations: u32,
+        pub times: u32,
+        pub amount: Balance,
     }
 
     #[cfg(feature = "std")]
@@ -60,18 +72,42 @@ pub mod pallet {
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T>
-    where
-        IdentifierOf<T>: From<(u8, [u8; 32])>,
-        <T as frame_system::Config>::AccountId: Into<[u8; 32]>,
-    {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
-            for (account, balance) in &self.fund {
-                Foundation::<T>::insert(account, balance);
+            for (account, _balance) in &self.fund {
+                Foundation::<T>::insert(
+                    account,
+                    FoundationData {
+                        delay_durations: _balance.0,
+                        interval_durations: _balance.1,
+                        times: _balance.2,
+                        amount: _balance.3,
+                    },
+                );
             }
             for (account, balance) in &self.fund_total {
-                <pallet_balances::Pallet<T>>::reserve(&account, *balance);
+                pallet_balances::Pallet::<T>::mutate_account(&account, |accountData| {
+                    accountData.reserved = *balance;
+                })
+                .unwrap();
             }
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> GenesisConfig<T> {
+        /// Direct implementation of `GenesisBuild::build_storage`.
+        ///
+        /// Kept in order not to break dependency.
+        pub fn build_storage(&self) -> Result<sp_runtime::Storage, String> {
+            <Self as GenesisBuild<T>>::build_storage(self)
+        }
+
+        /// Direct implementation of `GenesisBuild::assimilate_storage`.
+        ///
+        /// Kept in order not to break dependency.
+        pub fn assimilate_storage(&self, storage: &mut sp_runtime::Storage) -> Result<(), String> {
+            <Self as GenesisBuild<T>>::assimilate_storage(self, storage)
         }
     }
 
@@ -88,8 +124,7 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T>
     where
-        IdentifierOf<T>: From<(u8, [u8; 32])>,
-        <T as frame_system::Config>::AccountId: Into<[u8; 32]>,
+        T::BlockNumber: Into<u32>,
     {
         fn on_initialize(now: T::BlockNumber) -> Weight {
             Self::initialize(now)
@@ -98,12 +133,8 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn foundation)]
-    pub type Foundation<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        (T::BlockNumber, T::BlockNumber, u16, BalanceOf<T>),
-    >;
+    pub type Foundation<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, FoundationData<BalanceOf<T>>, OptionQuery>;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub (super) trait Store)]
@@ -114,36 +145,40 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T>
     where
-        IdentifierOf<T>: From<(u8, [u8; 32])>,
-        <T as frame_system::Config>::AccountId: Into<[u8; 32]>,
+        T::BlockNumber: Into<u32>,
     {
         fn initialize(now: T::BlockNumber) -> Weight {
-            let max_block: T::BlockNumber = T::MaxBlock::get();
-            let min_block: T::BlockNumber = T::MinBlock::get();
-            if now < min_block || now > max_block {
+            let duration: T::BlockNumber = T::Duration::get();
+            if now % duration != Zero::zero() {
                 0
             } else {
-                Self::unlock_fund(now)
+                Self::unlock_fund(now.into() / duration.into())
             }
         }
 
-        fn unlock_fund(now: T::BlockNumber) -> Weight {
+        fn unlock_fund(now: u32) -> Weight {
             let mut weight: Weight = 100_000_000u64;
             for item in Foundation::<T>::iter() {
                 weight = weight.saturating_add(T::DbWeight::get().reads(1 as Weight));
                 let account = item.0;
-                let balance: (T::BlockNumber, T::BlockNumber, u16, BalanceOf<T>) = item.1;
-                if now.saturating_sub(balance.0) % balance.1 == Zero::zero() {
-                    if balance.2 > 0 {
-                        <pallet_balances::Pallet<T>>::unreserve(&account, balance.3);
-                        Self::deposit_event(Event::PreLockedFundUnlocked(
-                            account.clone(),
-                            balance.3,
-                        ));
-                        let b = (balance.0, balance.1, balance.2 - 1, balance.3);
-                        Foundation::<T>::insert(account, b);
-                        weight = weight.saturating_add(T::DbWeight::get().writes(1 as Weight));
+                let mut balance: FoundationData<BalanceOf<T>> = item.1;
+
+                if (now >= balance.delay_durations)
+                    && (now.saturating_sub(balance.delay_durations) % balance.interval_durations
+                        == 0u32)
+                {
+                    <pallet_balances::Pallet<T>>::unreserve(&account, balance.amount);
+                    Self::deposit_event(Event::PreLockedFundUnlocked(
+                        account.clone(),
+                        balance.amount,
+                    ));
+                    balance.times = balance.times - 1;
+                    if balance.times == 0 {
+                        Foundation::<T>::remove(account);
+                    } else {
+                        Foundation::<T>::insert(account, balance);
                     }
+                    weight = weight.saturating_add(T::DbWeight::get().writes(1 as Weight));
                 }
             }
             weight
