@@ -98,12 +98,39 @@ parameter_types! {
     pub const DominatorRegisterPoint: BlockNumber = 10;
 }
 
+pub struct PhantomData;
+
+impl fuso_support::traits::Rewarding<AccountId, Balance, BlockNumber> for PhantomData {
+    type Balance = Balance;
+
+    fn era_duration() -> BlockNumber {
+        1
+    }
+
+    fn total_volume(at: BlockNumber) -> Balance {
+        100 * DOLLARS
+    }
+
+    fn acked_reward(who: &AccountId) -> Self::Balance {
+        0
+    }
+
+    fn save_trading(
+        trader: &AccountId,
+        amount: Balance,
+        at: BlockNumber,
+    ) -> frame_support::pallet_prelude::DispatchResult {
+        Ok(())
+    }
+}
+
 impl pallet_fuso_verifier::Config for Test {
     type Asset = TokenModule;
     type DominatorOnlineThreshold = DominatorOnlineThreshold;
     type DominatorRegisterPoint = DominatorRegisterPoint;
     type Event = Event;
     type MinimalStakingAmount = MinimalStakingAmount;
+    type Rewarding = PhantomData;
     type SeasonDuration = SeasonDuration;
     type SelfWeightInfo = ();
 }
