@@ -1,4 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
 // Copyright 2021 UINB Technologies Pte. Ltd.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,9 +21,9 @@ pub mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use frame_support::pallet_prelude::*;
-    use frame_support::storage::types::OptionQuery;
     use frame_support::{
+        pallet_prelude::*,
+        // storage::types::OptionQuery,
         traits::{Get, ReservableCurrency},
         weights::Weight,
     };
@@ -44,10 +43,13 @@ pub mod pallet {
     pub struct GenesisConfig<T: Config> {
         pub fund: Vec<(
             T::AccountId,
-            //delay duration, interval_duration, times, amount per time
-            (u32, u32, u32, BalanceOf<T>),
+            //delay duration, interval_duration, times, amount per time, total
+            u32,
+            u32,
+            u32,
+            BalanceOf<T>,
+            BalanceOf<T>,
         )>,
-        pub fund_total: Vec<(T::AccountId, BalanceOf<T>)>,
     }
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
@@ -61,30 +63,25 @@ pub mod pallet {
     #[cfg(feature = "std")]
     impl<T: Config> Default for GenesisConfig<T> {
         fn default() -> Self {
-            Self {
-                fund: Vec::new(),
-                fund_total: Vec::new(),
-            }
+            Self { fund: Vec::new() }
         }
     }
 
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
-            for (account, balance) in &self.fund {
+            for data in &self.fund {
                 Foundation::<T>::insert(
-                    account,
+                    data.0.clone(),
                     FoundationData {
-                        delay_durations: balance.0,
-                        interval_durations: balance.1,
-                        times: balance.2,
-                        amount: balance.3,
+                        delay_durations: data.1,
+                        interval_durations: data.2,
+                        times: data.3,
+                        amount: data.4,
                     },
                 );
-            }
-            for (account, balance) in &self.fund_total {
-                pallet_balances::Pallet::<T>::mutate_account(&account, |account_data| {
-                    account_data.reserved = *balance;
+                pallet_balances::Pallet::<T>::mutate_account(&data.0, |account_data| {
+                    account_data.reserved = data.5;
                 })
                 .unwrap();
             }

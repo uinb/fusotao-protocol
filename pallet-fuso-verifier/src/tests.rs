@@ -8,6 +8,7 @@ use sp_keyring::{sr25519::Keyring, AccountKeyring};
 use crate::mock::*;
 use crate::Error;
 use crate::Module;
+use fuso_support::constants::*;
 use pallet_fuso_token::XToken;
 use sp_runtime::MultiAddress;
 
@@ -64,7 +65,7 @@ pub fn test_stake_unstake_should_work() {
         ));
         let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
         assert_eq!(alice_dominator.staked, 1000);
-        assert_eq!(alice_dominator.active, false);
+        assert_eq!(alice_dominator.status, DOMINATOR_INACTIVE);
 
         assert_ok!(Verifier::stake(
             Origin::signed(ferdie.clone()),
@@ -73,7 +74,7 @@ pub fn test_stake_unstake_should_work() {
         ));
         let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
         assert_eq!(alice_dominator.staked, 10000);
-        assert_eq!(alice_dominator.active, true);
+        assert_eq!(alice_dominator.status, DOMINATOR_ACTIVE);
         assert_noop!(
             //50 < MinimalStakingAmount(100)
             Verifier::stake(
@@ -107,7 +108,7 @@ pub fn test_stake_unstake_should_work() {
         );
         let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
         assert_eq!(alice_dominator.staked, 1000);
-        assert_eq!(alice_dominator.active, false);
+        assert_eq!(alice_dominator.status, DOMINATOR_INACTIVE);
     });
 }
 
