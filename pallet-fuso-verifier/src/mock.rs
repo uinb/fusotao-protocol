@@ -2,13 +2,11 @@ use super::*;
 use crate as pallet_fuso_verifier;
 use frame_support::parameter_types;
 use frame_system as system;
-use sp_core::H256;
 use sp_keyring::AccountKeyring;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::{
-    generic, impl_opaque_keys,
-    testing::Header,
-    traits::{AccountIdLookup, BlakeTwo256, IdentityLookup},
+    generic,
+    traits::{AccountIdLookup, BlakeTwo256},
     MultiSignature,
 };
 
@@ -107,18 +105,18 @@ impl fuso_support::traits::Rewarding<AccountId, Balance, BlockNumber> for Phanto
         1
     }
 
-    fn total_volume(at: BlockNumber) -> Balance {
+    fn total_volume(_at: BlockNumber) -> Balance {
         100 * DOLLARS
     }
 
-    fn acked_reward(who: &AccountId) -> Self::Balance {
+    fn acked_reward(_who: &AccountId) -> Self::Balance {
         0
     }
 
     fn save_trading(
-        trader: &AccountId,
-        amount: Balance,
-        at: BlockNumber,
+        _trader: &AccountId,
+        _amount: Balance,
+        _at: BlockNumber,
     ) -> frame_support::pallet_prelude::DispatchResult {
         Ok(())
     }
