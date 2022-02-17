@@ -1552,5 +1552,49 @@ pub mod pallet {
                 })
             }
         }
+
+        pub fn current_season_of_dominator(dominator: T::AccountId) -> Season {
+            let now = frame_system::Pallet::<T>::block_number();
+            let claim_at = Dominators::<T>::try_get(&dominator)
+                .map(|d| d.start_from)
+                .unwrap_or_default();
+            if now < claim_at {
+                0
+            } else {
+                ((now - claim_at) / T::SeasonDuration::get()).into()
+            }
+        }
+
+        pub fn pending_shares_of_dominator(
+            dominator: T::AccountId,
+            who: T::AccountId,
+        ) -> Balance<T> {
+            let start_from = Dominators::<T>::try_get(&dominator)
+                .map(|d| d.start_from)
+                .unwrap_or_default();
+            if start_from == Zero::zero() {
+                return Zero::zero();
+            }
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let current_season = Self::current_season(current_block, start_from);
+            let staking = Stakings::<T>::get(&dominator, &who);
+            if staking.amount.is_zero() {
+                return Zero::zero();
+            }
+            let user_staking: u128 = staking.amount.into();
+            let mut shares = 0u128;
+            for season in staking.from_season..current_season {
+                let bonus = Bonuses::<T>::get(&dominator, season);
+                if bonus.staked.is_zero() || bonus.profit.is_empty() {
+                    continue;
+                }
+                let total_staking: u128 = bonus.staked.into();
+                let r: Perquintill = Perquintill::from_rational(user_staking, total_staking);
+                for (_, profit) in bonus.profit.into_iter() {
+                    shares += r * profit.into();
+                }
+            }
+            shares.into()
+        }
     }
 }
