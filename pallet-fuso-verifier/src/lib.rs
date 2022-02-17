@@ -26,6 +26,7 @@ pub mod tests;
 #[frame_support::pallet]
 pub mod pallet {
     use crate::weights::WeightInfo;
+    use ascii::AsciiStr;
     use codec::{Compact, Decode, Encode};
     use frame_support::{
         weights::constants::RocksDbWeight,
@@ -204,6 +205,7 @@ pub mod pallet {
 
     #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
     pub struct Dominator<Balance, BlockNumber> {
+        pub name: Vec<u8>,
         pub staked: Balance,
         pub merkle_root: [u8; 32],
         pub start_from: BlockNumber,
@@ -343,6 +345,7 @@ pub mod pallet {
         InsufficientBalance,
         Overflow,
         InsufficientStakingAmount,
+        InvalidName,
         InvalidStatus,
         InvalidStaking,
         StakingNotExists,
@@ -398,8 +401,12 @@ pub mod pallet {
     {
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
         #[pallet::weight(T::SelfWeightInfo::register())]
-        pub fn register(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+        pub fn register(origin: OriginFor<T>, identifier: Vec<u8>) -> DispatchResultWithPostInfo {
             let dominator = ensure_signed(origin)?;
+            let name = AsciiStr::from_ascii(&identifier);
+            ensure!(name.is_ok(), Error::<T>::InvalidName);
+            let name = name.unwrap();
+            ensure!(name.len() >= 2 && name.len() <= 32, Error::<T>::InvalidName);
             let current_block = frame_system::Pallet::<T>::block_number();
             ensure!(
                 current_block >= T::DominatorRegisterPoint::get(),
@@ -413,6 +420,7 @@ pub mod pallet {
             Dominators::<T>::insert(
                 &dominator,
                 Dominator {
+                    name: identifier,
                     staked: Zero::zero(),
                     start_from: register_at,
                     sequence: (0, current_block),
