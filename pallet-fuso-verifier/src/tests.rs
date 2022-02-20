@@ -1,14 +1,14 @@
 use super::*;
-use crate::mock::{new_tester, AccountId};
-use frame_support::{assert_noop, assert_ok};
-use sp_keyring::AccountKeyring;
 use crate::mock::*;
+use crate::mock::{new_tester, AccountId};
 use crate::Error;
 use crate::Pallet;
+use frame_support::{assert_noop, assert_ok};
+use fuso_support::constants::RESERVE_FOR_STAKING;
 use fuso_support::constants::*;
 use pallet_fuso_token::XToken;
+use sp_keyring::AccountKeyring;
 use sp_runtime::MultiAddress;
-use fuso_support::constants::RESERVE_FOR_STAKING;
 
 type Token = pallet_fuso_token::Pallet<Test>;
 type Verifier = Pallet<Test>;
@@ -19,12 +19,18 @@ pub fn register_should_work() {
         let alice: AccountId = AccountKeyring::Alice.into();
         let charlie: AccountId = AccountKeyring::Charlie.into();
         frame_system::Pallet::<Test>::set_block_number(15);
-        assert_ok!(Verifier::register(Origin::signed(alice.clone())));
-		let alice_dominator = Verifier::dominators(&alice);
-		assert!(alice_dominator.is_some());
-        assert_ok!(Verifier::register(Origin::signed(charlie.clone())));
+        assert_ok!(Verifier::register(
+            Origin::signed(alice.clone()),
+            b"cool".to_vec()
+        ));
+        let alice_dominator = Verifier::dominators(&alice);
+        assert!(alice_dominator.is_some());
         assert_noop!(
-            Verifier::register(Origin::signed(alice.clone())),
+            Verifier::register(Origin::signed(charlie.clone()), b"cool".to_vec()),
+            Error::<Test>::InvalidName
+        );
+        assert_noop!(
+            Verifier::register(Origin::signed(alice.clone()), b"cooq".to_vec()),
             Error::<Test>::DominatorAlreadyExists
         );
     });
@@ -45,7 +51,10 @@ pub fn test_stake_unstake_should_work() {
             ),
             Error::<Test>::DominatorNotFound
         );
-        assert_ok!(Verifier::register(Origin::signed(alice.clone())));
+        assert_ok!(Verifier::register(
+            Origin::signed(alice.clone()),
+            b"cool".to_vec()
+        ));
 
         //bob don't have enough TAO
         assert_noop!(
@@ -64,8 +73,8 @@ pub fn test_stake_unstake_should_work() {
         let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
         assert_eq!(alice_dominator.staked, 1000);
         assert_eq!(alice_dominator.status, DOMINATOR_INACTIVE);
-		let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
-		assert_eq!(reserves, 1000);
+        let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
+        assert_eq!(reserves, 1000);
 
         assert_ok!(Verifier::stake(
             Origin::signed(ferdie.clone()),
@@ -75,10 +84,10 @@ pub fn test_stake_unstake_should_work() {
         let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
         assert_eq!(alice_dominator.staked, 10000);
         assert_eq!(alice_dominator.status, DOMINATOR_ACTIVE);
-		let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
-		assert_eq!(reserves, 10000);
+        let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
+        assert_eq!(reserves, 10000);
 
-		assert_noop!(
+        assert_noop!(
             //50 < MinimalStakingAmount(100)
             Verifier::stake(
                 Origin::signed(ferdie.clone()),
@@ -87,9 +96,9 @@ pub fn test_stake_unstake_should_work() {
             ),
             Error::<Test>::LittleStakingAmount
         );
-		let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
-		assert_eq!(reserves, 10000);
-		assert_noop!(
+        let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
+        assert_eq!(reserves, 10000);
+        assert_noop!(
             //10000-9990 < MinimalStakingAmount(100)
             Verifier::unstake(
                 Origin::signed(ferdie.clone()),
@@ -98,16 +107,16 @@ pub fn test_stake_unstake_should_work() {
             ),
             Error::<Test>::LittleStakingAmount
         );
-		let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
-		assert_eq!(reserves, 10000);
-		assert_ok!(Verifier::unstake(
+        let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
+        assert_eq!(reserves, 10000);
+        assert_ok!(Verifier::unstake(
             Origin::signed(ferdie.clone()),
             MultiAddress::Id(alice.clone()),
             9000
         ));
-		let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
-		assert_eq!(reserves, 1000);
-		assert_noop!(
+        let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
+        assert_eq!(reserves, 1000);
+        assert_noop!(
             Verifier::unstake(
                 Origin::signed(ferdie.clone()),
                 MultiAddress::Id(alice.clone()),
@@ -140,7 +149,10 @@ pub fn test_authorize() {
                 assert_eq!(total, 10000000000000000000);
             }
         }
-        assert_ok!(Verifier::register(Origin::signed(alice.clone())));
+        assert_ok!(Verifier::register(
+            Origin::signed(alice.clone()),
+            b"cool".to_vec()
+        ));
         assert_noop!(
             Verifier::authorize(
                 Origin::signed(ferdie.clone()),
@@ -164,8 +176,8 @@ pub fn test_authorize() {
             ),
             Error::<Test>::InsufficientBalance
         );
-		let reserves = Verifier::reserves(&(RESERVE_FOR_AUTHORIZING, ferdie.clone(), 1u32), &alice);
-		assert_eq!(reserves, 0);
+        let reserves = Verifier::reserves(&(RESERVE_FOR_AUTHORIZING, ferdie.clone(), 1u32), &alice);
+        assert_eq!(reserves, 0);
 
         assert_noop!(
             Verifier::authorize(
@@ -182,16 +194,19 @@ pub fn test_authorize() {
             1,
             100000
         ));
-		let reserves = Verifier::reserves(&(RESERVE_FOR_AUTHORIZING, ferdie.clone(), 1u32), &alice);
-		assert_eq!(reserves, 100000);
-		let t = Verifier::reserves((1u8, ferdie.clone(), 1), alice.clone());
+        let reserves = Verifier::reserves(&(RESERVE_FOR_AUTHORIZING, ferdie.clone(), 1u32), &alice);
+        assert_eq!(reserves, 100000);
+        let t = Verifier::reserves((1u8, ferdie.clone(), 1), alice.clone());
         assert_eq!(t, 100000);
-        assert_ok!(Verifier::authorize(
-            Origin::signed(ferdie.clone()),
-            MultiAddress::Id(alice.clone()),
-            1,
-            0
-        ));
+        assert_noop!(
+            Verifier::authorize(
+                Origin::signed(ferdie.clone()),
+                MultiAddress::Id(alice.clone()),
+                1,
+                1000000
+            ),
+            Error::<Test>::ReceiptAlreadyExists
+        );
         let t = Verifier::reserves((RESERVE_FOR_AUTHORIZING, ferdie.clone(), 1), alice.clone());
         assert_eq!(t, 100000);
     });

@@ -13,8 +13,7 @@ pub trait WeightInfo {
 	fn verify() -> Weight;
 	fn stake() -> Weight;
 	fn unstake() -> Weight;
-	fn add_stablecoin() -> Weight;
-	fn remove_stablecoin() -> Weight;
+	fn claim_shares() -> Weight;
 }
 
 // pub struct SubstrateWeight<T>(PhantomData<T>);
@@ -121,15 +120,9 @@ impl WeightInfo for () {
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
 
-	fn add_stablecoin() -> Weight {
+	fn claim_shares() -> Weight {
 		(33_780_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
-	}
-
-	fn remove_stablecoin() -> Weight {
-		(33_780_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
+			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
 }
