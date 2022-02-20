@@ -248,8 +248,9 @@ pub mod pallet {
         #[pallet::constant]
         type SeasonDuration: Get<Self::BlockNumber>;
 
+        /// the SeasonDuration must be 1 * period, 2 * period, 3 * period...
         #[pallet::constant]
-        type DominatorRegisterPoint: Get<Self::BlockNumber>;
+        type DominatorCheckGracePeriod: Get<Self::BlockNumber>;
 
         #[pallet::constant]
         type MinimalStakingAmount: Get<Balance<Self>>;
@@ -364,27 +365,21 @@ pub mod pallet {
         Balance<T>: Into<u128>,
         T::BlockNumber: Into<u32>,
     {
+        /// save total staking of previous season
         fn on_initialize(now: T::BlockNumber) -> Weight {
-            if now % T::DominatorRegisterPoint::get() != Zero::zero() {
+            if now % T::DominatorCheckGracePeriod::get() != Zero::zero() {
                 return Zero::zero();
             }
             let mut weight: Weight = 0u64 as Weight;
-            for dominator in Dominators::<T>::iter() {
-                let start = dominator.1.start_from;
+            for (id, dominator) in Dominators::<T>::iter() {
+                let start = dominator.start_from;
                 if now == start {
                     continue;
                 }
                 weight = weight.saturating_add(RocksDbWeight::get().reads(1 as Weight));
                 if (now - start) % T::SeasonDuration::get() == Zero::zero() {
-                    let season = ((now - start) / T::SeasonDuration::get()).into();
-                    Bonuses::<T>::insert(
-                        dominator.0,
-                        season,
-                        Bonus {
-                            staked: dominator.1.staked,
-                            profit: Default::default(),
-                        },
-                    );
+                    let prv_season = ((now - start) / T::SeasonDuration::get()).into() - 1;
+                    Bonuses::<T>::mutate(id, prv_season, |b| b.staked = dominator.staked);
                     weight = weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
                 }
             }
@@ -409,14 +404,20 @@ pub mod pallet {
             ensure!(name.len() >= 2 && name.len() <= 32, Error::<T>::InvalidName);
             let current_block = frame_system::Pallet::<T>::block_number();
             ensure!(
-                current_block >= T::DominatorRegisterPoint::get(),
+                current_block >= T::DominatorCheckGracePeriod::get(),
                 Error::<T>::TooEarlyToRegister
             );
             ensure!(
                 !Dominators::<T>::contains_key(&dominator),
                 Error::<T>::DominatorAlreadyExists
             );
-            let register_at = current_block - current_block % T::DominatorRegisterPoint::get();
+            ensure!(
+                Dominators::<T>::iter()
+                    .find(|d| &d.1.name == &identifier)
+                    .is_none(),
+                Error::<T>::InvalidName
+            );
+            let register_at = current_block - current_block % T::DominatorCheckGracePeriod::get();
             Dominators::<T>::insert(
                 &dominator,
                 Dominator {
@@ -501,9 +502,8 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // TODO weight
         #[transactional]
-        #[pallet::weight(1_000_000_000_000)]
+        #[pallet::weight(T::SelfWeightInfo::claim_shares())]
         pub fn claim_shares(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -542,6 +542,10 @@ pub mod pallet {
             ensure!(
                 dominator.status == DOMINATOR_ACTIVE,
                 Error::<T>::DominatorInactive
+            );
+            ensure!(
+                !Receipts::<T>::contains_key(&dex, &fund_owner),
+                Error::<T>::ReceiptAlreadyExists,
             );
             ensure!(
                 T::Asset::can_reserve(&token_id, &fund_owner, amount),
@@ -1334,6 +1338,7 @@ pub mod pallet {
             )
         }
 
+        /// take shares from dominator, return season should update
         #[transactional]
         fn take_shares(
             staker: &T::AccountId,
@@ -1439,7 +1444,11 @@ pub mod pallet {
                     let current_block = frame_system::Pallet::<T>::block_number();
                     let current_season = Self::current_season(current_block, dominator.start_from);
                     let season_step_into = if staking.amount.is_zero() {
-                        current_season + 1
+                        if current_season == 0 {
+                            0
+                        } else {
+                            current_season + 1
+                        }
                     } else {
                         let distribution = Distribution {
                             from_season: staking.from_season,
@@ -1484,7 +1493,10 @@ pub mod pallet {
                     .staked
                     .checked_sub(&amount)
                     .ok_or(Error::<T>::InsufficientBalance)?;
-                Stakings::<T>::try_mutate(&dominator_id, &staker, |staking| -> DispatchResult {
+                Stakings::<T>::try_mutate_exists(&dominator_id, &staker, |s| -> DispatchResult {
+                    let staking = s.take();
+                    ensure!(staking.is_some(), Error::<T>::InvalidStaking);
+                    let mut staking = staking.unwrap();
                     let remain = staking
                         .amount
                         .checked_sub(&amount)
@@ -1502,18 +1514,16 @@ pub mod pallet {
                     )?;
                     let current_block = frame_system::Pallet::<T>::block_number();
                     let current_season = Self::current_season(current_block, dominator.start_from);
-                    let season_step_into = if remain.is_zero() {
-                        current_season + 1
-                    } else {
-                        let distribution = Distribution {
-                            from_season: staking.from_season,
-                            to_season: current_season,
-                            staking: staking.amount,
-                        };
-                        Self::take_shares(staker, dominator_id, &distribution)?
+                    let distribution = Distribution {
+                        from_season: staking.from_season,
+                        to_season: current_season,
+                        staking: staking.amount,
                     };
+                    staking.from_season = Self::take_shares(staker, dominator_id, &distribution)?;
                     staking.amount = remain;
-                    staking.from_season = season_step_into;
+                    if !remain.is_zero() {
+                        s.replace(staking);
+                    }
                     Ok(())
                 })?;
                 dominator.staked = dominator_total_staking;
@@ -1566,11 +1576,7 @@ pub mod pallet {
             let claim_at = Dominators::<T>::try_get(&dominator)
                 .map(|d| d.start_from)
                 .unwrap_or_default();
-            if now < claim_at {
-                0
-            } else {
-                ((now - claim_at) / T::SeasonDuration::get()).into()
-            }
+            Self::current_season(now, claim_at)
         }
 
         pub fn pending_shares_of_dominator(
