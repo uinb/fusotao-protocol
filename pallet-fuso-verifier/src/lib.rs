@@ -1163,8 +1163,9 @@ pub mod pallet {
                     // filled or conditional_canceled
                     let vanity_maker = leaves.last().unwrap();
                     let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
+                    ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
                     ensure!(
-                        b == base && q == quote && p == price,
+                        best_ask1 >= best_ask0 || best_ask1 == 0,
                         Error::<T>::ProofsUnsatisfied
                     );
                     ensure!(best_bid1 == best_bid0, Error::<T>::ProofsUnsatisfied);
