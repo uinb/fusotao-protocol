@@ -130,6 +130,8 @@ pub fn test_stake_unstake_should_work() {
     });
 }
 
+const ONE: u128 = 1000000000000000000;
+
 #[test]
 pub fn test_authorize() {
     new_tester().execute_with(|| {
@@ -138,14 +140,22 @@ pub fn test_authorize() {
         frame_system::Pallet::<Test>::set_block_number(15);
         assert_ok!(Token::issue(
             Origin::signed(ferdie.clone()),
-            10000000000000000000,
-            br#"USDT"#.to_vec()
+            6,
+            true,
+            br#"USDT"#.to_vec(),
+            br#"usdt.testnet"#.to_vec(),
         ));
+        assert_ok!(Token::do_mint(1, &ferdie, 10000000, None));
+        // assert_ok!(Token::issue(
+        //     Origin::signed(ferdie.clone()),
+        //     10000000000000000000,
+        //     br#"USDT"#.to_vec()
+        // ));
         let token_info = Token::get_token_info(1);
         assert!(token_info.is_some());
         let token_info: XToken<u128> = token_info.unwrap();
         match token_info {
-            XToken::NEP141(_, _, total, _) => {
+            XToken::NEP141(_, _, total, _, _) => {
                 assert_eq!(total, 10000000000000000000);
             }
         }

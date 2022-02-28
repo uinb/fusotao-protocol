@@ -47,6 +47,8 @@ pub mod pallet {
     use sp_runtime::DispatchResult;
     use sp_std::vec::Vec;
 
+    pub const STANDARD_DECIMALS: u8 = 18;
+
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
     pub struct TokenAccountData<Balance> {
         pub free: Balance,
@@ -55,14 +57,14 @@ pub mod pallet {
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
     pub enum XToken<Balance> {
-        //( symbol, contract_address, total, stable
-        NEP141(Vec<u8>, Vec<u8>, Balance, bool),
+        //( symbol, contract_address, total, stable, decimals
+        NEP141(Vec<u8>, Vec<u8>, Balance, bool, u8),
     }
 
     impl<Balance> XToken<Balance> {
         pub fn is_stable(&self) -> bool {
             match *self {
-                XToken::NEP141(_, _, _, stable) => stable,
+                XToken::NEP141(_, _, _, stable, _) => stable,
             }
         }
     }
@@ -102,6 +104,7 @@ pub mod pallet {
         InsufficientBalance,
         Overflow,
         TooManyReserves,
+        InvalidDecimals,
     }
 
     #[pallet::storage]
@@ -136,10 +139,11 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
-        TokenIssued(T::TokenId, T::AccountId, BalanceOf<T>),
+        TokenIssued(T::TokenId, Vec<u8>, Vec<u8>),
         TokenTransfered(T::TokenId, T::AccountId, T::AccountId, BalanceOf<T>),
         TokenReserved(T::TokenId, T::AccountId, BalanceOf<T>),
         TokenUnreserved(T::TokenId, T::AccountId, BalanceOf<T>),
+        TokenMinted(T::TokenId, T::AccountId, BalanceOf<T>),
         TokenBurned(T::TokenId, T::AccountId, BalanceOf<T>),
         TokenRepatriated(T::TokenId, T::AccountId, T::AccountId, BalanceOf<T>),
     }
@@ -149,14 +153,17 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        #[transactional]
         #[pallet::weight(10_000)]
         pub fn issue(
             origin: OriginFor<T>,
-            total: BalanceOf<T>,
+            decimals: u8,
+            stable: bool,
             symbol: Vec<u8>,
+            contract: Vec<u8>,
         ) -> DispatchResultWithPostInfo {
-            let origin = ensure_signed(origin)?;
-            ensure!(!total.is_zero(), Error::<T>::AmountZero);
+            let _ = ensure_signed(origin)?;
+            ensure!(decimals <= STANDARD_DECIMALS, Error::<T>::InvalidDecimals);
             let name = AsciiStr::from_ascii(&symbol);
             ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
             let name = name.unwrap();
@@ -164,17 +171,24 @@ pub mod pallet {
                 name.len() >= 2 && name.len() <= 8,
                 Error::<T>::InvalidTokenName
             );
+            ensure!(
+                !TokenByName::<T>::contains_key(&contract),
+                Error::<T>::InvalidToken
+            );
             let id = Self::next_token_id();
             NextTokenId::<T>::mutate(|id| *id += One::one());
-            Balances::<T>::insert(
-                (id, &origin),
-                TokenAccountData {
-                    free: total,
-                    reserved: Zero::zero(),
-                },
+            TokenByName::<T>::insert(contract.clone(), id);
+            Tokens::<T>::insert(
+                id,
+                XToken::NEP141(
+                    symbol.clone(),
+                    contract.clone(),
+                    Zero::zero(),
+                    stable,
+                    decimals,
+                ),
             );
-            Tokens::<T>::insert(id, XToken::NEP141(symbol.clone(), symbol, total, false));
-            Self::deposit_event(Event::TokenIssued(id, origin, total));
+            Self::deposit_event(Event::TokenIssued(id, symbol, contract));
             Ok(().into())
         }
 
@@ -185,7 +199,7 @@ pub mod pallet {
                 ensure!(info.is_some(), Error::<T>::InvalidToken);
                 let mut token_info = info.take().unwrap();
                 match token_info {
-                    XToken::NEP141(_, _, _, ref mut stable) => *stable = true,
+                    XToken::NEP141(_, _, _, ref mut stable, _) => *stable = true,
                 }
                 info.replace(token_info);
                 Ok(())
@@ -235,18 +249,41 @@ pub mod pallet {
         }
     }
 
-    impl<T: Config> Pallet<T> {
-        fn create_token(name: &[u8]) -> T::TokenId {
-            let token_id = Self::next_token_id();
-            NextTokenId::<T>::mutate(|id| *id += One::one());
-            let name = name.as_ref().to_vec();
-            let token =
-                XToken::<BalanceOf<T>>::NEP141(name.clone(), name.clone(), Zero::zero(), false);
-            TokenByName::<T>::insert(name.clone(), token_id);
-            Tokens::<T>::insert(token_id, token);
-            token_id
+    impl<T: Config> Pallet<T>
+    where
+        BalanceOf<T>: From<u128> + Into<u128>,
+    {
+        // TODO wait for oct to support automatically sync token metadata
+        // then we should support creating token metadata
+        // fn create_token(name: &[u8], decimals: u8) -> T::TokenId {
+        //     let token_id = Self::next_token_id();
+        //     NextTokenId::<T>::mutate(|id| *id += One::one());
+        //     let name = name.as_ref().to_vec();
+        //     let token = XToken::<BalanceOf<T>>::NEP141(
+        //         name.clone(),
+        //         name.clone(),
+        //         Zero::zero(),
+        //         false,
+        //         decimals,
+        //     );
+        //     // FIXME
+        //     TokenByName::<T>::insert(name.clone(), token_id);
+        //     Tokens::<T>::insert(token_id, token);
+        //     token_id
+        // }
+
+        fn unify_decimals(amount: BalanceOf<T>, decimals: u8) -> BalanceOf<T> {
+            // TODO assert decimals <= 18
+            let diff = STANDARD_DECIMALS - decimals;
+            let mut amount: u128 = amount.into();
+            for _i in 0..diff {
+                amount *= 10
+            }
+            amount.into()
         }
 
+        /// the verifier requests all amount should be 10^18, the `do_mint` is called by oct-pallets,
+        /// the parameter `amount` is 10^decimals_of_metadata, in anthor word, the real storage of token amount unified
         #[transactional]
         pub fn do_mint(
             token: T::TokenId,
@@ -254,32 +291,43 @@ pub mod pallet {
             amount: BalanceOf<T>,
             _maybe_check_issuer: Option<T::AccountId>,
         ) -> DispatchResult {
-            Balances::<T>::try_mutate_exists((&token, beneficiary), |to| -> DispatchResult {
-                let mut account = to.take().unwrap_or_default();
-                account.free = account
-                    .free
-                    .checked_add(&amount)
-                    .ok_or(Error::<T>::Overflow)?;
-                Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
-                    ensure!(token_info.is_some(), Error::<T>::InvalidToken);
-                    let mut info = token_info.take().unwrap();
-                    match info {
-                        XToken::NEP141(_, _, ref mut total, _) => {
-                            *total = total
-                                .checked_add(&amount)
-                                .ok_or(Error::<T>::InsufficientBalance)?;
-                        }
+            if amount == Zero::zero() {
+                return Ok(());
+            }
+            Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
+                ensure!(token_info.is_some(), Error::<T>::InvalidToken);
+                let mut info = token_info.take().unwrap();
+                let unified_amount = match info {
+                    XToken::NEP141(_, _, ref mut total, _, decimals) => {
+                        let unified_amount = Self::unify_decimals(amount, decimals);
+                        *total = total
+                            .checked_add(&unified_amount)
+                            .ok_or(Error::<T>::InsufficientBalance)?;
+                        unified_amount
                     }
-                    token_info.replace(info);
+                };
+                Balances::<T>::try_mutate_exists((&token, beneficiary), |to| -> DispatchResult {
+                    let mut account = to.take().unwrap_or_default();
+                    account.free = account
+                        .free
+                        .checked_add(&unified_amount)
+                        .ok_or(Error::<T>::Overflow)?;
+                    to.replace(account);
                     Ok(())
                 })?;
-                to.replace(account);
+                token_info.replace(info);
+                Self::deposit_event(Event::TokenMinted(
+                    token,
+                    beneficiary.clone(),
+                    unified_amount,
+                ));
                 Ok(())
             })?;
-            Self::deposit_event(Event::TokenIssued(token, beneficiary.clone(), amount));
             Ok(())
         }
 
+        /// the verifier requests all amount should be 10^18, the `do_burn` is called by oct-pallets,
+        /// the parameter `amount` is 10^decimals_of_metadata, in anthor word, the real storage of token amount is unified
         #[transactional]
         pub fn do_burn(
             token: T::TokenId,
@@ -288,36 +336,38 @@ pub mod pallet {
             _maybe_check_admin: Option<T::AccountId>,
         ) -> Result<BalanceOf<T>, DispatchError> {
             ensure!(!amount.is_zero(), Error::<T>::AmountZero);
-            Balances::<T>::try_mutate_exists((&token, target), |from| -> DispatchResult {
-                ensure!(from.is_some(), Error::<T>::BalanceZero);
-                let mut account = from.take().unwrap();
-                account.free = account
-                    .free
-                    .checked_sub(&amount)
-                    .ok_or(Error::<T>::InsufficientBalance)?;
-                match account.free == Zero::zero() && account.reserved == Zero::zero() {
-                    true => {}
-                    false => {
-                        from.replace(account);
+            Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
+                ensure!(token_info.is_some(), Error::<T>::BalanceZero);
+                let mut info = token_info.take().unwrap();
+                let unified_amount = match info {
+                    XToken::NEP141(_, _, ref mut total, _, decimals) => {
+                        let unified_amount = Self::unify_decimals(amount, decimals);
+                        *total = total
+                            .checked_sub(&unified_amount)
+                            .ok_or(Error::<T>::InsufficientBalance)?;
+                        unified_amount
                     }
-                }
-                Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
-                    ensure!(token_info.is_some(), Error::<T>::BalanceZero);
-                    let mut info = token_info.take().unwrap();
-                    match info {
-                        XToken::NEP141(_, _, ref mut total, _) => {
-                            *total = total
-                                .checked_sub(&amount)
-                                .ok_or(Error::<T>::InsufficientBalance)?;
+                };
+                Balances::<T>::try_mutate_exists((&token, target), |from| -> DispatchResult {
+                    ensure!(from.is_some(), Error::<T>::BalanceZero);
+                    let mut account = from.take().unwrap();
+                    account.free = account
+                        .free
+                        .checked_sub(&unified_amount)
+                        .ok_or(Error::<T>::InsufficientBalance)?;
+                    match account.free == Zero::zero() && account.reserved == Zero::zero() {
+                        true => {}
+                        false => {
+                            from.replace(account);
                         }
                     }
-                    token_info.replace(info);
                     Ok(())
                 })?;
+                token_info.replace(info);
+                Self::deposit_event(Event::TokenBurned(token, target.clone(), unified_amount));
                 Ok(())
             })?;
-            Self::deposit_event(Event::TokenBurned(token, target.clone(), amount));
-            Ok(BalanceOf::<T>::default())
+            Ok(amount)
         }
     }
 
@@ -362,7 +412,10 @@ pub mod pallet {
         }
     }
 
-    impl<T: Config> fungibles::Mutate<T::AccountId> for Pallet<T> {
+    impl<T: Config> fungibles::Mutate<T::AccountId> for Pallet<T>
+    where
+        Self::Balance: From<u128> + Into<u128>,
+    {
         fn mint_into(
             asset: Self::AssetId,
             who: &T::AccountId,
@@ -459,7 +512,7 @@ pub mod pallet {
             if token_info.is_some() {
                 let token = token_info.unwrap();
                 match token {
-                    XToken::NEP141(_, _, total, _) => total,
+                    XToken::NEP141(_, _, total, _, _) => total,
                 }
             } else {
                 Zero::zero()
@@ -623,18 +676,13 @@ pub mod pallet {
 
         fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
             let name = name.as_ref();
-            let token_result = Self::get_token_by_name(name.clone().to_vec());
-            let token_id = match token_result {
-                Some(token_id) => token_id,
-                _ => Self::create_token(name),
-            };
-            Ok(token_id)
+            Self::get_token_by_name(name.clone().to_vec()).ok_or(())
         }
 
         fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
             let token_result = Self::get_token_info(token_id);
             match token_result {
-                Some(XToken::NEP141(name, _, _, _)) => Ok(name),
+                Some(XToken::NEP141(name, _, _, _, _)) => Ok(name),
                 None => Err(()),
             }
         }
