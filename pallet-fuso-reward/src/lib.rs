@@ -161,7 +161,7 @@ pub mod pallet {
                         r.last_modify = at;
                     } else {
                         let pending_vol: u128 = r.pending_vol.into();
-                        let total_vol: u128 = Volumes::<T>::get(at).into();
+                        let total_vol: u128 = Volumes::<T>::get(r.last_modify).into();
                         ensure!(total_vol > 0, Error::<T>::DivideByZero);
                         let p: Perquintill = Perquintill::from_rational(pending_vol, total_vol);
                         let era_reward: u128 = T::RewardsPerEra::get().into();
