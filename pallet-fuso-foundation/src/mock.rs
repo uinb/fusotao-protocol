@@ -109,22 +109,8 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     let charlie: AccountId = AccountKeyring::Charlie.into();
     pallet_fuso_foundation::GenesisConfig::<Test> {
         fund: vec![
-            (
-                alice.clone(),
-                2,
-                1,
-                5,
-                300000000000000000000,
-                1500000000000000000000,
-            ),
-            (
-                charlie.clone(),
-                2,
-                1,
-                5,
-                200000000000000000000,
-                1000000000000000000000,
-            ),
+            (alice.clone(), 2, 1, 5, 300000000000000000000),
+            (charlie.clone(), 2, 1, 5, 200000000000000000000),
         ],
     }
     .assimilate_storage(&mut t)
