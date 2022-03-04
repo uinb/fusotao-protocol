@@ -43,11 +43,10 @@ pub mod pallet {
     pub struct GenesisConfig<T: Config> {
         pub fund: Vec<(
             T::AccountId,
-            //delay duration, interval_duration, times, amount per time, total
+            // delay duration, interval_duration, times, amount for each time
             u32,
             u32,
             u32,
-            BalanceOf<T>,
             BalanceOf<T>,
         )>,
     }
@@ -81,7 +80,7 @@ pub mod pallet {
                     },
                 );
                 pallet_balances::Pallet::<T>::mutate_account(&data.0, |account_data| {
-                    account_data.reserved = data.5;
+                    account_data.reserved = data.4 * data.3.into();
                 })
                 .unwrap();
             }
