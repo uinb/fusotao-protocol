@@ -273,12 +273,18 @@ pub mod pallet {
         // }
 
         fn unify_decimals(amount: BalanceOf<T>, decimals: u8) -> BalanceOf<T> {
-            // TODO assert decimals <= 18
-            let diff = STANDARD_DECIMALS - decimals;
-            let mut amount: u128 = amount.into();
-            for _i in 0..diff {
-                amount *= 10
-            }
+			let mut amount: u128 = amount.into();
+			if decimals > STANDARD_DECIMALS {
+				let diff = decimals - STANDARD_DECIMALS;
+				for _i in 0..diff {
+					amount /= 10
+				}
+			} else {
+				let diff = STANDARD_DECIMALS - decimals;
+				for _i in 0..diff {
+					amount *= 10
+				}
+			}
             amount.into()
         }
 
