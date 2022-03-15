@@ -1164,10 +1164,6 @@ pub mod pallet {
                     let vanity_maker = leaves.last().unwrap();
                     let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
                     ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
-                    ensure!(
-                        best_ask1 >= best_ask0 || best_ask1 == 0,
-                        Error::<T>::ProofsUnsatisfied
-                    );
                     ensure!(best_bid1 == best_bid0, Error::<T>::ProofsUnsatisfied);
                     let prv_is_maker = vanity_maker.split_old_to_sum();
                     let now_is_maker = vanity_maker.split_new_to_sum();
