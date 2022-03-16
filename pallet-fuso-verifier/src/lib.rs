@@ -353,6 +353,7 @@ pub mod pallet {
         DistributionOngoing,
         LittleStakingAmount,
         UnsupportedQuoteCurrency,
+        DominatorEvicted,
     }
 
     #[pallet::pallet]
@@ -1429,6 +1430,10 @@ pub mod pallet {
             Dominators::<T>::try_mutate_exists(dominator_id, |exists| -> DispatchResult {
                 ensure!(exists.is_some(), Error::<T>::DominatorNotFound);
                 let mut dominator = exists.take().unwrap();
+                ensure!(
+                    dominator.status != DOMINATOR_EVICTED,
+                    Error::<T>::DominatorEvicted
+                );
                 Stakings::<T>::try_mutate(&dominator_id, &staker, |staking| -> DispatchResult {
                     Self::reserve(
                         RESERVE_FOR_STAKING,
@@ -1523,11 +1528,13 @@ pub mod pallet {
                     Ok(())
                 })?;
                 dominator.staked = dominator_total_staking;
-                dominator.status = if dominator.staked >= T::DominatorOnlineThreshold::get() {
-                    DOMINATOR_ACTIVE
-                } else {
-                    DOMINATOR_INACTIVE
-                };
+                if dominator.status != DOMINATOR_EVICTED {
+                    dominator.status = if dominator.staked >= T::DominatorOnlineThreshold::get() {
+                        DOMINATOR_ACTIVE
+                    } else {
+                        DOMINATOR_INACTIVE
+                    };
+                }
                 Self::deposit_event(Event::TaoUnstaked(
                     staker.clone(),
                     dominator_id.clone(),
