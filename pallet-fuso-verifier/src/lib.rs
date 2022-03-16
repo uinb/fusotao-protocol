@@ -579,7 +579,7 @@ pub mod pallet {
             let fund_owner = ensure_signed(origin)?;
             let dominator_id = T::Lookup::lookup(dominator)?;
             ensure!(
-                Self::has_reserved_on(fund_owner.clone(), token_id, amount, &dominator_id),
+                Self::has_authorized_morethan(fund_owner.clone(), token_id, amount, &dominator_id),
                 Error::<T>::InsufficientBalance
             );
             let dominator = Dominators::<T>::try_get(&dominator_id)
@@ -852,6 +852,15 @@ pub mod pallet {
             let taker_base = &leaves[maker_accounts as usize + 1];
             let (bk, taker_b_id) = taker_base.try_get_account::<T>()?;
             let (tba0, tbf0) = taker_base.split_old_to_u128();
+            ensure!(
+                Self::has_authorized_exactly_on(
+                    taker_b_id.clone(),
+                    base.into(),
+                    (tba0 + tbf0).into(),
+                    &dominator,
+                ),
+                Error::<T>::ProofsUnsatisfied
+            );
             let (tba1, tbf1) = taker_base.split_new_to_u128();
             // equals to traded base
             let tb_delta = (tba0 + tbf0) - (tba1 + tbf1);
@@ -859,15 +868,19 @@ pub mod pallet {
             let taker_quote = &leaves[maker_accounts as usize + 2];
             let (qk, taker_q_id) = taker_quote.try_get_account::<T>()?;
             let (tqa0, tqf0) = taker_quote.split_old_to_u128();
+            ensure!(
+                Self::has_authorized_exactly_on(
+                    taker_q_id.clone(),
+                    quote.into(),
+                    (tqa0 + tqf0).into(),
+                    &dominator,
+                ),
+                Error::<T>::ProofsUnsatisfied
+            );
             let (tqa1, tqf1) = taker_quote.split_new_to_u128();
             let tq_delta = (tqa1 + tqf1) - (tqa0 + tqf0);
             ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
             ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
-
-            ensure!(
-                Self::has_reserved_on(taker_b_id.clone(), base.into(), tb_delta.into(), &dominator),
-                Error::<T>::ProofsUnsatisfied
-            );
             // the delta of taker base available account(a.k.a base freezed of taker), equals to the amount of cmd
             if ask_delta != 0 {
                 ensure!(amount == tba0 - tba1, Error::<T>::ProofsUnsatisfied);
@@ -883,6 +896,15 @@ pub mod pallet {
                 let maker_base = &leaves[i * 2 + 1];
                 let (bk, maker_b_id) = maker_base.try_get_account::<T>()?;
                 let mb0 = maker_base.split_old_to_sum();
+                ensure!(
+                    Self::has_authorized_exactly_on(
+                        maker_b_id.clone(),
+                        base.into(),
+                        mb0.into(),
+                        &dominator,
+                    ),
+                    Error::<T>::ProofsUnsatisfied
+                );
                 let mb1 = maker_base.split_new_to_sum();
                 let base_incr = mb1 - mb0;
                 mb_delta += base_incr;
@@ -891,20 +913,20 @@ pub mod pallet {
                 let (qk, maker_q_id) = maker_quote.try_get_account::<T>()?;
                 ensure!(base == bk && quote == qk, Error::<T>::ProofsUnsatisfied);
                 let mq0 = maker_quote.split_old_to_sum();
+                ensure!(
+                    Self::has_authorized_exactly_on(
+                        maker_q_id.clone(),
+                        quote.into(),
+                        mq0.into(),
+                        &dominator,
+                    ),
+                    Error::<T>::ProofsUnsatisfied
+                );
                 let mq1 = maker_quote.split_new_to_sum();
                 let quote_decr = mq0 - mq1;
                 mq_delta += quote_decr;
                 // the accounts should be owned by same user
                 ensure!(maker_b_id == maker_q_id, Error::<T>::ProofsUnsatisfied);
-                ensure!(
-                    Self::has_reserved_on(
-                        maker_q_id.clone(),
-                        quote.into(),
-                        quote_decr.into(),
-                        &dominator
-                    ),
-                    Error::<T>::ProofsUnsatisfied
-                );
                 delta.push(TokenMutation {
                     who: maker_q_id,
                     volume: quote_decr.into(),
@@ -1043,22 +1065,33 @@ pub mod pallet {
             let (tba1, tbf1) = taker_base.split_new_to_u128();
             let tb_delta = (tba1 + tbf1) - (tba0 + tbf0);
             let (bk, taker_b_id) = taker_base.try_get_account::<T>()?;
+            ensure!(
+                Self::has_authorized_exactly_on(
+                    taker_b_id.clone(),
+                    base.into(),
+                    (tba0 + tbf0).into(),
+                    &dominator,
+                ),
+                Error::<T>::ProofsUnsatisfied
+            );
+
             let taker_quote = &leaves[maker_accounts as usize + 2];
             let (tqa0, tqf0) = taker_quote.split_old_to_u128();
             let (tqa1, tqf1) = taker_quote.split_new_to_u128();
             let (qk, taker_q_id) = taker_quote.try_get_account::<T>()?;
-            let tq_delta = (tqa0 + tqf0) - (tqa1 + tqf1);
-            ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
-            ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
             ensure!(
-                Self::has_reserved_on(
+                Self::has_authorized_exactly_on(
                     taker_q_id.clone(),
                     quote.into(),
-                    tq_delta.into(),
-                    &dominator
+                    (tqa0 + tqf0).into(),
+                    &dominator,
                 ),
                 Error::<T>::ProofsUnsatisfied
             );
+
+            let tq_delta = (tqa0 + tqf0) - (tqa1 + tqf1);
+            ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
+            ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
             let mut mb_delta = 0u128;
             let mut mq_delta = 0u128;
             let mut delta = Vec::new();
@@ -1067,6 +1100,15 @@ pub mod pallet {
                 let maker_base = &leaves[i * 2 + 1];
                 let (bk, maker_b_id) = maker_base.try_get_account::<T>()?;
                 let mb0 = maker_base.split_old_to_sum();
+                ensure!(
+                    Self::has_authorized_exactly_on(
+                        maker_b_id.clone(),
+                        base.into(),
+                        mb0.into(),
+                        &dominator,
+                    ),
+                    Error::<T>::ProofsUnsatisfied
+                );
                 let mb1 = maker_base.split_new_to_sum();
                 let base_decr = mb0 - mb1;
                 mb_delta += base_decr;
@@ -1076,18 +1118,18 @@ pub mod pallet {
                 ensure!(quote == qk && base == bk, Error::<T>::ProofsUnsatisfied);
                 ensure!(maker_b_id == maker_q_id, Error::<T>::ProofsUnsatisfied);
                 let mq0 = maker_quote.split_old_to_sum();
-                let mq1 = maker_quote.split_new_to_sum();
-                let quote_incr = mq1 - mq0;
-                mq_delta += quote_incr;
                 ensure!(
-                    Self::has_reserved_on(
-                        maker_b_id.clone(),
-                        base.into(),
-                        base_decr.into(),
-                        &dominator
+                    Self::has_authorized_exactly_on(
+                        maker_q_id.clone(),
+                        quote.into(),
+                        mq0.into(),
+                        &dominator,
                     ),
                     Error::<T>::ProofsUnsatisfied
                 );
+                let mq1 = maker_quote.split_new_to_sum();
+                let quote_incr = mq1 - mq0;
+                mq_delta += quote_incr;
                 delta.push(TokenMutation {
                     who: maker_b_id,
                     volume: quote_incr.into(),
@@ -1162,7 +1204,7 @@ pub mod pallet {
                 } else {
                     // filled or conditional_canceled
                     let vanity_maker = leaves.last().unwrap();
-                    let (b, q, p) = vanity_maker.try_get_orderpage::<T>()?;
+                    let (b, q, _) = vanity_maker.try_get_orderpage::<T>()?;
                     ensure!(b == base && q == quote, Error::<T>::ProofsUnsatisfied);
                     ensure!(best_bid1 == best_bid0, Error::<T>::ProofsUnsatisfied);
                     let prv_is_maker = vanity_maker.split_old_to_sum();
@@ -1305,13 +1347,22 @@ pub mod pallet {
             Ok(())
         }
 
-        fn has_reserved_on(
+        fn has_authorized_morethan(
             who: T::AccountId,
             token_id: TokenId<T>,
             amount: Balance<T>,
             dominator: &T::AccountId,
         ) -> bool {
             Reserves::<T>::get(&(RESERVE_FOR_AUTHORIZING, who, token_id), dominator) >= amount
+        }
+
+        fn has_authorized_exactly_on(
+            who: T::AccountId,
+            token_id: TokenId<T>,
+            amount: Balance<T>,
+            dominator: &T::AccountId,
+        ) -> bool {
+            Reserves::<T>::get(&(RESERVE_FOR_AUTHORIZING, who, token_id), dominator) == amount
         }
 
         #[transactional]
@@ -1326,7 +1377,11 @@ pub mod pallet {
                 dominator,
                 |reserved| -> DispatchResult {
                     T::Asset::try_mutate_account(&token_id, who, |b| -> DispatchResult {
-                        b.1 = balance;
+                        b.1 =
+                            b.1.checked_sub(reserved)
+                                .ok_or(Error::<T>::InsufficientBalance)?
+                                .checked_add(&balance)
+                                .ok_or(Error::<T>::Overflow)?;
                         Ok(())
                     })?;
                     *reserved = balance;
