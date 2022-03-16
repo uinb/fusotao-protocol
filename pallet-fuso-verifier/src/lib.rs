@@ -49,7 +49,7 @@ pub mod pallet {
         collections::btree_map::BTreeMap, convert::*, prelude::*, result::Result, vec::Vec,
     };
 
-	pub type TokenId<T> =
+    pub type TokenId<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::TokenId;
     pub type Balance<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
@@ -280,17 +280,12 @@ pub mod pallet {
         OptionQuery,
     >;
 
-	#[pallet::storage]
-	#[pallet::getter(fn stashed_shares)]
-	pub type StashedShares<T: Config> = StorageMap<
-		_,
-		Blake2_128Concat,
-		T::AccountId,
-		BTreeMap<TokenId<T>, u128>,
-		OptionQuery
-	>;
+    #[pallet::storage]
+    #[pallet::getter(fn stashed_shares)]
+    pub type StashedShares<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BTreeMap<TokenId<T>, u128>, OptionQuery>;
 
-	#[pallet::storage]
+    #[pallet::storage]
     #[pallet::getter(fn reserves)]
     pub type Reserves<T: Config> = StorageDoubleMap<
         _,
@@ -1361,56 +1356,54 @@ pub mod pallet {
             if distributions.to_season == distributions.from_season {
                 return Ok(distributions.from_season);
             }
-      		let shares =  Self::calculate_shares(dominator, staker, distributions);
+            let shares = Self::calculate_shares(dominator, staker, distributions);
             for (token_id, profit) in shares {
                 T::Asset::try_mutate_account(&token_id, staker, |b| Ok(b.0 += profit.into()))?;
             }
-			StashedShares::<T>::remove(staker);
+            StashedShares::<T>::remove(staker);
             Ok(distributions.to_season)
         }
 
-		fn stash_shares(  staker: &T::AccountId,
-						  dominator: &T::AccountId,
-						  distributions: &Distribution<T>,
-		) -> Result<Season, DispatchError> {
-			if distributions.to_season == distributions.from_season {
-				return Ok(distributions.from_season);
-			}
-			let shares =  Self::calculate_shares(dominator, staker, distributions);
+        fn stash_shares(
+            staker: &T::AccountId,
+            dominator: &T::AccountId,
+            distributions: &Distribution<T>,
+        ) -> Result<Season, DispatchError> {
+            if distributions.to_season == distributions.from_season {
+                return Ok(distributions.from_season);
+            }
+            let shares = Self::calculate_shares(dominator, staker, distributions);
 
-			StashedShares::<T>::insert(staker, shares);
-			Ok(distributions.to_season)
-		}
+            StashedShares::<T>::insert(staker, shares);
+            Ok(distributions.to_season)
+        }
 
-
-
-
-		fn calculate_shares(dominator: &T::AccountId,
-							staker: &T::AccountId,
-							distributions: &Distribution<T>) -> BTreeMap<TokenId<T>, u128> {
-			let mut shares: BTreeMap<TokenId<T>, u128> = StashedShares::<T>::get(staker).unwrap_or(BTreeMap::new());
-		//	let mut shares: BTreeMap<TokenId<T>, u128> = BTreeMap::new();
-			for season in distributions.from_season..distributions.to_season {
-				let bonus = Bonuses::<T>::get(dominator, season);
-				if bonus.staked.is_zero() || bonus.profit.is_empty() {
-					continue;
-				}
-				// TODO associated type
-				let staking: u128 = distributions.staking.into();
-				let total_staking: u128 = bonus.staked.into();
-				let r: Perquintill = Perquintill::from_rational(staking, total_staking);
-				for (token_id, profit) in bonus.profit.into_iter() {
-					shares
-						.entry(token_id)
-						.and_modify(|share| *share += r * profit.into())
-						.or_insert(r * profit.into());
-				}
-			}
-			shares
-		}
-
-
-
+        fn calculate_shares(
+            dominator: &T::AccountId,
+            staker: &T::AccountId,
+            distributions: &Distribution<T>,
+        ) -> BTreeMap<TokenId<T>, u128> {
+            let mut shares: BTreeMap<TokenId<T>, u128> =
+                StashedShares::<T>::get(staker).unwrap_or(BTreeMap::new());
+            //	let mut shares: BTreeMap<TokenId<T>, u128> = BTreeMap::new();
+            for season in distributions.from_season..distributions.to_season {
+                let bonus = Bonuses::<T>::get(dominator, season);
+                if bonus.staked.is_zero() || bonus.profit.is_empty() {
+                    continue;
+                }
+                // TODO associated type
+                let staking: u128 = distributions.staking.into();
+                let total_staking: u128 = bonus.staked.into();
+                let r: Perquintill = Perquintill::from_rational(staking, total_staking);
+                for (token_id, profit) in bonus.profit.into_iter() {
+                    shares
+                        .entry(token_id)
+                        .and_modify(|share| *share += r * profit.into())
+                        .or_insert(r * profit.into());
+                }
+            }
+            shares
+        }
 
         #[transactional]
         fn reserve(
@@ -1648,14 +1641,12 @@ pub mod pallet {
                 for (_, profit) in bonus.profit.into_iter() {
                     shares += r * profit.into();
                 }
-
             }
-			let stashed_shares: BTreeMap<TokenId<T>, u128> = StashedShares::<T>::get(who).unwrap_or( BTreeMap::new());
-			for (_, amout) in stashed_shares.into_iter() {
-				shares += amout;
-			}
-
-
+            let stashed_shares: BTreeMap<TokenId<T>, u128> =
+                StashedShares::<T>::get(who).unwrap_or(BTreeMap::new());
+            for (_, amout) in stashed_shares.into_iter() {
+                shares += amout;
+            }
             shares.into()
         }
     }
