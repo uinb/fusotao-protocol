@@ -451,7 +451,6 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[transactional]
         #[pallet::weight(T::SelfWeightInfo::verify())]
         pub fn verify(
             origin: OriginFor<T>,
