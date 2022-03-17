@@ -15,6 +15,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "256"]
 
+extern crate fuso_support;
+
 pub use pallet::*;
 pub mod weights;
 
@@ -46,8 +48,9 @@ pub mod pallet {
     use sp_std::{
         collections::btree_map::BTreeMap, convert::*, prelude::*, result::Result, vec::Vec,
     };
+	use fuso_support::constants::RESERVE_FOR_AUTHORIZING_STASH;
 
-    pub type TokenId<T> =
+	pub type TokenId<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::TokenId;
     pub type Balance<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
@@ -553,7 +556,7 @@ pub mod pallet {
             );
             let block_number = frame_system::Pallet::<T>::block_number();
             Self::reserve(
-                RESERVE_FOR_AUTHORIZING,
+                RESERVE_FOR_AUTHORIZING_STASH,
                 fund_owner.clone(),
                 token_id,
                 amount,
@@ -792,6 +795,14 @@ pub mod pallet {
                     };
                     ensure!(exists, Error::<T>::ReceiptNotExists);
                     Self::verify_transfer_in(currency, amount, &proof.user_id, &proof.leaves)?;
+					Reserves::<T>::remove(&(RESERVE_FOR_AUTHORIZING_STASH, proof.user_id.clone(), currency.into()), dominator_id);
+					Reserves::<T>::try_mutate(
+						&(RESERVE_FOR_AUTHORIZING, proof.user_id.clone(), currency.into()),
+						dominator_id,
+						|ov| -> DispatchResult {
+							Ok(*ov = ov.checked_add(&amount.into()).ok_or(Error::<T>::Overflow)?)
+						},
+					);
                     Receipts::<T>::remove(dominator_id, &proof.user_id);
                 }
                 Command::RejectTransferOut(currency, amount) => {
