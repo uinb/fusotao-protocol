@@ -35,6 +35,7 @@ pub mod pallet {
         {pallet_prelude::*, transactional},
     };
     use frame_system::pallet_prelude::*;
+    use fuso_support::constants::RESERVE_FOR_AUTHORIZING_STASH;
     use fuso_support::{
         constants::*,
         traits::{ReservableToken, Rewarding, Token},
@@ -48,9 +49,8 @@ pub mod pallet {
     use sp_std::{
         collections::btree_map::BTreeMap, convert::*, prelude::*, result::Result, vec::Vec,
     };
-	use fuso_support::constants::RESERVE_FOR_AUTHORIZING_STASH;
 
-	pub type TokenId<T> =
+    pub type TokenId<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::TokenId;
     pub type Balance<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
@@ -588,6 +588,24 @@ pub mod pallet {
             let dominator = Dominators::<T>::try_get(&dominator_id)
                 .map_err(|_| Error::<T>::DominatorNotFound)?;
             if dominator.status == DOMINATOR_EVICTED {
+                Reserves::<T>::try_mutate_exists(
+                    &(RESERVE_FOR_AUTHORIZING_STASH, fund_owner.clone(), token_id),
+                    &dominator_id,
+                    |ov| -> DispatchResult {
+                        let av: Balance<T> = ov.take().unwrap_or(0.into());
+                        if av > 0.into() {
+                            return Reserves::<T>::try_mutate(
+                                &(RESERVE_FOR_AUTHORIZING, fund_owner.clone(), token_id),
+                                &dominator_id,
+                                |v| -> DispatchResult {
+                                    Ok(*v = v.checked_add(&av).ok_or(Error::<T>::Overflow)?)
+                                },
+                            );
+                        }
+                        Ok(())
+                    },
+                )?;
+
                 Self::unreserve(
                     RESERVE_FOR_AUTHORIZING,
                     fund_owner.clone(),
@@ -795,14 +813,26 @@ pub mod pallet {
                     };
                     ensure!(exists, Error::<T>::ReceiptNotExists);
                     Self::verify_transfer_in(currency, amount, &proof.user_id, &proof.leaves)?;
-					Reserves::<T>::remove(&(RESERVE_FOR_AUTHORIZING_STASH, proof.user_id.clone(), currency.into()), dominator_id);
-					Reserves::<T>::try_mutate(
-						&(RESERVE_FOR_AUTHORIZING, proof.user_id.clone(), currency.into()),
-						dominator_id,
-						|ov| -> DispatchResult {
-							Ok(*ov = ov.checked_add(&amount.into()).ok_or(Error::<T>::Overflow)?)
-						},
-					);
+                    //stash->authorizing
+                    Reserves::<T>::remove(
+                        &(
+                            RESERVE_FOR_AUTHORIZING_STASH,
+                            proof.user_id.clone(),
+                            currency.into(),
+                        ),
+                        dominator_id,
+                    );
+                    Reserves::<T>::try_mutate(
+                        &(
+                            RESERVE_FOR_AUTHORIZING,
+                            proof.user_id.clone(),
+                            currency.into(),
+                        ),
+                        dominator_id,
+                        |ov| -> DispatchResult {
+                            Ok(*ov = ov.checked_add(&amount.into()).ok_or(Error::<T>::Overflow)?)
+                        },
+                    )?;
                     Receipts::<T>::remove(dominator_id, &proof.user_id);
                 }
                 Command::RejectTransferOut(currency, amount) => {
