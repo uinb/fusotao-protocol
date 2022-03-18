@@ -1374,7 +1374,7 @@ pub mod pallet {
             );
             let before_cancel = leaves[4].split_old_to_sum();
             let after_cancel = leaves[4].split_new_to_sum();
-            if cancel_at >= best_ask0 {
+            if cancel_at >= best_ask0 && best_ask0 != 0 {
                 ensure!(
                     ask_delta == before_cancel - after_cancel,
                     Error::<T>::ProofsUnsatisfied
