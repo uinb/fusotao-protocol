@@ -123,8 +123,8 @@ pub mod pallet {
         StorageMap<_, Twox64Concat, T::TokenId, XToken<BalanceOf<T>>, OptionQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn get_token_by_name)]
-    pub type TokenByName<T: Config> = StorageMap<_, Twox64Concat, Vec<u8>, T::TokenId, OptionQuery>;
+    #[pallet::getter(fn get_token_by_contract)]
+    pub type TokenByContract<T: Config> = StorageMap<_, Twox64Concat, Vec<u8>, T::TokenId, OptionQuery>;
 
     #[pallet::type_value]
     pub fn DefaultNextTokenId<T: Config>() -> T::TokenId {
@@ -172,12 +172,12 @@ pub mod pallet {
                 Error::<T>::InvalidTokenName
             );
             ensure!(
-                !TokenByName::<T>::contains_key(&contract),
+                !TokenByContract::<T>::contains_key(&contract),
                 Error::<T>::InvalidToken
             );
             let id = Self::next_token_id();
             NextTokenId::<T>::mutate(|id| *id += One::one());
-            TokenByName::<T>::insert(contract.clone(), id);
+            TokenByContract::<T>::insert(contract.clone(), id);
             Tokens::<T>::insert(
                 id,
                 XToken::NEP141(
@@ -680,15 +680,15 @@ pub mod pallet {
     impl<T: Config> AssetIdAndNameProvider<T::TokenId> for Pallet<T> {
         type Err = ();
 
-        fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
-            let name = name.as_ref();
-            Self::get_token_by_name(name.clone().to_vec()).ok_or(())
+        fn try_get_asset_id(contract: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
+            let contract = contract.as_ref();
+            Self::get_token_by_contract(contract.clone().to_vec()).ok_or(())
         }
 
         fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
             let token_result = Self::get_token_info(token_id);
             match token_result {
-                Some(XToken::NEP141(name, _, _, _, _)) => Ok(name),
+                Some(XToken::NEP141(_, contract, _, _, _)) => Ok(contract),
                 None => Err(()),
             }
         }

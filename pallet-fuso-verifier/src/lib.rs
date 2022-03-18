@@ -588,7 +588,7 @@ pub mod pallet {
             let dominator = Dominators::<T>::try_get(&dominator_id)
                 .map_err(|_| Error::<T>::DominatorNotFound)?;
             if dominator.status == DOMINATOR_EVICTED {
-				 ensure!(1 == 2, Error::<T>::DominatorEvicted);
+				 ensure!(false, Error::<T>::DominatorEvicted);
              /*   Reserves::<T>::try_mutate_exists(
                     &(RESERVE_FOR_AUTHORIZING_STASH, fund_owner.clone(), token_id),
                     &dominator_id,
