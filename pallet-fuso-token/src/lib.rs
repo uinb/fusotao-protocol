@@ -688,7 +688,7 @@ pub mod pallet {
         fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
             let token_result = Self::get_token_info(token_id);
             match token_result {
-                Some(XToken::NEP141(name, _, _, _, _)) => Ok(name),
+                Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
                 None => Err(()),
             }
         }
