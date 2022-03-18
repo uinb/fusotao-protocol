@@ -204,9 +204,15 @@ pub fn test_authorize() {
             1,
             100000
         ));
-        let reserves = Verifier::reserves(&(RESERVE_FOR_AUTHORIZING, ferdie.clone(), 1u32), &alice);
+        let reserves = Verifier::reserves(
+            &(RESERVE_FOR_AUTHORIZING_STASH, ferdie.clone(), 1u32),
+            &alice,
+        );
         assert_eq!(reserves, 100000);
-        let t = Verifier::reserves((1u8, ferdie.clone(), 1), alice.clone());
+        let t = Verifier::reserves(
+            (RESERVE_FOR_AUTHORIZING_STASH, ferdie.clone(), 1),
+            alice.clone(),
+        );
         assert_eq!(t, 100000);
         assert_noop!(
             Verifier::authorize(
@@ -217,7 +223,10 @@ pub fn test_authorize() {
             ),
             Error::<Test>::ReceiptAlreadyExists
         );
-        let t = Verifier::reserves((RESERVE_FOR_AUTHORIZING, ferdie.clone(), 1), alice.clone());
+        let t = Verifier::reserves(
+            (RESERVE_FOR_AUTHORIZING_STASH, ferdie.clone(), 1),
+            alice.clone(),
+        );
         assert_eq!(t, 100000);
     });
 }
