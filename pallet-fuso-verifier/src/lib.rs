@@ -1404,7 +1404,14 @@ pub mod pallet {
             amount: Balance<T>,
             dominator: &T::AccountId,
         ) -> bool {
-            Reserves::<T>::get(&(RESERVE_FOR_AUTHORIZING, who, token_id), dominator) == amount
+            let confirmed =
+                Reserves::<T>::get(&(RESERVE_FOR_AUTHORIZING, who, token_id), dominator);
+            // FIXME
+            if confirmed >= amount {
+                confirmed - amount <= 100000000000u128.into()
+            } else {
+                amount - confirmed <= 100000000000u128.into()
+            }
         }
 
         #[transactional]
