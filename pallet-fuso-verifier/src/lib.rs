@@ -1406,7 +1406,7 @@ pub mod pallet {
         ) -> bool {
             let confirmed =
                 Reserves::<T>::get(&(RESERVE_FOR_AUTHORIZING, who, token_id), dominator);
-            // FIXME
+            // FIXME the offchain matchers loose the precesions
             if confirmed >= amount {
                 confirmed - amount <= 100000000000u128.into()
             } else {
@@ -1426,9 +1426,10 @@ pub mod pallet {
                 dominator,
                 |reserved| -> DispatchResult {
                     T::Asset::try_mutate_account(&token_id, who, |b| -> DispatchResult {
+                        // FIXME the offchain matchers loose the precesions
                         b.1 =
                             b.1.checked_sub(reserved)
-                                .ok_or(Error::<T>::InsufficientBalance)?
+                                .unwrap_or_default()
                                 .checked_add(&balance)
                                 .ok_or(Error::<T>::Overflow)?;
                         Ok(())
