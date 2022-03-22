@@ -186,6 +186,7 @@ pub mod pallet {
         TransferOut(Compact<u32>, Compact<u128>),
         TransferIn(Compact<u32>, Compact<u128>),
         RejectTransferOut(Compact<u32>, Compact<u128>),
+        RejectTransferIn,
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
@@ -589,6 +590,7 @@ pub mod pallet {
                 .map_err(|_| Error::<T>::DominatorNotFound)?;
             if dominator.status == DOMINATOR_EVICTED {
                 ensure!(false, Error::<T>::DominatorEvicted);
+                // TODO uncomment this to enable revoking from evicted dominators
                 /*   Reserves::<T>::try_mutate_exists(
                     &(RESERVE_FOR_AUTHORIZING_STASH, fund_owner.clone(), token_id),
                     &dominator_id,
@@ -606,7 +608,6 @@ pub mod pallet {
                         Ok(())
                     },
                 )?;
-
                 Self::unreserve(
                     RESERVE_FOR_AUTHORIZING,
                     fund_owner.clone(),
@@ -855,6 +856,19 @@ pub mod pallet {
                     )?;
                     Receipts::<T>::remove(&dominator_id, &proof.user_id);
                     // needn't step forward
+                    return Ok(known_root);
+                }
+                Command::RejectTransferIn => {
+                    let r = Receipts::<T>::get(&dominator_id, &proof.user_id);
+                    if r.is_none() {
+                        return Ok(known_root);
+                    }
+                    let r = r.unwrap();
+                    ensure!(
+                        matches!(r, Receipt::Authorize(_, _, _)),
+                        Error::<T>::ReceiptNotExists
+                    );
+                    Receipts::<T>::remove(&dominator_id, &proof.user_id);
                     return Ok(known_root);
                 }
             }
