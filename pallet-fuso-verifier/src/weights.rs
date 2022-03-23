@@ -85,43 +85,43 @@ pub trait WeightInfo {
 impl WeightInfo for () {
 
 	fn authorize() -> Weight {
-		(33_780_000 as Weight)
+		(31_660_780_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
 
 	fn register() -> Weight {
-		(33_780_000 as Weight)
+		(31_660_780_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
 
 	fn revoke() -> Weight {
-		(33_780_000 as Weight)
+		(31_660_780_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(3 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
 	}
 
 	fn verify() -> Weight {
-		(33_780_000 as Weight)
+		(31_660_780_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
 
 	fn stake() -> Weight {
-		(33_780_000 as Weight)
+		(31_660_780_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
 
 	fn unstake() -> Weight {
-		(33_780_000 as Weight)
+		(31_660_780_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
 
 	fn claim_shares() -> Weight {
-		(33_780_000 as Weight)
+		(31_660_780_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
