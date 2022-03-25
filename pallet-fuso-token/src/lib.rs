@@ -48,6 +48,7 @@ pub mod pallet {
     use sp_std::vec::Vec;
 
     pub const STANDARD_DECIMALS: u8 = 18;
+	pub const MAX_DECIMALS: u8 = 24;
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
     pub struct TokenAccountData<Balance> {
@@ -163,7 +164,7 @@ pub mod pallet {
             contract: Vec<u8>,
         ) -> DispatchResultWithPostInfo {
             let _ = ensure_signed(origin)?;
-            ensure!(decimals <= STANDARD_DECIMALS, Error::<T>::InvalidDecimals);
+            ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
             let name = AsciiStr::from_ascii(&symbol);
             ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
             let name = name.unwrap();
