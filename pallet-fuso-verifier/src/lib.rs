@@ -20,6 +20,9 @@ extern crate fuso_support;
 pub use pallet::*;
 pub mod weights;
 
+#[cfg(feature = "runtime-benchmarks")]
+pub mod benchmarking;
+
 #[cfg(test)]
 pub mod mock;
 #[cfg(test)]

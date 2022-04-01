@@ -31,8 +31,12 @@ sp-core = { default-features = false, git = "https://github.com/paritytech/subst
 pallet-fuso-token = { defualt-features = false, path = "../pallet-fuso-token"}
 pallet-balances = { defaut-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
+sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
 
 [features]
+runtime-benchmarks = [
+    "frame-benchmarking/runtime-benchmarks",
+]
 default = ["std"]
 std = [
     "codec/std",

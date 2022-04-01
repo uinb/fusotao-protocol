@@ -1,3 +1,5 @@
+#![cfg(feature = "runtime-benchmarks")]
+
 use super::*;
 use crate as pallet_fuso_verifier;
 use frame_support::parameter_types;
@@ -45,7 +47,7 @@ impl frame_system::Config for Test {
     type BlockWeights = ();
     type Call = Call;
     type DbWeight = ();
-    type Event = Event;
+    type Event = Event<T>;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
     type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -70,7 +72,7 @@ impl pallet_balances::Config for Test {
     type AccountStore = System;
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
+    type Event = Event<T>;
     type ExistentialDeposit = ExistentialDeposit;
     type MaxLocks = MaxLocks;
     type MaxReserves = MaxReserves;
@@ -83,7 +85,7 @@ parameter_types! {
 }
 
 impl pallet_fuso_token::Config for Test {
-    type Event = Event;
+    type Event = Event<T>;
     type NativeTokenId = NativeTokenId;
     type TokenId = u32;
     type Weight = ();
@@ -126,7 +128,7 @@ impl pallet_fuso_verifier::Config for Test {
     type Asset = TokenModule;
     type DominatorCheckGracePeriod = DominatorCheckGracePeriod;
     type DominatorOnlineThreshold = DominatorOnlineThreshold;
-    type Event = Event;
+    type Event = Event<T>;
     type MinimalStakingAmount = MinimalStakingAmount;
     type Rewarding = PhantomData;
     type SeasonDuration = SeasonDuration;
