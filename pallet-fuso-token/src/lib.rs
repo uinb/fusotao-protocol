@@ -48,7 +48,7 @@ pub mod pallet {
     use sp_std::vec::Vec;
 
     pub const STANDARD_DECIMALS: u8 = 18;
-	pub const MAX_DECIMALS: u8 = 24;
+    pub const MAX_DECIMALS: u8 = 24;
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
     pub struct TokenAccountData<Balance> {

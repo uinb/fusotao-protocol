@@ -15,9 +15,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "256"]
 
-extern crate fuso_support;
-
-pub use pallet::*;
 pub mod weights;
 
 #[cfg(test)]
@@ -334,6 +331,7 @@ pub mod pallet {
         DominatorOffline(T::AccountId),
         DominatorSlashed(T::AccountId),
         DominatorEvicted(T::AccountId),
+        DominatorInactive(T::AccountId),
     }
 
     #[pallet::error]
@@ -358,6 +356,7 @@ pub mod pallet {
         LittleStakingAmount,
         UnsupportedQuoteCurrency,
         DominatorEvicted,
+        DominatorStatusInvalid,
     }
 
     #[pallet::pallet]
@@ -431,7 +430,7 @@ pub mod pallet {
                     start_from: register_at,
                     sequence: (0, current_block),
                     merkle_root: Default::default(),
-                    status: DOMINATOR_INACTIVE,
+                    status: DOMINATOR_DRAFT,
                 },
             );
             Self::deposit_event(Event::DominatorClaimed(dominator));
@@ -453,6 +452,28 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::DominatorEvicted(dominator));
+            Ok(().into())
+        }
+
+        #[pallet::weight(0)]
+        pub fn launch(
+            origin: OriginFor<T>,
+            dominator_id: <T::Lookup as StaticLookup>::Source,
+        ) -> DispatchResultWithPostInfo {
+            let _ = ensure_root(origin)?;
+            let dominator = T::Lookup::lookup(dominator_id)?;
+            Dominators::<T>::try_mutate_exists(&dominator, |d| -> DispatchResult {
+                ensure!(d.is_some(), Error::<T>::DominatorNotFound);
+                let mut dominator = d.take().unwrap();
+                ensure!(
+                    dominator.status == DOMINATOR_DRAFT,
+                    Error::<T>::DominatorStatusInvalid
+                );
+                dominator.status = DOMINATOR_INACTIVE;
+                d.replace(dominator);
+                Ok(())
+            })?;
+            Self::deposit_event(Event::DominatorInactive(dominator));
             Ok(().into())
         }
 
@@ -516,6 +537,10 @@ pub mod pallet {
             let dex = T::Lookup::lookup(dominator)?;
             let dominator =
                 Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
+            ensure!(
+                dominator.status != DOMINATOR_DRAFT,
+                Error::<T>::DominatorStatusInvalid
+            );
             let staking =
                 Stakings::<T>::try_get(&dex, &signer).map_err(|_| Error::<T>::InvalidStaking)?;
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -586,8 +611,13 @@ pub mod pallet {
                 Self::has_authorized_morethan(fund_owner.clone(), token_id, amount, &dominator_id),
                 Error::<T>::InsufficientBalance
             );
+
             let dominator = Dominators::<T>::try_get(&dominator_id)
                 .map_err(|_| Error::<T>::DominatorNotFound)?;
+            ensure!(
+                dominator.status != DOMINATOR_DRAFT,
+                Error::<T>::DominatorStatusInvalid
+            );
             if dominator.status == DOMINATOR_EVICTED {
                 ensure!(false, Error::<T>::DominatorEvicted);
                 // TODO uncomment this to enable revoking from evicted dominators
@@ -1550,8 +1580,8 @@ pub mod pallet {
                 ensure!(exists.is_some(), Error::<T>::DominatorNotFound);
                 let mut dominator = exists.take().unwrap();
                 ensure!(
-                    dominator.status != DOMINATOR_EVICTED,
-                    Error::<T>::DominatorEvicted
+                    dominator.status == DOMINATOR_ACTIVE || dominator.status == DOMINATOR_INACTIVE,
+                    Error::<T>::DominatorStatusInvalid
                 );
                 Stakings::<T>::try_mutate(&dominator_id, &staker, |staking| -> DispatchResult {
                     Self::reserve(
@@ -1609,6 +1639,10 @@ pub mod pallet {
             Dominators::<T>::try_mutate_exists(dominator_id, |exists| -> DispatchResult {
                 ensure!(exists.is_some(), Error::<T>::DominatorNotFound);
                 let mut dominator = exists.take().unwrap();
+                ensure!(
+                    dominator.status != DOMINATOR_DRAFT,
+                    Error::<T>::DominatorStatusInvalid
+                );
                 let dominator_total_staking = dominator
                     .staked
                     .checked_sub(&amount)
