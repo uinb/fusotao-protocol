@@ -16,6 +16,7 @@
 #![recursion_limit = "256"]
 
 extern crate fuso_support;
+extern crate pallet_fuso_token;
 
 pub use pallet::*;
 pub mod weights;
