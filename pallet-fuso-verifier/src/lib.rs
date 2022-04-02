@@ -430,7 +430,7 @@ pub mod pallet {
                     start_from: register_at,
                     sequence: (0, current_block),
                     merkle_root: Default::default(),
-                    status: DOMINATOR_DRAFT,
+                    status: DOMINATOR_REGISTERED,
                 },
             );
             Self::deposit_event(Event::DominatorClaimed(dominator));
@@ -466,7 +466,7 @@ pub mod pallet {
                 ensure!(d.is_some(), Error::<T>::DominatorNotFound);
                 let mut dominator = d.take().unwrap();
                 ensure!(
-                    dominator.status == DOMINATOR_DRAFT,
+                    dominator.status == DOMINATOR_REGISTERED,
                     Error::<T>::DominatorStatusInvalid
                 );
                 dominator.status = DOMINATOR_INACTIVE;
@@ -538,7 +538,7 @@ pub mod pallet {
             let dominator =
                 Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
             ensure!(
-                dominator.status != DOMINATOR_DRAFT,
+                dominator.status != DOMINATOR_REGISTERED,
                 Error::<T>::DominatorStatusInvalid
             );
             let staking =
@@ -615,7 +615,7 @@ pub mod pallet {
             let dominator = Dominators::<T>::try_get(&dominator_id)
                 .map_err(|_| Error::<T>::DominatorNotFound)?;
             ensure!(
-                dominator.status != DOMINATOR_DRAFT,
+                dominator.status != DOMINATOR_REGISTERED,
                 Error::<T>::DominatorStatusInvalid
             );
             if dominator.status == DOMINATOR_EVICTED {
@@ -1612,6 +1612,7 @@ pub mod pallet {
                     Ok(())
                 })?;
                 dominator.staked += amount;
+				let dominator_old_status = dominator.status;
                 dominator.status = if dominator.staked >= T::DominatorOnlineThreshold::get() {
                     DOMINATOR_ACTIVE
                 } else {
@@ -1622,7 +1623,7 @@ pub mod pallet {
                     dominator_id.clone(),
                     amount,
                 ));
-                if dominator.status == DOMINATOR_ACTIVE {
+                if dominator.status == DOMINATOR_ACTIVE  && dominator_old_status == DOMINATOR_INACTIVE{
                     Self::deposit_event(Event::DominatorOnline(dominator_id.clone()));
                 }
                 exists.replace(dominator);
@@ -1640,7 +1641,7 @@ pub mod pallet {
                 ensure!(exists.is_some(), Error::<T>::DominatorNotFound);
                 let mut dominator = exists.take().unwrap();
                 ensure!(
-                    dominator.status != DOMINATOR_DRAFT,
+                    dominator.status != DOMINATOR_REGISTERED,
                     Error::<T>::DominatorStatusInvalid
                 );
                 let dominator_total_staking = dominator
@@ -1681,6 +1682,7 @@ pub mod pallet {
                     Ok(())
                 })?;
                 dominator.staked = dominator_total_staking;
+				let dominator_old_status = dominator.status;
                 if dominator.status != DOMINATOR_EVICTED {
                     dominator.status = if dominator.staked >= T::DominatorOnlineThreshold::get() {
                         DOMINATOR_ACTIVE
@@ -1693,7 +1695,7 @@ pub mod pallet {
                     dominator_id.clone(),
                     amount,
                 ));
-                if dominator.status == DOMINATOR_INACTIVE {
+                if dominator.status == DOMINATOR_INACTIVE && dominator_old_status == DOMINATOR_ACTIVE {
                     Self::deposit_event(Event::DominatorOffline(dominator_id.clone()));
                 }
                 exists.replace(dominator);
