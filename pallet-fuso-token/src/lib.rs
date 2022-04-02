@@ -89,7 +89,6 @@ pub mod pallet {
 
         type Weight: WeightInfo;
     }
-
     #[pallet::pallet]
     #[pallet::generate_store(pub (super) trait Store)]
     pub struct Pallet<T>(_);
