@@ -24,6 +24,7 @@ sp-core = { default-features = false, git = "https://github.com/paritytech/subst
 sp-io = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
 sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
 fuso-support = { path = "../fuso-support", default-features = false }
+sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
 smt = { git = "https://github.com/uinb/sparse-merkle-tree", tag = "v0.1.7", package = "sparse-merkle-tree", default-features = false, features = ["blake2b"] }
 
 [dev-dependencies]
@@ -31,7 +32,6 @@ sp-core = { default-features = false, git = "https://github.com/paritytech/subst
 pallet-fuso-token = { defualt-features = false, path = "../pallet-fuso-token"}
 pallet-balances = { defaut-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13" }
-sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
 
 [features]
 runtime-benchmarks = [

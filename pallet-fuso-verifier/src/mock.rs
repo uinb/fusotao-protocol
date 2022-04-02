@@ -1,5 +1,3 @@
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
 use crate as pallet_fuso_verifier;
 use frame_support::parameter_types;

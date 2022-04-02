@@ -1,22 +1,8 @@
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
-use crate::mock::*;
 use crate::Pallet as Verifier;
-use ascii::AsciiStr;
 pub use frame_benchmarking::{account, benchmarks};
-use frame_support::traits::Hooks;
 use frame_system::RawOrigin;
-use sp_keyring::AccountKeyring;
-use sp_runtime::MultiAddress;
-use sp_runtime::traits::{IdentifyAccount, Verify};
-use sp_runtime::{
-    generic,
-    traits::{AccountIdLookup, BlakeTwo256},
-    MultiSignature,
-};
-pub(crate) type AccountId = <<MultiSignature as Verify>::Signer as IdentifyAccount>::AccountId;
-
+use sp_runtime::traits::StaticLookup;
 
 const SEED: u32 = 0;
 
@@ -32,16 +18,16 @@ benchmarks! {
     register {
         frame_system::Pallet::<T>::set_block_number(30000.into());
         let caller: T::AccountId = account("caller", 0, SEED);
-        let alice = AsciiStr::from_ascii(b"alice");
-    }:_(RawOrigin::Signed(caller), alice.unwrap().as_bytes().to_vec())
+    }:_(RawOrigin::Signed(caller), b"alice".to_vec())
 
     stake {
         frame_system::Pallet::<T>::set_block_number(30000.into());
-        let ferdie: AccountId = AccountKeyring::Ferdie.into();
-        let alice: AccountId = AccountKeyring::Alice.into();
-        Verifier::register(
-            RawOrigin::Signed(alice.clone()),
+        let ferdie: T::AccountId =  account("ferdie", 0, SEED);
+        let alice:  T::AccountId =  account("alice", 0, SEED);
+        let _ = Verifier::<T>::register(
+            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(alice.clone())),
             b"cool".to_vec()
-        );
-    }:_(Origin::signed(ferdie), MultiAddress::Id(alice), 1000.into())
+        ).unwrap();
+        let dominator = T::Lookup::unlookup(alice);
+    }:_(RawOrigin::Signed(ferdie), dominator, 1000.into())
 }
