@@ -14,7 +14,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "256"]
-
+pub use pallet::*;
 pub mod weights;
 
 #[cfg(test)]
@@ -620,7 +620,7 @@ pub mod pallet {
             );
             if dominator.status == DOMINATOR_EVICTED {
                 ensure!(false, Error::<T>::DominatorEvicted);
-				Reserves::<T>::try_mutate_exists(
+                Reserves::<T>::try_mutate_exists(
                     &(RESERVE_FOR_AUTHORIZING_STASH, fund_owner.clone(), token_id),
                     &dominator_id,
                     |ov| -> DispatchResult {
@@ -1611,7 +1611,7 @@ pub mod pallet {
                     Ok(())
                 })?;
                 dominator.staked += amount;
-				let dominator_old_status = dominator.status;
+                let dominator_old_status = dominator.status;
                 dominator.status = if dominator.staked >= T::DominatorOnlineThreshold::get() {
                     DOMINATOR_ACTIVE
                 } else {
@@ -1622,7 +1622,9 @@ pub mod pallet {
                     dominator_id.clone(),
                     amount,
                 ));
-                if dominator.status == DOMINATOR_ACTIVE  && dominator_old_status == DOMINATOR_INACTIVE{
+                if dominator.status == DOMINATOR_ACTIVE
+                    && dominator_old_status == DOMINATOR_INACTIVE
+                {
                     Self::deposit_event(Event::DominatorOnline(dominator_id.clone()));
                 }
                 exists.replace(dominator);
@@ -1681,7 +1683,7 @@ pub mod pallet {
                     Ok(())
                 })?;
                 dominator.staked = dominator_total_staking;
-				let dominator_old_status = dominator.status;
+                let dominator_old_status = dominator.status;
                 if dominator.status != DOMINATOR_EVICTED {
                     dominator.status = if dominator.staked >= T::DominatorOnlineThreshold::get() {
                         DOMINATOR_ACTIVE
@@ -1694,7 +1696,9 @@ pub mod pallet {
                     dominator_id.clone(),
                     amount,
                 ));
-                if dominator.status == DOMINATOR_INACTIVE && dominator_old_status == DOMINATOR_ACTIVE {
+                if dominator.status == DOMINATOR_INACTIVE
+                    && dominator_old_status == DOMINATOR_ACTIVE
+                {
                     Self::deposit_event(Event::DominatorOffline(dominator_id.clone()));
                 }
                 exists.replace(dominator);

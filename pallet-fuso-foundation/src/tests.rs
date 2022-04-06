@@ -19,7 +19,7 @@ fn test_foundation() {
         frame_system::Pallet::<Test>::set_block_number(30);
         let alice_balance: AccountInfo<u64, pallet_balances::AccountData<u128>> =
             frame_system::Pallet::<Test>::account(&alice);
-        assert_eq!(alice_balance.data.reserved, 1500000000000000000000);
+        assert_eq!(alice_balance.data.reserved, 2000000000000000000000);
         assert_eq!(alice_balance.data.free, 0);
 
         let alice_foundation = Foundation::foundation(&alice);
@@ -30,7 +30,8 @@ fn test_foundation() {
                 delay_durations: 2,
                 interval_durations: 1,
                 times: 5,
-                amount: 300000000000000000000
+                amount: 300000000000000000000,
+                first_amount: 500000000000000000000
             }
         );
 
@@ -45,18 +46,20 @@ fn test_foundation() {
             FoundationData {
                 delay_durations: 2,
                 interval_durations: 1,
-                times: 4,
-                amount: 300000000000000000000
+                times: 5,
+                amount: 300000000000000000000,
+                first_amount: 500000000000000000000
             }
         );
         let alice_balance: AccountInfo<u64, pallet_balances::AccountData<u128>> =
             frame_system::Pallet::<Test>::account(&alice);
-        assert_eq!(alice_balance.data.reserved, 1200000000000000000000);
-        assert_eq!(alice_balance.data.free, 300000000000000000000);
+        assert_eq!(alice_balance.data.reserved, 1500000000000000000000);
+        assert_eq!(alice_balance.data.free, 500000000000000000000);
 
         Foundation::on_initialize(30);
         Foundation::on_initialize(40);
         Foundation::on_initialize(50);
+        Foundation::on_initialize(60);
         let alice_foundation_data = Foundation::foundation(&alice);
         assert!(alice_foundation_data.is_some());
         let alice_foundation = Foundation::foundation(&alice);
@@ -66,16 +69,17 @@ fn test_foundation() {
                 delay_durations: 2,
                 interval_durations: 1,
                 times: 1,
-                amount: 300000000000000000000
+                amount: 300000000000000000000,
+                first_amount: 500000000000000000000
             }
         );
 
-        Foundation::on_initialize(60);
+        Foundation::on_initialize(70);
         let alice_foundation_data = Foundation::foundation(&alice);
         assert!(alice_foundation_data.is_none());
         let alice_balance: AccountInfo<u64, pallet_balances::AccountData<u128>> =
             frame_system::Pallet::<Test>::account(&alice);
-        assert_eq!(alice_balance.data.free, 1500000000000000000000);
+        assert_eq!(alice_balance.data.free, 2000000000000000000000);
         assert_eq!(alice_balance.data.reserved, 0);
 
         let weight = Foundation::on_initialize(101);
@@ -84,7 +88,7 @@ fn test_foundation() {
         assert!(alice_foundation_data.is_none());
         let alice_balance: AccountInfo<u64, pallet_balances::AccountData<u128>> =
             frame_system::Pallet::<Test>::account(&alice);
-        assert_eq!(alice_balance.data.free, 1500000000000000000000);
+        assert_eq!(alice_balance.data.free, 2000000000000000000000);
         assert_eq!(alice_balance.data.reserved, 0);
     });
 }
