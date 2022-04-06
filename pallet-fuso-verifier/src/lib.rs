@@ -620,8 +620,7 @@ pub mod pallet {
             );
             if dominator.status == DOMINATOR_EVICTED {
                 ensure!(false, Error::<T>::DominatorEvicted);
-                // TODO uncomment this to enable revoking from evicted dominators
-                /*   Reserves::<T>::try_mutate_exists(
+				Reserves::<T>::try_mutate_exists(
                     &(RESERVE_FOR_AUTHORIZING_STASH, fund_owner.clone(), token_id),
                     &dominator_id,
                     |ov| -> DispatchResult {
@@ -645,7 +644,7 @@ pub mod pallet {
                     amount,
                     &dominator_id,
                 )?;
-                Receipts::<T>::remove(dominator_id.clone(), &fund_owner);*/
+                Receipts::<T>::remove(dominator_id.clone(), &fund_owner);
             } else {
                 ensure!(
                     !Receipts::<T>::contains_key(&dominator_id, &fund_owner),

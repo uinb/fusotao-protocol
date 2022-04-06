@@ -43,10 +43,11 @@ pub mod pallet {
     pub struct GenesisConfig<T: Config> {
         pub fund: Vec<(
             T::AccountId,
-            // delay duration, interval_duration, times, amount for each time
+            // delay duration, interval_duration, times, amount for each time, first unlock amount
             u32,
             u32,
             u32,
+            BalanceOf<T>,
             BalanceOf<T>,
         )>,
     }
@@ -57,6 +58,7 @@ pub mod pallet {
         pub interval_durations: u32,
         pub times: u32,
         pub amount: Balance,
+        pub first_amount: Balance,
     }
 
     #[cfg(feature = "std")]
@@ -77,10 +79,11 @@ pub mod pallet {
                         interval_durations: data.2,
                         times: data.3,
                         amount: data.4,
+                        first_amount: data.5,
                     },
                 );
                 pallet_balances::Pallet::<T>::mutate_account(&data.0, |account_data| {
-                    account_data.reserved = data.4 * data.3.into();
+                    account_data.reserved = data.4 * data.3.into() + data.5;
                 })
                 .unwrap();
             }
@@ -156,7 +159,7 @@ pub mod pallet {
                 let account = item.0;
                 let mut balance: FoundationData<BalanceOf<T>> = item.1;
 
-                if (now >= balance.delay_durations)
+                if (now > balance.delay_durations)
                     && (now.saturating_sub(balance.delay_durations) % balance.interval_durations
                         == 0u32)
                 {
@@ -171,6 +174,17 @@ pub mod pallet {
                     } else {
                         Foundation::<T>::insert(account, balance);
                     }
+                    weight = weight.saturating_add(T::DbWeight::get().writes(1 as Weight));
+                } else if (now == balance.delay_durations)
+                    && (now.saturating_sub(balance.delay_durations) % balance.interval_durations
+                        == 0u32)
+                {
+                    //initial unlock
+                    <pallet_balances::Pallet<T>>::unreserve(&account, balance.first_amount);
+                    Self::deposit_event(Event::PreLockedFundUnlocked(
+                        account.clone(),
+                        balance.first_amount,
+                    ));
                     weight = weight.saturating_add(T::DbWeight::get().writes(1 as Weight));
                 }
             }
