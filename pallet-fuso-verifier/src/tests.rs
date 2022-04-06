@@ -4,6 +4,7 @@ use crate::mock::{new_tester, AccountId};
 use crate::Error;
 use crate::Pallet;
 use frame_support::{assert_noop, assert_ok};
+use frame_system::RawOrigin;
 use fuso_support::constants::RESERVE_FOR_STAKING;
 use fuso_support::constants::*;
 use pallet_fuso_token::XToken;
@@ -54,6 +55,10 @@ pub fn test_stake_unstake_should_work() {
         assert_ok!(Verifier::register(
             Origin::signed(alice.clone()),
             b"cool".to_vec()
+        ));
+        assert_ok!(Verifier::launch(
+            RawOrigin::Root.into(),
+            MultiAddress::Id(alice.clone())
         ));
 
         //bob don't have enough TAO
@@ -163,6 +168,38 @@ pub fn test_authorize() {
             Origin::signed(alice.clone()),
             b"cool".to_vec()
         ));
+        assert_noop!(
+            Verifier::authorize(
+                Origin::signed(ferdie.clone()),
+                MultiAddress::Id(alice.clone()),
+                1,
+                500000000000
+            ),
+            Error::<Test>::DominatorInactive
+        );
+        assert_noop!(
+            Verifier::stake(
+                Origin::signed(ferdie.clone()),
+                MultiAddress::Id(alice.clone()),
+                10000
+            ),
+            Error::<Test>::DominatorStatusInvalid
+        );
+        assert_noop!(
+            Verifier::authorize(
+                Origin::signed(ferdie.clone()),
+                MultiAddress::Id(alice.clone()),
+                1,
+                5000000000000000000000000
+            ),
+            Error::<Test>::DominatorInactive
+        );
+
+        assert_ok!(Verifier::launch(
+            RawOrigin::Root.into(),
+            MultiAddress::Id(alice.clone())
+        ));
+
         assert_noop!(
             Verifier::authorize(
                 Origin::signed(ferdie.clone()),
