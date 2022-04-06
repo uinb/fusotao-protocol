@@ -13,10 +13,10 @@ benchmarks! {
         where
         TokenId<T>: Copy + From<u32> + Into<u32>,
         Balance<T>: Copy + From<u128> + Into<u128>,
+        BalanceOf<T>: From<u128> + Into<u128>,
         T::BlockNumber: Into<u32> + From<u32>,
         T: pallet_balances::Config,
         T: pallet_fuso_token::Config,
-        BalanceOf<T>: From<u128> + Into<u128>,
     }
 
     register {
@@ -124,7 +124,10 @@ benchmarks! {
             None
         )?;
         Verifier::<T>::authorize(
-             <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ferdie.clone())), dominator.clone(), 1.into(), 500000000000.into()
+            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ferdie.clone())),
+            dominator.clone(),
+            1.into(),
+            500000000000.into()
         )?;
     } :_(RawOrigin::Signed(ferdie), dominator, 1.into(), 500000000000.into())
 
