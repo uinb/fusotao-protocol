@@ -130,7 +130,7 @@ impl pallet_fuso_verifier::Config for Test {
     type MinimalStakingAmount = MinimalStakingAmount;
     type Rewarding = PhantomData;
     type SeasonDuration = SeasonDuration;
-    type SelfWeightInfo = ();
+    type WeightInfo = ();
 }
 
 // Configure a mock runtime to test the pallet.
