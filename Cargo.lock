@@ -1485,6 +1485,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "fuso-support",
+ "hex",
  "pallet-balances",
  "pallet-fuso-token",
  "parity-scale-codec",

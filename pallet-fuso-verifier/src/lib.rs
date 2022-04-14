@@ -191,6 +191,7 @@ pub mod pallet {
         TransferOut(Compact<u32>, Compact<u128>),
         TransferIn(Compact<u32>, Compact<u128>),
         RejectTransferOut(Compact<u32>, Compact<u128>),
+        RejectTransferIn,
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
@@ -862,6 +863,7 @@ pub mod pallet {
                     // needn't step forward
                     return Ok(known_root);
                 }
+                Command::RejectTransferIn => {}
             }
             Dominators::<T>::mutate(&dominator_id, |d| {
                 let update = d.as_mut().unwrap();

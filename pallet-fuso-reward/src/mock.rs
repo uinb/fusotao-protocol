@@ -1,4 +1,3 @@
-use super::*;
 use crate as pallet_fuso_reward;
 use frame_support::parameter_types;
 use frame_system as system;

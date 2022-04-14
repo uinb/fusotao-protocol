@@ -3,6 +3,7 @@ use crate::Pallet as Verifier;
 pub use frame_benchmarking::{account, benchmarks};
 use frame_system::RawOrigin;
 use sp_runtime::traits::StaticLookup;
+use codec::Decode;
 
 const SEED: u32 = 0;
 
