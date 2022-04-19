@@ -1447,7 +1447,7 @@ dependencies = [
  "serde",
  "sp-core",
  "sp-io",
- "sp-keyring",
+ "sp-keyring 4.0.0-dev (git+https://github.com/paritytech/substrate.git?branch=polkadot-v0.9.13)",
  "sp-runtime",
  "sp-std",
 ]
@@ -1467,7 +1467,7 @@ dependencies = [
  "serde",
  "sp-core",
  "sp-io",
- "sp-keyring",
+ "sp-keyring 4.0.0-dev (git+https://github.com/paritytech/substrate.git?branch=polkadot-v0.9.13)",
  "sp-runtime",
  "sp-std",
 ]
@@ -1488,7 +1488,7 @@ dependencies = [
  "serde",
  "sp-core",
  "sp-io",
- "sp-keyring",
+ "sp-keyring 4.0.0-dev (git+https://github.com/paritytech/substrate.git?branch=polkadot-v0.9.13)",
  "sp-runtime",
  "sp-std",
 ]
@@ -1502,6 +1502,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "fuso-support",
+ "hex",
  "pallet-balances",
  "pallet-fuso-token",
  "parity-scale-codec",
@@ -1509,7 +1510,7 @@ dependencies = [
  "serde",
  "sp-core",
  "sp-io",
- "sp-keyring",
+ "sp-keyring 4.0.0-dev (git+https://github.com/octopus-network/substrate.git?branch=polkadot-v0.9.13)",
  "sp-runtime",
  "sp-std",
  "sparse-merkle-tree",
@@ -2292,6 +2293,17 @@ dependencies = [
  "sp-wasm-interface",
  "tracing",
  "tracing-core",
+]
+
+[[package]]
+name = "sp-keyring"
+version = "4.0.0-dev"
+source = "git+https://github.com/octopus-network/substrate.git?branch=polkadot-v0.9.13#afb74de23dfe2994e7ce38c0870efb9734e966f7"
+dependencies = [
+ "lazy_static",
+ "sp-core",
+ "sp-runtime",
+ "strum",
 ]
 
 [[package]]

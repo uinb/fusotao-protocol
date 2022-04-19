@@ -17,6 +17,9 @@
 pub use pallet::*;
 pub mod weights;
 
+#[cfg(feature = "runtime-benchmarks")]
+pub mod benchmarking;
+
 #[cfg(test)]
 pub mod mock;
 #[cfg(test)]
@@ -241,7 +244,8 @@ pub mod pallet {
 
         type Rewarding: Rewarding<Self::AccountId, Balance<Self>, Self::BlockNumber>;
 
-        type SelfWeightInfo: WeightInfo;
+        /// Weight information for the extrinsics in this module.
+        type WeightInfo: WeightInfo;
 
         #[pallet::constant]
         type DominatorOnlineThreshold: Get<Balance<Self>>;
@@ -399,7 +403,7 @@ pub mod pallet {
         T::BlockNumber: Into<u32> + From<u32>,
     {
         /// Initialize an empty sparse merkle tree with sequence 0 for a new dominator.
-        #[pallet::weight(T::SelfWeightInfo::register())]
+        #[pallet::weight(<T as Config>::WeightInfo::register())]
         pub fn register(origin: OriginFor<T>, identifier: Vec<u8>) -> DispatchResultWithPostInfo {
             let dominator = ensure_signed(origin)?;
             let name = AsciiStr::from_ascii(&identifier);
@@ -437,7 +441,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(0)]
+        #[pallet::weight(<T as Config>::WeightInfo::evict())]
         pub fn evict(
             origin: OriginFor<T>,
             dominator_id: <T::Lookup as StaticLookup>::Source,
@@ -455,7 +459,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(0)]
+        #[pallet::weight(<T as Config>::WeightInfo::launch())]
         pub fn launch(
             origin: OriginFor<T>,
             dominator_id: <T::Lookup as StaticLookup>::Source,
@@ -477,7 +481,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(T::SelfWeightInfo::verify())]
+        #[pallet::weight(<T as Config>::WeightInfo::verify())]
         pub fn verify(
             origin: OriginFor<T>,
             proofs: Vec<Proof<T::AccountId>>,
@@ -502,7 +506,7 @@ pub mod pallet {
         }
 
         #[transactional]
-        #[pallet::weight(T::SelfWeightInfo::stake())]
+        #[pallet::weight(<T as Config>::WeightInfo::stake())]
         pub fn stake(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -515,7 +519,7 @@ pub mod pallet {
         }
 
         #[transactional]
-        #[pallet::weight(T::SelfWeightInfo::unstake())]
+        #[pallet::weight(<T as Config>::WeightInfo::unstake())]
         pub fn unstake(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -528,7 +532,7 @@ pub mod pallet {
         }
 
         #[transactional]
-        #[pallet::weight(T::SelfWeightInfo::claim_shares())]
+        #[pallet::weight(<T as Config>::WeightInfo::claim_shares())]
         pub fn claim_shares(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -557,7 +561,7 @@ pub mod pallet {
         }
 
         #[transactional]
-        #[pallet::weight(T::SelfWeightInfo::authorize())]
+        #[pallet::weight(<T as Config>::WeightInfo::authorize())]
         pub fn authorize(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
@@ -598,7 +602,7 @@ pub mod pallet {
         }
 
         #[transactional]
-        #[pallet::weight(T::SelfWeightInfo::revoke())]
+        #[pallet::weight(<T as Config>::WeightInfo::revoke())]
         pub fn revoke(
             origin: OriginFor<T>,
             dominator: <T::Lookup as StaticLookup>::Source,
