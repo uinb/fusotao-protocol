@@ -1,6 +1,6 @@
 use frame_support::traits::BalanceStatus;
 use frame_support::{assert_noop, assert_ok};
-use frame_system::{RawOrigin};
+use frame_system::RawOrigin;
 use fuso_support::traits::ReservableToken;
 use pallet_octopus_support::traits::AssetIdAndNameProvider;
 use sp_keyring::AccountKeyring;
