@@ -163,7 +163,7 @@ pub mod pallet {
             symbol: Vec<u8>,
             contract: Vec<u8>,
         ) -> DispatchResultWithPostInfo {
-            let _ = ensure_signed(origin)?;
+            let _ = ensure_root(origin)?;
             ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
             let name = AsciiStr::from_ascii(&symbol);
             ensure!(name.is_ok(), Error::<T>::InvalidTokenName);

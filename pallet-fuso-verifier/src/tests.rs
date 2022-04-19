@@ -144,7 +144,7 @@ pub fn test_authorize() {
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
         frame_system::Pallet::<Test>::set_block_number(15);
         assert_ok!(Token::issue(
-            Origin::signed(ferdie.clone()),
+            RawOrigin::Root.into(),
             6,
             true,
             br#"USDT"#.to_vec(),
