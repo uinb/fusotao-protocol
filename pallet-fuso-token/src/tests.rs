@@ -1,5 +1,6 @@
 use frame_support::traits::BalanceStatus;
 use frame_support::{assert_noop, assert_ok};
+use frame_system::{RawOrigin};
 use fuso_support::traits::ReservableToken;
 use pallet_octopus_support::traits::AssetIdAndNameProvider;
 use sp_keyring::AccountKeyring;
@@ -20,7 +21,7 @@ fn issuing_token_and_transfer_should_work() {
     let alice: AccountId = AccountKeyring::Alice.into();
     new_test_ext().execute_with(|| {
         assert_ok!(Token::issue(
-            Origin::signed(ferdie.clone()),
+            RawOrigin::Root.into(),
             6,
             true,
             br#"USDT"#.to_vec(),
@@ -78,7 +79,7 @@ fn reservable_token_should_work() {
     let alice: AccountId = AccountKeyring::Alice.into();
     new_test_ext().execute_with(|| {
         assert_ok!(Token::issue(
-            Origin::signed(ferdie.clone()),
+            RawOrigin::Root.into(),
             6,
             true,
             br#"USDT"#.to_vec(),
@@ -178,7 +179,7 @@ fn test_xtoken_should_work() {
         // let token_name = Token::try_get_asset_name(1).unwrap();
         // assert_eq!(String::from_utf8(token_name).unwrap(), "USDT".to_string());
         assert_ok!(Token::issue(
-            Origin::signed(ferdie.clone()),
+            RawOrigin::Root.into(),
             6,
             true,
             br#"USDT"#.to_vec(),
@@ -186,7 +187,7 @@ fn test_xtoken_should_work() {
         ));
         assert_noop!(
             Token::issue(
-                Origin::signed(ferdie.clone()),
+                RawOrigin::Root.into(),
                 6,
                 true,
                 br#"USDT"#.to_vec(),
@@ -195,7 +196,7 @@ fn test_xtoken_should_work() {
             Error::<Test>::InvalidToken
         );
         assert_ok!(Token::issue(
-            Origin::signed(ferdie.clone()),
+            RawOrigin::Root.into(),
             6,
             true,
             br#"USDC"#.to_vec(),
