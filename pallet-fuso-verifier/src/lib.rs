@@ -259,6 +259,12 @@ pub mod pallet {
 
         #[pallet::constant]
         type MinimalStakingAmount: Get<Balance<Self>>;
+
+        #[pallet::constant]
+        type MaxMakerFee: Get<u32>;
+
+        #[pallet::constant]
+        type MaxTakerFee: Get<u32>;
     }
 
     #[pallet::storage]
@@ -361,6 +367,7 @@ pub mod pallet {
         UnsupportedQuoteCurrency,
         DominatorEvicted,
         DominatorStatusInvalid,
+        FeesTooHigh,
     }
 
     #[pallet::pallet]
@@ -720,6 +727,7 @@ pub mod pallet {
             let current_season = Self::current_season(current_block, claim_at);
             match proof.cmd {
                 Command::AskLimit(price, amount, maker_fee, taker_fee, base, quote) => {
+                    Self::check_fee(taker_fee.into(), maker_fee.into())?;
                     let (price, amount, maker_fee, taker_fee, base, quote): (
                         u128,
                         u128,
@@ -766,6 +774,7 @@ pub mod pallet {
                     }
                 }
                 Command::BidLimit(price, amount, maker_fee, taker_fee, base, quote) => {
+                    Self::check_fee(taker_fee.into(), maker_fee.into())?;
                     let (price, amount, maker_fee, taker_fee, base, quote): (
                         u128,
                         u128,
@@ -1344,6 +1353,14 @@ pub mod pallet {
             ensure!(
                 currency == c && account == &id,
                 Error::<T>::ProofsUnsatisfied
+            );
+            Ok(())
+        }
+
+        fn check_fee(taker_fee: u32, maker_fee: u32) -> Result<(), DispatchError> {
+            ensure!(
+                maker_fee <= T::MaxMakerFee::get() && taker_fee <= T::MaxTakerFee::get(),
+                Error::<T>::FeesTooHigh
             );
             Ok(())
         }
