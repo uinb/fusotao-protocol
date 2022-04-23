@@ -135,8 +135,6 @@ pub fn test_stake_unstake_should_work() {
     });
 }
 
-const ONE: u128 = 1000000000000000000;
-
 #[test]
 pub fn test_authorize() {
     new_tester().execute_with(|| {

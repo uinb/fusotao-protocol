@@ -1,4 +1,3 @@
-use super::*;
 use crate as pallet_fuso_verifier;
 use frame_support::parameter_types;
 use frame_system as system;
@@ -94,6 +93,8 @@ parameter_types! {
     pub const SeasonDuration: BlockNumber = 1440;
     pub const MinimalStakingAmount: Balance = 100;
     pub const DominatorCheckGracePeriod: BlockNumber = 10;
+    pub const MaxMakerFee: u32 = 10000;
+    pub const MaxTakerFee: u32 = 10000;
 }
 
 pub struct PhantomData;
@@ -131,6 +132,8 @@ impl pallet_fuso_verifier::Config for Test {
     type Rewarding = PhantomData;
     type SeasonDuration = SeasonDuration;
     type WeightInfo = ();
+    type MaxMakerFee = MaxMakerFee;
+    type MaxTakerFee = MaxTakerFee;
 }
 
 // Configure a mock runtime to test the pallet.
