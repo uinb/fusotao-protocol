@@ -976,7 +976,10 @@ pub mod pallet {
                 Error::<T>::ProofsUnsatisfied
             );
             let (tqa1, tqf1) = taker_quote.split_new_to_u128();
-            let tq_delta = (tqa1 + tqf1) - (tqa0 + tqf0);
+            let tq_delta = tqa1.checked_add(tqf1)
+                .map(|s| s.checked_sub(tqa0.checked_add(tqf0)
+                    .ok_or(Error::<T>::Overflow).unwrap()).unwrap())
+                .ok_or(Error::<T>::Overflow)?;
             ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
             ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
             // the delta of taker base available account(a.k.a base freezed of taker), equals to the amount of cmd
@@ -1041,7 +1044,7 @@ pub mod pallet {
             // FIXME ceil
             let quote_charged = taker_fee.mul_ceil(mq_delta);
             ensure!(
-                mq_delta == tq_delta + quote_charged,
+                mq_delta == tq_delta.checked_add(quote_charged).ok_or(Error::<T>::Overflow)?,
                 Error::<T>::ProofsUnsatisfied
             );
             delta.push(TokenMutation {
@@ -1187,7 +1190,10 @@ pub mod pallet {
                 Error::<T>::ProofsUnsatisfied
             );
 
-            let tq_delta = (tqa0 + tqf0) - (tqa1 + tqf1);
+            let tq_delta = tqa1.checked_add(tqf1)
+                .map(|s| s.checked_sub(tqa0.checked_add(tqf0)
+                    .ok_or(Error::<T>::Overflow).unwrap()).unwrap())
+                .ok_or(Error::<T>::Overflow)?;
             ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
             ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
             let mut mb_delta = 0u128;
@@ -1238,7 +1244,7 @@ pub mod pallet {
             // FIXME ceil
             let quote_charged = maker_fee.mul_ceil(tq_delta);
             ensure!(
-                mq_delta + quote_charged == tq_delta,
+                mq_delta.checked_add(quote_charged).ok_or(Error::<T>::Overflow)? == tq_delta,
                 Error::<T>::ProofsUnsatisfied
             );
             // FIXME ceil
@@ -1257,8 +1263,8 @@ pub mod pallet {
             delta.push(TokenMutation {
                 who: taker_b_id,
                 volume: tq_delta.into(),
-                base_value: (tba1 + tbf1).into(),
-                quote_value: (tqa1 + tqf1).into(),
+                base_value: (tba1.checked_add(tbf1).ok_or(Error::<T>::Overflow)?).into(),
+                quote_value: (tqa1.checked_add(tqf1).ok_or(Error::<T>::Overflow)?).into(),
             });
             let best_price = &leaves[maker_accounts as usize + 3];
             let (b, q) = best_price.try_get_symbol::<T>()?;
