@@ -954,7 +954,7 @@ pub mod pallet {
                 Self::has_authorized_exactly_on(
                     taker_b_id.clone(),
                     base.into(),
-                    (tba0 + tbf0).into(),
+                    (tba0.checked_add(tbf0).ok_or(Error::<T>::Overflow)?).into(),
                     &dominator,
                 ),
                 Error::<T>::ProofsUnsatisfied
@@ -1043,7 +1043,10 @@ pub mod pallet {
             // FIXME ceil
             let quote_charged = taker_fee.mul_ceil(mq_delta);
             ensure!(
-                mq_delta == tq_delta.checked_add(quote_charged).ok_or(Error::<T>::Overflow)?,
+                mq_delta
+                    == tq_delta
+                        .checked_add(quote_charged)
+                        .ok_or(Error::<T>::Overflow)?,
                 Error::<T>::ProofsUnsatisfied
             );
             delta.push(TokenMutation {
@@ -1230,8 +1233,10 @@ pub mod pallet {
                     Error::<T>::ProofsUnsatisfied
                 );
                 let mq1 = maker_quote.split_new_to_sum();
-                let quote_incr = mq1 - mq0;
-                mq_delta += quote_incr;
+                let quote_incr = mq1.checked_sub(mq0).ok_or(Error::<T>::Overflow)?;
+                mq_delta = mq_delta
+                    .checked_add(quote_incr)
+                    .ok_or(Error::<T>::Overflow)?;
                 delta.push(TokenMutation {
                     who: maker_b_id,
                     volume: quote_incr.into(),
@@ -1242,13 +1247,19 @@ pub mod pallet {
             // FIXME ceil
             let quote_charged = maker_fee.mul_ceil(tq_delta);
             ensure!(
-                mq_delta.checked_add(quote_charged).ok_or(Error::<T>::Overflow)? == tq_delta,
+                mq_delta
+                    .checked_add(quote_charged)
+                    .ok_or(Error::<T>::Overflow)?
+                    == tq_delta,
                 Error::<T>::ProofsUnsatisfied
             );
             // FIXME ceil
             let base_charged = taker_fee.mul_ceil(mb_delta);
             ensure!(
-                tb_delta + base_charged == mb_delta,
+                tb_delta
+                    .checked_add(base_charged)
+                    .ok_or(Error::<T>::Overflow)?
+                    == mb_delta,
                 Error::<T>::ProofsUnsatisfied
             );
             ensure!(ask_delta == mb_delta, Error::<T>::ProofsUnsatisfied);
@@ -1312,7 +1323,14 @@ pub mod pallet {
                     let prv_is_maker = vanity_maker.split_old_to_sum();
                     let now_is_maker = vanity_maker.split_new_to_sum();
                     ensure!(
-                        tb_delta + base_charged == taken_asks + prv_is_maker - now_is_maker,
+                        tb_delta
+                            .checked_add(base_charged)
+                            .ok_or(Error::<T>::Overflow)?
+                            == (taken_asks
+                                .checked_add(prv_is_maker)
+                                .ok_or(Error::<T>::Overflow)?)
+                            .checked_sub(now_is_maker)
+                            .ok_or(Error::<T>::Overflow)?,
                         Error::<T>::ProofsUnsatisfied
                     );
                 }
