@@ -90,12 +90,14 @@ impl pallet_fuso_token::Config for Test {
 parameter_types! {
     pub const EraDuration: BlockNumber = 100;
     pub const RewardsPerEra: Balance = 1000000000000000000000000;
+    pub const RewardTerminateAt: BlockNumber = 500000000;
 }
 
 impl pallet_fuso_reward::Config for Test {
     type Asset = TokenModule;
     type EraDuration = EraDuration;
     type Event = Event;
+    type RewardTerminateAt = RewardTerminateAt;
     type RewardsPerEra = RewardsPerEra;
 }
 
