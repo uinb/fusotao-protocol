@@ -1756,7 +1756,7 @@ pub mod pallet {
             ((now - claim_at) / T::SeasonDuration::get()).into()
         }
 
-		#[transactional]
+        #[transactional]
         fn put_profit(
             dominator: &T::AccountId,
             season: Season,

@@ -128,12 +128,12 @@ impl pallet_fuso_verifier::Config for Test {
     type DominatorCheckGracePeriod = DominatorCheckGracePeriod;
     type DominatorOnlineThreshold = DominatorOnlineThreshold;
     type Event = Event;
+    type MaxMakerFee = MaxMakerFee;
+    type MaxTakerFee = MaxTakerFee;
     type MinimalStakingAmount = MinimalStakingAmount;
     type Rewarding = PhantomData;
     type SeasonDuration = SeasonDuration;
     type WeightInfo = ();
-    type MaxMakerFee = MaxMakerFee;
-    type MaxTakerFee = MaxTakerFee;
 }
 
 // Configure a mock runtime to test the pallet.

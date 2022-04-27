@@ -51,6 +51,9 @@ pub mod pallet {
 
         #[pallet::constant]
         type RewardsPerEra: Get<Balance<Self>>;
+
+        #[pallet::constant]
+        type RewardTerminateAt: Get<Self::BlockNumber>;
     }
 
     #[pallet::event]
@@ -164,7 +167,11 @@ pub mod pallet {
                         let total_vol: u128 = Volumes::<T>::get(r.last_modify).into();
                         ensure!(total_vol > 0, Error::<T>::DivideByZero);
                         let p: Perquintill = Perquintill::from_rational(pending_vol, total_vol);
-                        let era_reward: u128 = T::RewardsPerEra::get().into();
+                        let mut era_reward: u128 = T::RewardsPerEra::get().into();
+                        let now = frame_system::Pallet::<T>::block_number();
+                        if now > T::RewardTerminateAt::get() {
+                            era_reward = 0u128;
+                        }
                         let a = p * era_reward;
                         r.confirmed = r
                             .confirmed
