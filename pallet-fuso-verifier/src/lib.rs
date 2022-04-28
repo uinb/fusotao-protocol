@@ -1192,8 +1192,8 @@ pub mod pallet {
                 Error::<T>::ProofsUnsatisfied
             );
 
-            let tq_delta = (tqa1.checked_add(tqf1).ok_or(Error::<T>::Overflow)?)
-                .checked_sub(tqa0.checked_add(tqf0).ok_or(Error::<T>::Overflow)?)
+            let tq_delta = (tqa0.checked_add(tqf0).ok_or(Error::<T>::Overflow)?)
+                .checked_sub(tqa1.checked_add(tqf1).ok_or(Error::<T>::Overflow)?)
                 .ok_or(Error::<T>::Overflow)?;
             ensure!(bk == base && qk == quote, Error::<T>::ProofsUnsatisfied);
             ensure!(taker_b_id == taker_q_id, Error::<T>::ProofsUnsatisfied);
