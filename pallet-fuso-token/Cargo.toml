@@ -1,6 +1,6 @@
 [package]
 name = "pallet-fuso-token"
-version = "4.0.0-rc"
+version = "4.0.0-release"
 authors = ["UINB Tech"]
 edition = "2021"
 license = "Apache-2.0"
