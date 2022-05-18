@@ -18,6 +18,7 @@ use sp_runtime::{
     traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member},
     DispatchError, DispatchResult,
 };
+use codec::MaxEncodedLen;
 
 pub trait Token<AccountId> {
     type Balance: Member
@@ -26,7 +27,8 @@ pub trait Token<AccountId> {
         + Default
         + Copy
         + Codec
-        + MaybeSerializeDeserialize;
+        + MaybeSerializeDeserialize
+		+ MaxEncodedLen;
 
     type TokenId: Member
         + Parameter
