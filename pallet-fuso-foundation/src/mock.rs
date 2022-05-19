@@ -1,6 +1,7 @@
 use super::*;
 use crate as pallet_fuso_foundation;
 use frame_support::parameter_types;
+use frame_support::traits::ConstU32;
 use frame_system as system;
 use sp_keyring::AccountKeyring;
 use sp_runtime::traits::{IdentifyAccount, Verify};
@@ -54,6 +55,7 @@ impl frame_system::Config for Test {
     type OnKilledAccount = ();
     type OnNewAccount = ();
     type OnSetCode = ();
+	type MaxConsumers = ConstU32<16>;
     type Origin = Origin;
     type PalletInfo = PalletInfo;
     type SS58Prefix = SS58Prefix;

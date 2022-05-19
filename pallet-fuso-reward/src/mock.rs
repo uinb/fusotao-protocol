@@ -1,5 +1,6 @@
 use crate as pallet_fuso_reward;
 use frame_support::parameter_types;
+use frame_support::traits::ConstU32;
 use frame_system as system;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::{
@@ -54,6 +55,7 @@ impl frame_system::Config for Test {
     type OnSetCode = ();
     type Origin = Origin;
     type PalletInfo = PalletInfo;
+	type MaxConsumers = ConstU32<16>;
     type SS58Prefix = SS58Prefix;
     type SystemWeightInfo = ();
     type Version = ();
