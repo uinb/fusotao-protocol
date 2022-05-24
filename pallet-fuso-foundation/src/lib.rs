@@ -133,7 +133,7 @@ pub mod pallet {
         StorageMap<_, Blake2_128Concat, T::AccountId, FoundationData<BalanceOf<T>>, OptionQuery>;
 
     #[pallet::pallet]
-	#[pallet::without_storage_info]
+    #[pallet::without_storage_info]
     #[pallet::generate_store(pub (super) trait Store)]
     pub struct Pallet<T>(_);
 

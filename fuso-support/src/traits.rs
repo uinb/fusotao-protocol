@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use codec::Codec;
+use codec::MaxEncodedLen;
 use frame_support::{traits::BalanceStatus, Parameter};
 use sp_runtime::{
     traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member},
     DispatchError, DispatchResult,
 };
-use codec::MaxEncodedLen;
 
 pub trait Token<AccountId> {
     type Balance: Member
@@ -28,7 +28,7 @@ pub trait Token<AccountId> {
         + Copy
         + Codec
         + MaybeSerializeDeserialize
-		+ MaxEncodedLen;
+        + MaxEncodedLen;
 
     type TokenId: Member
         + Parameter

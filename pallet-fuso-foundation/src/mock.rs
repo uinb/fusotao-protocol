@@ -52,10 +52,10 @@ impl frame_system::Config for Test {
     type Header = generic::Header<BlockNumber, BlakeTwo256>;
     type Index = Index;
     type Lookup = AccountIdLookup<AccountId, ()>;
+    type MaxConsumers = ConstU32<16>;
     type OnKilledAccount = ();
     type OnNewAccount = ();
     type OnSetCode = ();
-	type MaxConsumers = ConstU32<16>;
     type Origin = Origin;
     type PalletInfo = PalletInfo;
     type SS58Prefix = SS58Prefix;
