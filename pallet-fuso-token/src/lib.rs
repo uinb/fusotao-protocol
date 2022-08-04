@@ -38,7 +38,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use fuso_support::traits::{ReservableToken, Token};
-    use pallet_octopus_support::traits::AssetIdAndNameProvider;
+    use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
     use scale_info::TypeInfo;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Member, One,
@@ -679,16 +679,18 @@ pub mod pallet {
         }
     }
 
-    impl<T: Config> AssetIdAndNameProvider<T::TokenId> for Pallet<T> {
+    impl<T: Config> TokenIdAndAssetIdProvider<T::TokenId> for Pallet<T> {
         type Err = ();
 
-        fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
-            let name = name.as_ref();
-            Self::get_token_by_name(name.clone().to_vec()).ok_or(())
+        fn try_get_asset_id(
+            token_id: impl AsRef<[u8]>,
+        ) -> Result<<T as Config>::TokenId, Self::Err> {
+            let name = token_id.as_ref();
+            Self::get_token_by_name(token_id.as_ref().to_vec()).ok_or(())
         }
 
-        fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
-            let token_result = Self::get_token_info(token_id);
+        fn try_get_token_id(asset_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
+            let token_result = Self::get_token_info(asset_id);
             match token_result {
                 Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
                 None => Err(()),
