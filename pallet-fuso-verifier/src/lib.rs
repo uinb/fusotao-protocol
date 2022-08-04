@@ -1327,11 +1327,11 @@ pub mod pallet {
                         tb_delta
                             .checked_add(base_charged)
                             .ok_or(Error::<T>::Overflow)?
-                            == (taken_asks
+                            == taken_asks
                                 .checked_add(prv_is_maker)
-                                .ok_or(Error::<T>::Overflow)?)
-                            .checked_sub(now_is_maker)
-                            .ok_or(Error::<T>::Overflow)?,
+                                .ok_or(Error::<T>::Overflow)?
+                                .checked_sub(now_is_maker)
+                                .ok_or(Error::<T>::Overflow)?,
                         Error::<T>::ProofsUnsatisfied
                     );
                 }
