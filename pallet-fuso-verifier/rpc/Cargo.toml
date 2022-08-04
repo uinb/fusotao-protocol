@@ -1,6 +1,6 @@
 [package]
 name = "fuso-verifier-rpc"
-version = "4.0.0-rc"
+version = "4.0.1-release"
 authors = ["UINB Tech"]
 edition = "2021"
 license = "Apache-2.0"
@@ -9,16 +9,16 @@ repository = "https://github.com/uinb/fusotao-protocol"
 description = "RPC for FUSOTAO verifier pallet"
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "2.0" }
+codec = { package = "parity-scale-codec", version = "3.0.0" }
 jsonrpc-core = "18.0.0"
 jsonrpc-core-client = "18.0.0"
 jsonrpc-derive = "18.0.0"
 serde = { version = "1.0", features = ["derive"] }
 
-sp-api = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
-sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
-sp-rpc = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
-sp-blockchain = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
+sp-api = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
+sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
+sp-rpc = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
+sp-blockchain = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
 
 fuso-verifier-runtime-api = { path = "../runtime-api"}
 

@@ -1,6 +1,6 @@
 [package]
 name = "fuso-verifier-runtime-api"
-version = "4.0.0-rc"
+version = "4.0.1-release"
 authors = ["UINB Tech"]
 edition = "2021"
 license = "Apache-2.0"
@@ -9,10 +9,9 @@ repository = "https://github.com/uinb/fusotao-protocol"
 description = "FUSOTAO verifier pallet runtime api"
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
-sp-api = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
-sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.13"  }
-
+codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false }
+sp-api = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
+sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
 [features]
 default = ["std"]
 std = [

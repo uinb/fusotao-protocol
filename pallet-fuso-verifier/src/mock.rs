@@ -1,5 +1,6 @@
 use crate as pallet_fuso_verifier;
 use frame_support::parameter_types;
+use frame_support::traits::ConstU32;
 use frame_system as system;
 use sp_keyring::AccountKeyring;
 use sp_runtime::traits::{IdentifyAccount, Verify};
@@ -50,6 +51,7 @@ impl frame_system::Config for Test {
     type Header = generic::Header<BlockNumber, BlakeTwo256>;
     type Index = Index;
     type Lookup = AccountIdLookup<AccountId, ()>;
+    type MaxConsumers = ConstU32<16>;
     type OnKilledAccount = ();
     type OnNewAccount = ();
     type OnSetCode = ();

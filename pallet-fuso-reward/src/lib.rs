@@ -94,6 +94,7 @@ pub mod pallet {
     pub type Volumes<T: Config> = StorageMap<_, Blake2_128Concat, Era<T>, Volume<T>, ValueQuery>;
 
     #[pallet::pallet]
+    #[pallet::without_storage_info]
     #[pallet::generate_store(pub (super) trait Store)]
     pub struct Pallet<T>(_);
 

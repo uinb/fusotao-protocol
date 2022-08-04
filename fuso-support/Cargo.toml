@@ -1,6 +1,6 @@
 [package]
 name = "fuso-support"
-version = "4.0.0-release"
+version = "4.0.1-release"
 authors = ["UINB Tech"]
 edition = "2021"
 license = "Apache-2.0"
@@ -14,15 +14,15 @@ targets = ["x86_64-unknown-linux-gnu"]
 version = '1.0.119'
 
 [dependencies.codec]
+package = 'parity-scale-codec'
+version = '3.0.0'
 default-features = false
 features = ['derive']
-package = 'parity-scale-codec'
-version = '2.3.1'
 
 [dependencies.sp-core]
 default-features = false
 git = "https://github.com/paritytech/substrate.git"
-branch = "polkadot-v0.9.13"
+branch = "polkadot-v0.9.18"
 
 [dependencies.bit-vec]
 version = "0.6"
@@ -35,27 +35,27 @@ default-features = false
 [dependencies.sp-io]
 default-features = false
 git = "https://github.com/paritytech/substrate.git"
-branch = "polkadot-v0.9.13"
+branch = "polkadot-v0.9.18"
 
 [dependencies.sp-runtime]
 default-features = false
 git = "https://github.com/paritytech/substrate.git"
-branch = "polkadot-v0.9.13"
+branch = "polkadot-v0.9.18"
 
 [dependencies.frame-system]
 default-features = false
 git = "https://github.com/paritytech/substrate.git"
-branch = "polkadot-v0.9.13"
+branch = "polkadot-v0.9.18"
 
 [dependencies.frame-support]
 default-features = false
 git = "https://github.com/paritytech/substrate.git"
-branch = "polkadot-v0.9.13"
+branch = "polkadot-v0.9.18"
 
 [dependencies.sp-std]
 default-features = false
 git = "https://github.com/paritytech/substrate.git"
-branch = "polkadot-v0.9.13"
+branch = "polkadot-v0.9.18"
 
 [dev-dependencies.hex-literal]
 version = "0.3.3"
