@@ -696,18 +696,5 @@ pub mod pallet {
                 None => Err(()),
             }
         }
-
-        /* fn try_get_asset_id(name: impl AsRef<[u8]>) -> Result<<T as Config>::TokenId, Self::Err> {
-            let name = name.as_ref();
-            Self::get_token_by_name(name.clone().to_vec()).ok_or(())
-        }
-
-        fn try_get_asset_name(token_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
-            let token_result = Self::get_token_info(token_id);
-            match token_result {
-                Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
-                None => Err(()),
-            }
-        }*/
     }
 }
