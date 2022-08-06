@@ -51,6 +51,11 @@ pub trait Token<AccountId> {
         who: &AccountId,
         f: impl FnOnce(&mut (Self::Balance, Self::Balance)) -> Result<R, DispatchError>,
     ) -> Result<R, DispatchError>;
+
+    fn try_mutate_issuance(
+        token: &Self::TokenId,
+        f: impl FnOnce(&mut Self::Balance) -> Result<(), DispatchError>,
+    ) -> Result<(), DispatchError>;
 }
 
 pub trait ReservableToken<AccountId>: Token<AccountId> {

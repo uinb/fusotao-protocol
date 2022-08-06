@@ -1,7 +1,7 @@
-use frame_support::traits::BalanceStatus;
+use frame_support::traits::{BalanceStatus, Currency};
 use frame_support::{assert_noop, assert_ok};
 use frame_system::RawOrigin;
-use fuso_support::traits::ReservableToken;
+use fuso_support::traits::{ReservableToken, Token as TokenTrait};
 use sp_keyring::AccountKeyring;
 use sp_runtime::traits::Zero;
 use sp_runtime::MultiAddress;
@@ -277,5 +277,20 @@ fn test_xtoken_should_work() {
                 6
             )
         );
+    });
+}
+
+#[test]
+fn alter_total_issuance_should_work() {
+    new_test_ext().execute_with(|| {
+        Token::try_mutate_issuance(&Token::native_token_id(), |v| {
+            *v = v.checked_add(1000000000).unwrap();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(1000000000, Token::total_issuance(&Token::native_token_id()));
+        let bob: AccountId = AccountKeyring::Bob.into();
+        pallet_balances::Pallet::<Test>::make_free_balance_be(&bob, 1000000000);
+        assert_eq!(2000000000, Token::total_issuance(&Token::native_token_id()));
     });
 }
