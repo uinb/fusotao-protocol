@@ -487,6 +487,17 @@ pub mod pallet {
             }
         }
 
+        fn try_mutate_issuance(
+            token: &Self::TokenId,
+            f: impl FnOnce(&mut Self::Balance) -> Result<(), DispatchError>,
+        ) -> Result<(), DispatchError> {
+            if *token == Self::native_token_id() {
+                <pallet_balances::TotalIssuance<T>>::try_mutate(|total| f(total))
+            } else {
+                Err(DispatchError::Other("can't update the token issuance"))
+            }
+        }
+
         fn native_token_id() -> Self::TokenId {
             T::NativeTokenId::get()
         }
@@ -685,7 +696,6 @@ pub mod pallet {
         fn try_get_asset_id(
             token_id: impl AsRef<[u8]>,
         ) -> Result<<T as Config>::TokenId, Self::Err> {
-            let name = token_id.as_ref();
             Self::get_token_by_name(token_id.as_ref().to_vec()).ok_or(())
         }
 

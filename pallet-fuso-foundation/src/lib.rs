@@ -23,8 +23,7 @@ pub mod tests;
 pub mod pallet {
     use frame_support::{
         pallet_prelude::*,
-        // storage::types::OptionQuery,
-        traits::{Get, ReservableCurrency},
+        traits::{Currency, Get, ReservableCurrency},
         weights::Weight,
     };
     use frame_system::pallet_prelude::*;
@@ -72,20 +71,23 @@ pub mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
             for data in &self.fund {
-                Foundation::<T>::insert(
-                    data.0.clone(),
-                    FoundationData {
-                        delay_durations: data.1,
-                        interval_durations: data.2,
-                        times: data.3,
-                        amount: data.4,
-                        first_amount: data.5,
-                    },
+                let fund = FoundationData {
+                    delay_durations: data.1,
+                    interval_durations: data.2,
+                    times: data.3,
+                    amount: data.4,
+                    first_amount: data.5,
+                };
+                pallet_balances::Pallet::<T>::deposit_creating(
+                    &data.0,
+                    fund.amount * fund.times.into() + fund.first_amount,
                 );
-                pallet_balances::Pallet::<T>::mutate_account(&data.0, |account_data| {
-                    account_data.reserved = data.4 * data.3.into() + data.5;
-                })
+                pallet_balances::Pallet::<T>::reserve(
+                    &data.0,
+                    fund.amount * fund.times.into() + fund.first_amount,
+                )
                 .unwrap();
+                Foundation::<T>::insert(data.0.clone(), fund);
             }
         }
     }

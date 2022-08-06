@@ -139,6 +139,10 @@ pub mod pallet {
                 }
                 if confirmed > Zero::zero() {
                     T::Asset::try_mutate_account(&T::Asset::native_token_id(), &who, |b| {
+                        T::Asset::try_mutate_issuance(&T::Asset::native_token_id(), |v| {
+                            *v = v.checked_add(&confirmed).ok_or(Error::<T>::Overflow)?;
+                            Ok(())
+                        })?;
                         Ok(b.0 += confirmed)
                     })?;
                 }

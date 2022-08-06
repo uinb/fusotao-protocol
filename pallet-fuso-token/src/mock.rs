@@ -65,7 +65,7 @@ impl frame_system::Config for Test {
 }
 
 parameter_types! {
-    pub const ExistentialDeposit: Balance = 1 * DOLLARS;
+    pub const ExistentialDeposit: Balance = 1;
     pub const MaxLocks: u32 = 50;
     pub const MaxReserves: u32 = 50;
 }
