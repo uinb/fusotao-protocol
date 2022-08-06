@@ -15,7 +15,7 @@ A set of substrate pallets of [Fusotao](https://www.fusotao.org).
 
 - [Fusotao](https://github.com/uinb/fusotao) Fusotao executable node.
 - [Galois](https://github.com/uinb/galois) acts the proving client of Fusotao Protocol(a.k.a Proof of Matches).
-- [Token Keeper](https://github.com/uinb/token-keeper) is the browser extension of Fusotao, users can also use [Polkadotjs](https://polkadot.js.org) as an alternative.
+- [Avatar Wallet](https://github.com/uinb/avatar-wallet) is the browser extension of Fusotao, users can also use [Polkadotjs](https://polkadot.js.org) as an alternative.
 - [Octopus Network](https://github.com/octopus-network) powers us.
 
 ## Papers
