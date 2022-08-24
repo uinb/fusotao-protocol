@@ -1713,7 +1713,8 @@ pub mod pallet {
                         to_season: current_season,
                         staking: staking.amount,
                     };
-                    staking.from_season = Self::take_shares(staker, dominator_id, &distribution)?;
+					Self::take_shares(staker, dominator_id, &distribution)?;
+                    staking.from_season = current_season;
                     staking.amount = remain;
                     if !remain.is_zero() {
                         s.replace(staking);
