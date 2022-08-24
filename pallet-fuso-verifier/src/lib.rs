@@ -1636,22 +1636,16 @@ pub mod pallet {
                     )?;
                     let current_block = frame_system::Pallet::<T>::block_number();
                     let current_season = Self::current_season(current_block, dominator.start_from);
-                    let season_step_into = if staking.amount.is_zero() {
-                        if current_season == 0 {
-                            0
-                        } else {
-                            current_season + 1
-                        }
-                    } else {
+					if !staking.amount.is_zero() { //not first staking
                         let distribution = Distribution {
                             from_season: staking.from_season,
                             to_season: current_season,
                             staking: staking.amount,
                         };
-                        Self::take_shares(staker, dominator_id, &distribution)?
-                    };
+                        Self::take_shares(staker, dominator_id, &distribution)?;
+                    }
                     staking.amount += amount;
-                    staking.from_season = season_step_into;
+                    staking.from_season = current_season;
                     Ok(())
                 })?;
                 dominator.staked += amount;
@@ -1719,7 +1713,8 @@ pub mod pallet {
                         to_season: current_season,
                         staking: staking.amount,
                     };
-                    staking.from_season = Self::take_shares(staker, dominator_id, &distribution)?;
+					Self::take_shares(staker, dominator_id, &distribution)?;
+                    staking.from_season = current_season;
                     staking.amount = remain;
                     if !remain.is_zero() {
                         s.replace(staking);
