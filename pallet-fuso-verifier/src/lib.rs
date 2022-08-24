@@ -1642,7 +1642,7 @@ pub mod pallet {
                             to_season: current_season,
                             staking: staking.amount,
                         };
-                        Self::take_shares(staker, dominator_id, &distribution)?
+                        Self::take_shares(staker, dominator_id, &distribution)?;
                     };
                     staking.amount += amount;
                     staking.from_season = current_season;
