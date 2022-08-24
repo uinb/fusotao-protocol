@@ -1637,11 +1637,7 @@ pub mod pallet {
                     let current_block = frame_system::Pallet::<T>::block_number();
                     let current_season = Self::current_season(current_block, dominator.start_from);
                     let season_step_into = if staking.amount.is_zero() {
-                        if current_season == 0 {
-                            0
-                        } else {
-                            current_season + 1
-                        }
+                        current_season
                     } else {
                         let distribution = Distribution {
                             from_season: staking.from_season,
