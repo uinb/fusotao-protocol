@@ -423,8 +423,8 @@ pub mod pallet {
                 );
                 weight = weight.saturating_add(RocksDbWeight::get().writes(2 as Weight));
                 if r.is_err() {
-                    print!(
-                        "no enough tokens of {} to unlock, check onchain storage.",
+                    log::error!(
+                        "No enough tokens of {:?} to unlock, check onchain storage.",
                         staker
                     );
                 }
