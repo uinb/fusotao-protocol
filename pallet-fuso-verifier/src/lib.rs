@@ -43,7 +43,7 @@ pub mod pallet {
     use scale_info::TypeInfo;
     use sp_io::hashing::blake2_256 as hashing;
     use sp_runtime::{
-        traits::{CheckedAdd, CheckedSub, StaticLookup, Zero},
+        traits::{AccountIdConversion, CheckedAdd, CheckedSub, StaticLookup, Zero},
         Permill, Perquintill, RuntimeDebug,
     };
     use sp_std::{
@@ -59,6 +59,7 @@ pub mod pallet {
     pub type Season = u32;
     pub type Amount = u128;
     pub type Price = (u128, Perquintill);
+    pub const PALLET_ID: frame_support::PalletId = frame_support::PalletId(*b"fuso/vrf");
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -325,6 +326,18 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    #[pallet::storage]
+    #[pallet::getter(fn pending_unstakings)]
+    pub type PendingUnstakings<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::BlockNumber,
+        Blake2_128Concat,
+        T::AccountId,
+        Balance<T>,
+        ValueQuery,
+    >;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -378,8 +391,9 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T>
     where
-        Balance<T>: Into<u128>,
-        T::BlockNumber: Into<u32>,
+        TokenId<T>: Copy + From<u32> + Into<u32>,
+        Balance<T>: Copy + From<u128> + Into<u128>,
+        T::BlockNumber: Into<u32> + From<u32>,
     {
         /// save total staking of previous season
         fn on_initialize(now: T::BlockNumber) -> Weight {
@@ -399,7 +413,23 @@ pub mod pallet {
                     weight = weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
                 }
             }
-            weight
+            for (staker, amount) in PendingUnstakings::<T>::drain_prefix(&now) {
+                let r = Self::unreserve(
+                    RESERVE_FOR_PENDING_UNSTAKE,
+                    staker.clone(),
+                    T::Asset::native_token_id(),
+                    amount,
+                    &Self::system_account(),
+                );
+                weight = weight.saturating_add(RocksDbWeight::get().writes(2 as Weight));
+                if r.is_err() {
+                    print!(
+                        "no enough tokens of {} to unlock, check onchain storage.",
+                        staker
+                    );
+                }
+            }
+            weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
         }
     }
 
@@ -700,6 +730,10 @@ pub mod pallet {
         TokenId<T>: Copy + From<u32> + Into<u32>,
         T::BlockNumber: From<u32> + Into<u32>,
     {
+        pub fn system_account() -> T::AccountId {
+            PALLET_ID.into_account()
+        }
+
         #[transactional]
         fn verify_and_update(
             dominator_id: &T::AccountId,
@@ -1636,7 +1670,8 @@ pub mod pallet {
                     )?;
                     let current_block = frame_system::Pallet::<T>::block_number();
                     let current_season = Self::current_season(current_block, dominator.start_from);
-					if !staking.amount.is_zero() { //not first staking
+                    if !staking.amount.is_zero() {
+                        //not first staking
                         let distribution = Distribution {
                             from_season: staking.from_season,
                             to_season: current_season,
@@ -1706,14 +1741,30 @@ pub mod pallet {
                         amount,
                         &dominator_id,
                     )?;
+                    Self::reserve(
+                        RESERVE_FOR_PENDING_UNSTAKE,
+                        staker.clone(),
+                        T::Asset::native_token_id(),
+                        amount,
+                        &Self::system_account(),
+                    )?;
                     let current_block = frame_system::Pallet::<T>::block_number();
                     let current_season = Self::current_season(current_block, dominator.start_from);
+                    let unlock_at =
+                        Self::start_block_of_season(dominator.start_from, current_season + 1);
+                    PendingUnstakings::<T>::try_mutate(
+                        &unlock_at,
+                        &staker,
+                        |v| -> DispatchResult {
+                            Ok(*v = v.checked_add(&amount).ok_or(Error::<T>::Overflow)?)
+                        },
+                    )?;
                     let distribution = Distribution {
                         from_season: staking.from_season,
                         to_season: current_season,
                         staking: staking.amount,
                     };
-					Self::take_shares(staker, dominator_id, &distribution)?;
+                    Self::take_shares(staker, dominator_id, &distribution)?;
                     staking.from_season = current_season;
                     staking.amount = remain;
                     if !remain.is_zero() {
@@ -1745,11 +1796,15 @@ pub mod pallet {
             })
         }
 
-        fn current_season(now: T::BlockNumber, claim_at: T::BlockNumber) -> Season {
+        pub fn current_season(now: T::BlockNumber, claim_at: T::BlockNumber) -> Season {
             if now <= claim_at {
                 return 0;
             }
             ((now - claim_at) / T::SeasonDuration::get()).into()
+        }
+
+        pub fn start_block_of_season(claim_at: T::BlockNumber, season: Season) -> T::BlockNumber {
+            claim_at + (season * T::SeasonDuration::get().into()).into()
         }
 
         #[transactional]
