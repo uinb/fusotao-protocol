@@ -3,9 +3,9 @@ use crate::mock::*;
 use crate::mock::{new_tester, AccountId};
 use crate::Error;
 use crate::Pallet;
+use frame_support::traits::{OnFinalize, OnInitialize};
 use frame_support::{assert_noop, assert_ok};
 use frame_system::RawOrigin;
-use fuso_support::constants::RESERVE_FOR_STAKING;
 use fuso_support::constants::*;
 use pallet_fuso_token::XToken;
 use sp_keyring::AccountKeyring;
@@ -13,6 +13,8 @@ use sp_runtime::MultiAddress;
 
 type Token = pallet_fuso_token::Pallet<Test>;
 type Verifier = Pallet<Test>;
+type Balance = pallet_balances::Pallet<Test>;
+type System = frame_system::Pallet<Test>;
 
 #[test]
 pub fn register_should_work() {
@@ -61,7 +63,7 @@ pub fn test_stake_unstake_should_work() {
             MultiAddress::Id(alice.clone())
         ));
 
-        //bob don't have enough TAO
+        //bob doesn't have enough TAO
         assert_noop!(
             Verifier::stake(
                 Origin::signed(bob.clone()),
@@ -121,6 +123,28 @@ pub fn test_stake_unstake_should_work() {
         ));
         let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
         assert_eq!(reserves, 1000);
+        // unlock at next season
+        assert_eq!(Balance::reserved_balance(&ferdie), 10000);
+        assert_eq!(
+            Balance::usable_balance(&ferdie),
+            10000000000000000000 - 10000
+        );
+        let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
+        let next_season = Verifier::start_block_of_season(alice_dominator.start_from, 1);
+        crate::pallet::PendingUnstakings::<Test>::iter().for_each(|s| println!("{:?}", s));
+        assert_eq!(Verifier::pending_unstakings(next_season, &ferdie), 9000);
+        let reserves = Verifier::reserves(
+            &(RESERVE_FOR_PENDING_UNSTAKE, ferdie.clone(), 0u32),
+            &Verifier::system_account(),
+        );
+        assert_eq!(reserves, 9000);
+        run_to_block(next_season);
+        assert_eq!(Balance::reserved_balance(&ferdie), 1000);
+        assert_eq!(Verifier::pending_unstakings(next_season, &ferdie), 0);
+        assert_eq!(
+            Balance::usable_balance(&ferdie),
+            10000000000000000000 - 1000
+        );
         assert_noop!(
             Verifier::unstake(
                 Origin::signed(ferdie.clone()),
@@ -264,4 +288,15 @@ pub fn test_authorize() {
         );
         assert_eq!(t, 100000);
     });
+}
+
+fn run_to_block(n: u32) {
+    while System::block_number() < n {
+        if System::block_number() > 1 {
+            System::on_finalize(System::block_number());
+        }
+        System::set_block_number(System::block_number() + 1);
+        System::on_initialize(System::block_number());
+        Verifier::on_initialize(System::block_number());
+    }
 }

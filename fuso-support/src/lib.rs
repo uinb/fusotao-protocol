@@ -24,6 +24,7 @@ pub mod constants {
     pub const RESERVE_FOR_STAKING: u8 = 0u8;
     pub const RESERVE_FOR_AUTHORIZING: u8 = 1u8;
     pub const RESERVE_FOR_AUTHORIZING_STASH: u8 = 2u8;
+    pub const RESERVE_FOR_PENDING_UNSTAKE: u8 = 3u8;
     pub const DOMINATOR_REGISTERED: u8 = 0u8;
     pub const DOMINATOR_INACTIVE: u8 = 1u8;
     pub const DOMINATOR_ACTIVE: u8 = 2u8;
