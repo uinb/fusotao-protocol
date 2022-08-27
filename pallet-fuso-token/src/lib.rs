@@ -314,6 +314,7 @@ pub mod pallet {
                         unified_amount
                     }
                 };
+                ensure!(!unified_amount.is_zero(), Error::<T>::AmountZero);
                 Balances::<T>::try_mutate_exists((&token, beneficiary), |to| -> DispatchResult {
                     let mut account = to.take().unwrap_or_default();
                     account.free = account
@@ -356,6 +357,7 @@ pub mod pallet {
                         unified_amount
                     }
                 };
+                ensure!(!unified_amount.is_zero(), Error::<T>::AmountZero);
                 Balances::<T>::try_mutate_exists((&token, target), |from| -> DispatchResult {
                     ensure!(from.is_some(), Error::<T>::BalanceZero);
                     let mut account = from.take().unwrap();
