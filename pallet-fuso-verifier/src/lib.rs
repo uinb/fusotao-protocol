@@ -351,6 +351,7 @@ pub mod pallet {
         ProofRejected(T::AccountId, u32),
         TaoStaked(T::AccountId, T::AccountId, Balance<T>),
         TaoUnstaked(T::AccountId, T::AccountId, Balance<T>),
+        TaoUnstakeUnlock(T::AccountId, Balance<T>),
         DominatorOnline(T::AccountId),
         DominatorOffline(T::AccountId),
         DominatorSlashed(T::AccountId),
@@ -428,6 +429,8 @@ pub mod pallet {
                         "No enough tokens of {:?} to unlock, check onchain storage.",
                         staker
                     );
+                } else {
+                    Self::deposit_event(Event::TaoUnstakeUnlock(staker.clone(), amount.clone()));
                 }
             }
             weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
