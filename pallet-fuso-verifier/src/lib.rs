@@ -60,6 +60,7 @@ pub mod pallet {
     pub type Amount = u128;
     pub type Price = (u128, Perquintill);
     pub const PALLET_ID: frame_support::PalletId = frame_support::PalletId(*b"fuso/vrf");
+    const UNSTAKE_DELAY_BLOCKS: u32 = 14400 * 4u32;
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -1751,7 +1752,8 @@ pub mod pallet {
                     let current_block = frame_system::Pallet::<T>::block_number();
                     let current_season = Self::current_season(current_block, dominator.start_from);
                     let unlock_at =
-                        Self::start_block_of_season(dominator.start_from, current_season + 1);
+                        current_block - current_block % T::DominatorCheckGracePeriod::get();
+                    let unlock_at = unlock_at + UNSTAKE_DELAY_BLOCKS.into();
                     PendingUnstakings::<T>::try_mutate(
                         &unlock_at,
                         &staker,

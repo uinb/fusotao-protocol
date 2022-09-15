@@ -62,7 +62,6 @@ pub fn test_stake_unstake_should_work() {
             RawOrigin::Root.into(),
             MultiAddress::Id(alice.clone())
         ));
-
         //bob doesn't have enough TAO
         assert_noop!(
             Verifier::stake(
@@ -93,7 +92,6 @@ pub fn test_stake_unstake_should_work() {
         assert_eq!(alice_dominator.status, DOMINATOR_ACTIVE);
         let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
         assert_eq!(reserves, 10000);
-
         assert_noop!(
             //50 < MinimalStakingAmount(100)
             Verifier::stake(
@@ -129,18 +127,22 @@ pub fn test_stake_unstake_should_work() {
             Balance::usable_balance(&ferdie),
             10000000000000000000 - 10000
         );
+
         let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
-        let next_season = Verifier::start_block_of_season(alice_dominator.start_from, 1);
+        let current_block: BlockNumber = System::block_number();
+        let unlock_at = current_block - current_block % 10;
+        let unlock_at = unlock_at + 14400 * 4;
+        assert_eq!(unlock_at, 57610);
         crate::pallet::PendingUnstakings::<Test>::iter().for_each(|s| println!("{:?}", s));
-        assert_eq!(Verifier::pending_unstakings(next_season, &ferdie), 9000);
+        assert_eq!(Verifier::pending_unstakings(unlock_at, &ferdie), 9000);
         let reserves = Verifier::reserves(
             &(RESERVE_FOR_PENDING_UNSTAKE, ferdie.clone(), 0u32),
             &Verifier::system_account(),
         );
         assert_eq!(reserves, 9000);
-        run_to_block(next_season);
+        run_to_block(unlock_at);
         assert_eq!(Balance::reserved_balance(&ferdie), 1000);
-        assert_eq!(Verifier::pending_unstakings(next_season, &ferdie), 0);
+        assert_eq!(Verifier::pending_unstakings(unlock_at, &ferdie), 0);
         assert_eq!(
             Balance::usable_balance(&ferdie),
             10000000000000000000 - 1000
