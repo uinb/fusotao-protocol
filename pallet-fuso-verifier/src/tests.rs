@@ -81,7 +81,6 @@ pub fn test_stake_unstake_should_work() {
         assert_eq!(alice_dominator.status, DOMINATOR_INACTIVE);
         let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
         assert_eq!(reserves, 1000);
-
         assert_ok!(Verifier::stake(
             Origin::signed(ferdie.clone()),
             MultiAddress::Id(alice.clone()),
@@ -114,35 +113,86 @@ pub fn test_stake_unstake_should_work() {
         );
         let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
         assert_eq!(reserves, 10000);
+        //first unstake slot
+        let current_block: BlockNumber = System::block_number();
+        let unlock_at1 = current_block - current_block % 10;
+        let unlock_at1 = unlock_at1 + 14400 * 4;
         assert_ok!(Verifier::unstake(
             Origin::signed(ferdie.clone()),
             MultiAddress::Id(alice.clone()),
-            9000
+            2000
         ));
+        assert_eq!(unlock_at1, 57610);
+        assert_eq!(Verifier::pending_unstakings(unlock_at1, &ferdie), 2000);
+        run_to_block(16);
+        assert_ok!(Verifier::unstake(
+            Origin::signed(ferdie.clone()),
+            MultiAddress::Id(alice.clone()),
+            2000
+        ));
+        assert_eq!(Verifier::pending_unstakings(unlock_at1, &ferdie), 4000); //2000+2000
         let reserves = Verifier::reserves(&(RESERVE_FOR_STAKING, ferdie.clone(), 0u32), &alice);
-        assert_eq!(reserves, 1000);
-        // unlock at next season
+        assert_eq!(reserves, 6000);
         assert_eq!(Balance::reserved_balance(&ferdie), 10000);
         assert_eq!(
             Balance::usable_balance(&ferdie),
             10000000000000000000 - 10000
         );
-
         let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
-        let current_block: BlockNumber = System::block_number();
-        let unlock_at = current_block - current_block % 10;
-        let unlock_at = unlock_at + 14400 * 4;
-        assert_eq!(unlock_at, 57610);
         crate::pallet::PendingUnstakings::<Test>::iter().for_each(|s| println!("{:?}", s));
-        assert_eq!(Verifier::pending_unstakings(unlock_at, &ferdie), 9000);
+        assert_eq!(Verifier::pending_unstakings(unlock_at1, &ferdie), 4000);
         let reserves = Verifier::reserves(
             &(RESERVE_FOR_PENDING_UNSTAKE, ferdie.clone(), 0u32),
             &Verifier::system_account(),
         );
-        assert_eq!(reserves, 9000);
-        run_to_block(unlock_at);
+        assert_eq!(reserves, 4000);
+        //second unstake slot
+        run_to_block(25);
+        let current_block: BlockNumber = System::block_number();
+        let unlock_at2 = current_block - current_block % 10;
+        let unlock_at2 = unlock_at2 + 14400 * 4;
+        assert_eq!(unlock_at2, 57620);
+        assert_ok!(Verifier::unstake(
+            Origin::signed(ferdie.clone()),
+            MultiAddress::Id(alice.clone()),
+            2000
+        ));
+        assert_eq!(Verifier::pending_unstakings(unlock_at2, &ferdie), 2000);
+        assert_ok!(Verifier::unstake(
+            Origin::signed(ferdie.clone()),
+            MultiAddress::Id(alice.clone()),
+            3000
+        ));
+        assert_eq!(Verifier::pending_unstakings(unlock_at2, &ferdie), 5000);
+        assert_eq!(Verifier::pending_unstakings(unlock_at1, &ferdie), 4000);
+        assert_eq!(Balance::reserved_balance(&ferdie), 10000);
+        assert_eq!(
+            Balance::usable_balance(&ferdie),
+            10000000000000000000 - 10000
+        );
+        let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
+        assert_eq!(alice_dominator.staked, 1000);
+        assert_eq!(alice_dominator.status, DOMINATOR_INACTIVE);
+        //first unlock
+        run_to_block(unlock_at1);
+        assert_eq!(Balance::reserved_balance(&ferdie), 6000);
+        assert_eq!(Verifier::pending_unstakings(unlock_at1, &ferdie), 0);
+        assert_eq!(
+            Balance::usable_balance(&ferdie),
+            10000000000000000000 - 6000
+        );
+        assert_noop!(
+            Verifier::unstake(
+                Origin::signed(ferdie.clone()),
+                MultiAddress::Id(alice.clone()),
+                5000
+            ),
+            Error::<Test>::InsufficientBalance
+        );
+        //second unlock
+        run_to_block(unlock_at2);
         assert_eq!(Balance::reserved_balance(&ferdie), 1000);
-        assert_eq!(Verifier::pending_unstakings(unlock_at, &ferdie), 0);
+        assert_eq!(Verifier::pending_unstakings(unlock_at2, &ferdie), 0);
         assert_eq!(
             Balance::usable_balance(&ferdie),
             10000000000000000000 - 1000
