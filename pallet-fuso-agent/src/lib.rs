@@ -26,13 +26,14 @@ pub mod mock;
 /// In the future, we should migrate the bindings to compatiable with IBC port/connection/routing.
 #[frame_support::pallet]
 pub mod pallet {
-    use codec::EncodeLike;
+    use codec::{Codec, EncodeLike};
     use frame_support::{pallet_prelude::*, traits::Get, transactional, weights::GetDispatchInfo};
     use frame_system::{ensure_signed, pallet_prelude::*};
     use sp_runtime::{
         traits::{CheckedAdd, Dispatchable, TrailingZeroInput, Zero},
         DispatchError, DispatchResult, Perquintill,
     };
+    use sp_std::{boxed::Box, vec::Vec};
 
     pub type ControllerChain = sp_std::vec::Vec<u8>;
     pub type ControllerAddr = sp_std::vec::Vec<u8>;
@@ -40,6 +41,8 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+        type Controller: Parameter + Member + Codec;
 
         type Function: Parameter
             + Dispatchable<Origin = Self::Origin>
@@ -49,19 +52,14 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn agents)]
-    pub type Agents<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat,
-        ControllerChain,
-        Blake2_128Concat,
-        ControllerAddr,
-        T::AccountId,
-        OptionQuery,
-    >;
+    pub type Agents<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::Controller, T::AccountId, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
-    pub enum Event<T: Config> {}
+    pub enum Event<T: Config> {
+        HostChainTxCompleted,
+    }
 
     #[pallet::error]
     pub enum Error<T> {
@@ -77,51 +75,67 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     #[pallet::call]
-    impl<T: Config> Pallet<T> {}
+    impl<T: Config> Pallet<T> {
+        #[pallet::weight(10000000)]
+        pub fn test_dispatch(
+            origin: OriginFor<T>,
+            controller: T::Controller,
+            call: Box<T::Function>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::execute_tx(controller, *call)?;
+            Ok(().into())
+        }
+    }
 
     /// IBC reference
-    impl<T: Config> Pallet<T> {
+    impl<T: Config> Agent<T::AccountId> for Pallet<T> {
+        type Message = T::Function;
+        type Origin = T::Controller;
+
+        /// bind the origin to an appchain account without private key
         /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
-        pub fn register_agent(
-            controller_chain: ControllerChain,
-            controller_addr: ControllerAddr,
-        ) -> Result<T::AccountId, DispatchError> {
-            let deterministic = (
-                b"fuso/agents",
-                controller_chain.clone(),
-                controller_addr.clone(),
-            )
-                .using_encoded(sp_io::hashing::blake2_256);
+        fn register_agent(origin: Self::Origin) -> Result<T::AccountId, DispatchError> {
+            let deterministic =
+                (b"fuso/agents", origin.clone()).using_encoded(sp_io::hashing::blake2_256);
             let host_addr: T::AccountId =
                 Decode::decode(&mut TrailingZeroInput::new(deterministic.as_ref()))
                     .map_err(|_| Error::<T>::CouldntRegisterAgent)?;
-            Agents::<T>::insert(controller_chain, controller_addr, host_addr.clone());
+            // FIXME migration friendly
+            Agents::<T>::insert(origin, host_addr.clone());
             Ok(host_addr)
         }
 
         /// function AuthenticateTx(msgs []Any, connectionId string, portId string) returns (error)
-        pub fn authenticate_tx(
-            controller_chain: ControllerChain,
-            controller_addr: ControllerAddr,
-        ) -> DispatchResult {
+        fn authenticate_tx(origin: Self::Origin, msg: Self::Message) -> Result<(), DispatchError> {
             Ok(())
         }
 
         /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
-        /// the octopus has already validated the transaction happend on mainchain
-        pub fn execute_tx(
-            controller_chain: ControllerChain,
-            controller_addr: ControllerAddr,
-            call: T::Function,
-        ) -> DispatchResult {
-            let agent = match Self::agents(controller_chain.clone(), controller_addr.clone()) {
+        fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult {
+            let agent = match Self::agents(origin.clone()) {
                 Some(agent) => agent,
-                None => Self::register_agent(controller_chain, controller_addr)?,
+                None => Self::register_agent(origin)?,
             };
             // TODO
-            call.dispatch(frame_system::RawOrigin::Signed(agent).into())
+            msg.dispatch(frame_system::RawOrigin::Signed(agent).into())
                 .map(|_| ())
                 .map_err(|e| e.error)
         }
+    }
+
+    pub trait Agent<AccountId> {
+        type Origin;
+        type Message;
+
+        /// bind the origin to an appchain account without private key
+        /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
+        fn register_agent(origin: Self::Origin) -> Result<AccountId, DispatchError>;
+
+        /// function AuthenticateTx(msgs []Any, connectionId string, portId string) returns (error)
+        fn authenticate_tx(origin: Self::Origin, msg: Self::Message) -> Result<(), DispatchError>;
+
+        /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
+        fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult;
     }
 }
