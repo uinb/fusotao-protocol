@@ -60,6 +60,7 @@ pub mod pallet {
     pub type Amount = u128;
     pub type Price = (u128, Perquintill);
     pub const PALLET_ID: frame_support::PalletId = frame_support::PalletId(*b"fuso/vrf");
+    const UNSTAKE_DELAY_BLOCKS: u32 = 14400 * 4u32;
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -350,6 +351,7 @@ pub mod pallet {
         ProofRejected(T::AccountId, u32),
         TaoStaked(T::AccountId, T::AccountId, Balance<T>),
         TaoUnstaked(T::AccountId, T::AccountId, Balance<T>),
+        TaoUnstakeUnlock(T::AccountId, Balance<T>),
         DominatorOnline(T::AccountId),
         DominatorOffline(T::AccountId),
         DominatorSlashed(T::AccountId),
@@ -427,6 +429,8 @@ pub mod pallet {
                         "No enough tokens of {:?} to unlock, check onchain storage.",
                         staker
                     );
+                } else {
+                    Self::deposit_event(Event::TaoUnstakeUnlock(staker.clone(), amount.clone()));
                 }
             }
             weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
@@ -1751,7 +1755,8 @@ pub mod pallet {
                     let current_block = frame_system::Pallet::<T>::block_number();
                     let current_season = Self::current_season(current_block, dominator.start_from);
                     let unlock_at =
-                        Self::start_block_of_season(dominator.start_from, current_season + 1);
+                        current_block - current_block % T::DominatorCheckGracePeriod::get();
+                    let unlock_at = unlock_at + UNSTAKE_DELAY_BLOCKS.into();
                     PendingUnstakings::<T>::try_mutate(
                         &unlock_at,
                         &staker,
