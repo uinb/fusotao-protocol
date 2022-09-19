@@ -17,8 +17,8 @@ fn test_reward_should_work() {
 
         Volumes::<Test>::insert(100, 10000);
         Volumes::<Test>::insert(200, 10000);
-		let vol = RewardModule::volumes(200);
-		assert_eq!(vol, 10000);
+        let vol = RewardModule::volumes(200);
+        assert_eq!(vol, 10000);
         Rewards::<Test>::insert(
             &alice,
             Reward {

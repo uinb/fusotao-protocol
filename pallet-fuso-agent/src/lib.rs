@@ -16,9 +16,7 @@
 
 pub use pallet::*;
 
-#[cfg(test)]
-pub mod mock;
-
+/// This pallet is under construction.
 /// InterChainAccount (a.k. ICA) is an application layer protocol over IBC protocol family,
 /// since Fusotao is based on Octopus Network which doesn't implement IBC to interact with mainchain,
 /// this pallet only mainteins the controller-chain + controller-addr <-> host-addr bindings to call
@@ -27,16 +25,13 @@ pub mod mock;
 #[frame_support::pallet]
 pub mod pallet {
     use codec::{Codec, EncodeLike};
-    use frame_support::{pallet_prelude::*, traits::Get, transactional, weights::GetDispatchInfo};
+    use frame_support::{pallet_prelude::*, traits::Get, weights::GetDispatchInfo};
     use frame_system::{ensure_signed, pallet_prelude::*};
     use sp_runtime::{
         traits::{CheckedAdd, Dispatchable, TrailingZeroInput, Zero},
-        DispatchError, DispatchResult, Perquintill,
+        DispatchError, DispatchResult,
     };
     use sp_std::{boxed::Box, vec::Vec};
-
-    pub type ControllerChain = sp_std::vec::Vec<u8>;
-    pub type ControllerAddr = sp_std::vec::Vec<u8>;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -58,12 +53,12 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
-        HostChainTxCompleted,
+        ControllerTxCompleted,
     }
 
     #[pallet::error]
     pub enum Error<T> {
-        CouldntRegisterAgent,
+        RegisterAgentFailed,
     }
 
     #[pallet::hooks]
@@ -74,20 +69,6 @@ pub mod pallet {
     #[pallet::generate_store(pub (super) trait Store)]
     pub struct Pallet<T>(_);
 
-    #[pallet::call]
-    impl<T: Config> Pallet<T> {
-        #[pallet::weight(10000000)]
-        pub fn test_dispatch(
-            origin: OriginFor<T>,
-            controller: T::Controller,
-            call: Box<T::Function>,
-        ) -> DispatchResultWithPostInfo {
-            let who = ensure_signed(origin)?;
-            Self::execute_tx(controller, *call)?;
-            Ok(().into())
-        }
-    }
-
     /// IBC reference
     impl<T: Config> Agent<T::AccountId> for Pallet<T> {
         type Message = T::Function;
@@ -97,10 +78,10 @@ pub mod pallet {
         /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
         fn register_agent(origin: Self::Origin) -> Result<T::AccountId, DispatchError> {
             let deterministic =
-                (b"fuso/agents", origin.clone()).using_encoded(sp_io::hashing::blake2_256);
+                (b"fusotao#", origin.clone()).using_encoded(sp_io::hashing::blake2_256);
             let host_addr: T::AccountId =
                 Decode::decode(&mut TrailingZeroInput::new(deterministic.as_ref()))
-                    .map_err(|_| Error::<T>::CouldntRegisterAgent)?;
+                    .map_err(|_| Error::<T>::RegisterAgentFailed)?;
             // FIXME migration friendly
             Agents::<T>::insert(origin, host_addr.clone());
             Ok(host_addr)
@@ -117,9 +98,10 @@ pub mod pallet {
                 Some(agent) => agent,
                 None => Self::register_agent(origin)?,
             };
-            // TODO
             msg.dispatch(frame_system::RawOrigin::Signed(agent).into())
-                .map(|_| ())
+                .map(|_| {
+                    Self::deposit_event(Event::<T>::ControllerTxCompleted);
+                })
                 .map_err(|e| e.error)
         }
     }
