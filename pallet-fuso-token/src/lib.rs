@@ -60,12 +60,16 @@ pub mod pallet {
     pub enum XToken<Balance> {
         //( symbol, contract_address, total, stable, decimals
         NEP141(Vec<u8>, Vec<u8>, Balance, bool, u8),
+        ERC20(Vec<u8>, Vec<u8>, Balance, bool, u8),
+        BEP20(Vec<u8>, Vec<u8>, Balance, bool, u8),
     }
 
     impl<Balance> XToken<Balance> {
         pub fn is_stable(&self) -> bool {
             match *self {
                 XToken::NEP141(_, _, _, stable, _) => stable,
+                XToken::ERC20(_, _, _, stable, _) => stable,
+                XToken::BEP20(_, _, _, stable, _) => stable,
             }
         }
     }
@@ -202,6 +206,8 @@ pub mod pallet {
                 let mut token_info = info.take().unwrap();
                 match token_info {
                     XToken::NEP141(_, _, _, ref mut stable, _) => *stable = true,
+                    XToken::ERC20(_, _, _, ref mut stable, _) => *stable = true,
+                    XToken::BEP20(_, _, _, ref mut stable, _) => *stable = true,
                 }
                 info.replace(token_info);
                 Ok(())
@@ -313,6 +319,20 @@ pub mod pallet {
                             .ok_or(Error::<T>::InsufficientBalance)?;
                         unified_amount
                     }
+                    XToken::ERC20(_, _, ref mut total, _, decimals) => {
+                        let unified_amount = Self::unify_decimals(amount, decimals);
+                        *total = total
+                            .checked_add(&unified_amount)
+                            .ok_or(Error::<T>::InsufficientBalance)?;
+                        unified_amount
+                    }
+                    XToken::BEP20(_, _, ref mut total, _, decimals) => {
+                        let unified_amount = Self::unify_decimals(amount, decimals);
+                        *total = total
+                            .checked_add(&unified_amount)
+                            .ok_or(Error::<T>::InsufficientBalance)?;
+                        unified_amount
+                    }
                 };
                 ensure!(!unified_amount.is_zero(), Error::<T>::AmountZero);
                 Balances::<T>::try_mutate_exists((&token, beneficiary), |to| -> DispatchResult {
@@ -350,6 +370,20 @@ pub mod pallet {
                 let mut info = token_info.take().unwrap();
                 let unified_amount = match info {
                     XToken::NEP141(_, _, ref mut total, _, decimals) => {
+                        let unified_amount = Self::unify_decimals(amount, decimals);
+                        *total = total
+                            .checked_sub(&unified_amount)
+                            .ok_or(Error::<T>::InsufficientBalance)?;
+                        unified_amount
+                    }
+                    XToken::ERC20(_, _, ref mut total, _, decimals) => {
+                        let unified_amount = Self::unify_decimals(amount, decimals);
+                        *total = total
+                            .checked_sub(&unified_amount)
+                            .ok_or(Error::<T>::InsufficientBalance)?;
+                        unified_amount
+                    }
+                    XToken::BEP20(_, _, ref mut total, _, decimals) => {
                         let unified_amount = Self::unify_decimals(amount, decimals);
                         *total = total
                             .checked_sub(&unified_amount)
@@ -534,6 +568,8 @@ pub mod pallet {
                 let token = token_info.unwrap();
                 match token {
                     XToken::NEP141(_, _, total, _, _) => total,
+                    XToken::ERC20(_, _, total, _, _) => total,
+                    XToken::BEP20(_, _, total, _, _) => total,
                 }
             } else {
                 Zero::zero()
@@ -705,6 +741,8 @@ pub mod pallet {
             let token_result = Self::get_token_info(asset_id);
             match token_result {
                 Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
+                Some(XToken::ERC20(_, name, _, _, _)) => Ok(name),
+                Some(XToken::BEP20(_, name, _, _, _)) => Ok(name),
                 None => Err(()),
             }
         }
