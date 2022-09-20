@@ -49,6 +49,7 @@ pub mod pallet {
         #[pallet::constant]
         type EraDuration: Get<Self::BlockNumber>;
 
+        // DEPRECATED
         #[pallet::constant]
         type RewardsPerEra: Get<Balance<Self>>;
 
@@ -60,6 +61,7 @@ pub mod pallet {
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         RewardClaimed(T::AccountId, Balance<T>),
+        EraRewardsUpdated(Balance<T>),
     }
 
     #[pallet::error]
@@ -90,6 +92,10 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
+    #[pallet::getter(fn era_rewards)]
+    pub type EraRewards<T: Config> = StorageValue<_, Balance<T>, ValueQuery, T::RewardsPerEra>;
+
+    #[pallet::storage]
     #[pallet::getter(fn volumes)]
     pub type Volumes<T: Config> = StorageMap<_, Blake2_128Concat, Era<T>, Volume<T>, ValueQuery>;
 
@@ -110,6 +116,17 @@ pub mod pallet {
             let at = frame_system::Pallet::<T>::block_number();
             let reward = Self::claim_reward(&who, at)?;
             Self::deposit_event(Event::RewardClaimed(who, reward));
+            Ok(().into())
+        }
+
+        #[pallet::weight(0)]
+        pub fn set_era_rewards(
+            origin: OriginFor<T>,
+            era_rewards: Balance<T>,
+        ) -> DispatchResultWithPostInfo {
+            let _ = ensure_root(origin)?;
+            EraRewards::<T>::put(era_rewards);
+            Self::deposit_event(Event::EraRewardsUpdated(era_rewards));
             Ok(().into())
         }
     }
@@ -172,7 +189,7 @@ pub mod pallet {
                         let total_vol: u128 = Volumes::<T>::get(r.last_modify).into();
                         ensure!(total_vol > 0, Error::<T>::DivideByZero);
                         let p: Perquintill = Perquintill::from_rational(pending_vol, total_vol);
-                        let mut era_reward: u128 = T::RewardsPerEra::get().into();
+                        let mut era_reward: u128 = EraRewards::<T>::get().into();
                         let now = frame_system::Pallet::<T>::block_number();
                         if now > T::RewardTerminateAt::get() {
                             era_reward = 0u128;

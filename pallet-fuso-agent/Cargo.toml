@@ -1,12 +1,12 @@
 [package]
-name = "pallet-fuso-reward"
-version = "4.0.2"
+name = "pallet-fuso-agent"
+version = "4.0.2-dev"
 authors = ["UINB Tech"]
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://www.fusotao.org"
 repository = "https://github.com/uinb/fusotao-protocol"
-description = "FUSOTAO reward pallet"
+description = "An IBC ICA-like substrate pallet implementation."
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
