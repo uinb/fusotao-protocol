@@ -43,7 +43,7 @@ pub mod pallet {
 
         type Asset: Token<Self::AccountId>;
 
-        type Call: Parameter
+        type Function: Parameter
             + Dispatchable<Origin = Self::Origin, PostInfo = PostDispatchInfo>
             + GetDispatchInfo
             + From<frame_system::Call<Self>>;
@@ -69,40 +69,40 @@ pub mod pallet {
     }
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, Debug)]
-    pub enum Proposal<AccountId, BlockNumber, Call, TokenId, Balance> {
+    pub enum Proposal<AccountId, BlockNumber, Function, TokenId, Balance> {
         OnchainNeedCharge {
-            pub issuer: AccountId,
-            pub expire_at: BlockNumber,
-            pub status: u8,
-            pub url: Vec<u8>,
-            pub call: Call,
-            pub token_id: TokenId,
-            pub amount: Balance,
-            pub voting: (Balance, Balance, Balance),
+            issuer: AccountId,
+            expire_at: BlockNumber,
+            status: u8,
+            url: Vec<u8>,
+            call: Function,
+            token_id: TokenId,
+            amount: Balance,
+            voting: (Balance, Balance, Balance),
         },
         OffchainNeedCharge {
-            pub issuer: AccountId,
-            pub expire_at: BlockNumber,
-            pub status: u8,
-            pub url: Vec<u8>,
-            pub token_id: TokenId,
-            pub amount: Balance,
-            pub voting: (Balance, Balance, Balance),
+            issuer: AccountId,
+            expire_at: BlockNumber,
+            status: u8,
+            url: Vec<u8>,
+            token_id: TokenId,
+            amount: Balance,
+            voting: (Balance, Balance, Balance),
         },
         Onchain {
-            pub issuer: AccountId,
-            pub expire_at: BlockNumber,
-            pub status: u8,
-            pub url: Vec<u8>,
-            pub call: Call,
-            pub voting: (Balance, Balance, Balance),
+            issuer: AccountId,
+            expire_at: BlockNumber,
+            status: u8,
+            url: Vec<u8>,
+            call: Function,
+            voting: (Balance, Balance, Balance),
         },
         Offchain {
-            pub issuer: AccountId,
-            pub expire_at: BlockNumber,
-            pub status: u8,
-            pub url: Vec<u8>,
-            pub voting: (Balance, Balance, Balance),
+            issuer: AccountId,
+            expire_at: BlockNumber,
+            status: u8,
+            url: Vec<u8>,
+            voting: (Balance, Balance, Balance),
         },
     }
 
@@ -151,7 +151,7 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         ProposalIndex,
-        Proposal<T::AccountId, T::BlockNumber, T::Call, TokenId<T>, Balance<T>>,
+        Proposal<T::AccountId, T::BlockNumber, T::Function, TokenId<T>, Balance<T>>,
         OptionQuery,
     >;
 
@@ -180,7 +180,7 @@ pub mod pallet {
         pub fn proposal(
             origin: OriginFor<T>,
             org: T::AccountId,
-            proposal: Box<T::Call>,
+            proposal: Box<T::Function>,
             expire_at: T::BlockNumber,
         ) -> DispatchResultWithPostInfo {
             Ok(().into())
@@ -259,10 +259,6 @@ pub mod pallet {
                 (b"#_fuso_dao_#", name, index).using_encoded(sp_io::hashing::blake2_256);
             Decode::decode(&mut TrailingZeroInput::new(deterministic.as_ref()))
                 .map_err(|_| Error::<T>::AccountImplyError)
-        }
-
-        fn join(joinee: T::AccountId, dao: T::AccountId) -> DispatchResult<()> {
-            Ok(())
         }
     }
 }
