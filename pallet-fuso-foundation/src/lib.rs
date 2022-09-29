@@ -78,7 +78,7 @@ pub mod pallet {
                     amount: data.4,
                     first_amount: data.5,
                 };
-                pallet_balances::Pallet::<T>::deposit_creating(
+                let _ = pallet_balances::Pallet::<T>::deposit_creating(
                     &data.0,
                     fund.amount * fund.times.into() + fund.first_amount,
                 );

@@ -6,10 +6,9 @@ use crate::Pallet;
 use frame_support::traits::{OnFinalize, OnInitialize};
 use frame_support::{assert_noop, assert_ok};
 use frame_system::RawOrigin;
-use fuso_support::constants::*;
-use pallet_fuso_token::XToken;
+use fuso_support::{constants::*, XToken};
 use sp_keyring::AccountKeyring;
-use sp_runtime::MultiAddress;
+use sp_runtime::{traits::Zero, MultiAddress};
 
 type Token = pallet_fuso_token::Pallet<Test>;
 type Verifier = Pallet<Test>;
@@ -217,13 +216,15 @@ pub fn test_authorize() {
         let alice: AccountId = AccountKeyring::Alice.into();
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
         frame_system::Pallet::<Test>::set_block_number(15);
-        assert_ok!(Token::issue(
-            RawOrigin::Root.into(),
-            6,
-            true,
+        let usdt = XToken::NEP141(
             br#"USDT"#.to_vec(),
             br#"usdt.testnet"#.to_vec(),
-        ));
+            Zero::zero(),
+            true,
+            6,
+        );
+
+        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt,));
         assert_ok!(Token::do_mint(1, &ferdie, 10000000, None));
         // assert_ok!(Token::issue(
         //     Origin::signed(ferdie.clone()),
@@ -236,8 +237,8 @@ pub fn test_authorize() {
         match token_info {
             XToken::NEP141(_, _, total, _, _) => {
                 assert_eq!(total, 10000000000000000000);
-            },
-			_ => {}
+            }
+            _ => {}
         }
         assert_ok!(Verifier::register(
             Origin::signed(alice.clone()),

@@ -37,7 +37,11 @@ pub mod pallet {
         transactional,
     };
     use frame_system::pallet_prelude::*;
-    use fuso_support::traits::{ReservableToken, Token};
+    use fuso_support::{
+        constants::*,
+        traits::{ReservableToken, Token},
+        XToken,
+    };
     use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
     use scale_info::TypeInfo;
     use sp_runtime::traits::{
@@ -47,31 +51,10 @@ pub mod pallet {
     use sp_runtime::DispatchResult;
     use sp_std::vec::Vec;
 
-    pub const STANDARD_DECIMALS: u8 = 18;
-    pub const MAX_DECIMALS: u8 = 24;
-
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
     pub struct TokenAccountData<Balance> {
         pub free: Balance,
         pub reserved: Balance,
-    }
-
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
-    pub enum XToken<Balance> {
-        //( symbol, contract_address, total, stable, decimals
-        NEP141(Vec<u8>, Vec<u8>, Balance, bool, u8),
-        ERC20(Vec<u8>, Vec<u8>, Balance, bool, u8),
-        BEP20(Vec<u8>, Vec<u8>, Balance, bool, u8),
-    }
-
-    impl<Balance> XToken<Balance> {
-        pub fn is_stable(&self) -> bool {
-            match *self {
-                XToken::NEP141(_, _, _, stable, _) => stable,
-                XToken::ERC20(_, _, _, stable, _) => stable,
-                XToken::BEP20(_, _, _, stable, _) => stable,
-            }
-        }
     }
 
     pub type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
@@ -145,7 +128,7 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
-        TokenIssued(T::TokenId, Vec<u8>, Vec<u8>),
+        TokenIssued(T::TokenId, XToken<BalanceOf<T>>),
         TokenTransfered(T::TokenId, T::AccountId, T::AccountId, BalanceOf<T>),
         TokenReserved(T::TokenId, T::AccountId, BalanceOf<T>),
         TokenUnreserved(T::TokenId, T::AccountId, BalanceOf<T>),
@@ -163,38 +146,11 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn issue(
             origin: OriginFor<T>,
-            decimals: u8,
-            stable: bool,
-            symbol: Vec<u8>,
-            contract: Vec<u8>,
+            token_info: XToken<BalanceOf<T>>,
         ) -> DispatchResultWithPostInfo {
             let _ = ensure_root(origin)?;
-            ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
-            let name = AsciiStr::from_ascii(&symbol);
-            ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
-            let name = name.unwrap();
-            ensure!(
-                name.len() >= 2 && name.len() <= 8,
-                Error::<T>::InvalidTokenName
-            );
-            ensure!(
-                !TokenByName::<T>::contains_key(&contract),
-                Error::<T>::InvalidToken
-            );
-            let id = Self::next_token_id();
-            NextTokenId::<T>::mutate(|id| *id += One::one());
-            TokenByName::<T>::insert(contract.clone(), id);
-            Tokens::<T>::insert(
-                id,
-                XToken::NEP141(
-                    symbol.clone(),
-                    contract.clone(),
-                    Zero::zero(),
-                    stable,
-                    decimals,
-                ),
-            );
-            Self::deposit_event(Event::TokenIssued(id, symbol, contract));
+            let id = Self::create(token_info.clone())?;
+            Self::deposit_event(Event::<T>::TokenIssued(id, token_info));
             Ok(().into())
         }
 
@@ -208,6 +164,7 @@ pub mod pallet {
                     XToken::NEP141(_, _, _, ref mut stable, _) => *stable = true,
                     XToken::ERC20(_, _, _, ref mut stable, _) => *stable = true,
                     XToken::BEP20(_, _, _, ref mut stable, _) => *stable = true,
+                    XToken::FND10(_, _) => return Err(Error::<T>::InvalidToken.into()),
                 }
                 info.replace(token_info);
                 Ok(())
@@ -261,25 +218,6 @@ pub mod pallet {
     where
         BalanceOf<T>: From<u128> + Into<u128>,
     {
-        // TODO wait for oct to support automatically sync token metadata
-        // then we should support creating token metadata
-        // fn create_token(name: &[u8], decimals: u8) -> T::TokenId {
-        //     let token_id = Self::next_token_id();
-        //     NextTokenId::<T>::mutate(|id| *id += One::one());
-        //     let name = name.as_ref().to_vec();
-        //     let token = XToken::<BalanceOf<T>>::NEP141(
-        //         name.clone(),
-        //         name.clone(),
-        //         Zero::zero(),
-        //         false,
-        //         decimals,
-        //     );
-        //     // FIXME
-        //     TokenByName::<T>::insert(name.clone(), token_id);
-        //     Tokens::<T>::insert(token_id, token);
-        //     token_id
-        // }
-
         fn unify_decimals(amount: BalanceOf<T>, decimals: u8) -> BalanceOf<T> {
             let mut amount: u128 = amount.into();
             if decimals > STANDARD_DECIMALS {
@@ -333,6 +271,7 @@ pub mod pallet {
                             .ok_or(Error::<T>::InsufficientBalance)?;
                         unified_amount
                     }
+                    XToken::FND10(_, total) => total,
                 };
                 ensure!(!unified_amount.is_zero(), Error::<T>::AmountZero);
                 Balances::<T>::try_mutate_exists((&token, beneficiary), |to| -> DispatchResult {
@@ -390,6 +329,7 @@ pub mod pallet {
                             .ok_or(Error::<T>::InsufficientBalance)?;
                         unified_amount
                     }
+                    XToken::FND10(_, total) => total,
                 };
                 ensure!(!unified_amount.is_zero(), Error::<T>::AmountZero);
                 Balances::<T>::try_mutate_exists((&token, target), |from| -> DispatchResult {
@@ -489,6 +429,44 @@ pub mod pallet {
         type Balance = BalanceOf<T>;
         type TokenId = T::TokenId;
 
+        #[transactional]
+        fn create(mut token_info: XToken<BalanceOf<T>>) -> Result<Self::TokenId, DispatchError> {
+            let id = Self::next_token_id();
+            match token_info {
+                XToken::NEP141(ref symbol, ref contract, ref mut total, _, decimals)
+                | XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals)
+                | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
+                    ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
+                    let name = AsciiStr::from_ascii(&symbol);
+                    ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
+                    let name = name.unwrap();
+                    ensure!(
+                        name.len() >= 2 && name.len() <= 8,
+                        Error::<T>::InvalidTokenName
+                    );
+                    ensure!(
+                        !TokenByName::<T>::contains_key(&contract),
+                        Error::<T>::InvalidToken
+                    );
+                    *total = Zero::zero();
+                    TokenByName::<T>::insert(contract.clone(), id);
+                }
+                XToken::FND10(ref symbol, ref mut total) => {
+                    let name = AsciiStr::from_ascii(&symbol);
+                    ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
+                    let name = name.unwrap();
+                    ensure!(
+                        name.len() >= 2 && name.len() <= 8,
+                        Error::<T>::InvalidTokenName
+                    );
+                    *total = Zero::zero();
+                }
+            }
+            NextTokenId::<T>::mutate(|id| *id += One::one());
+            Tokens::<T>::insert(id, token_info);
+            Ok(id)
+        }
+
         fn try_mutate_account<R>(
             token: &Self::TokenId,
             who: &T::AccountId,
@@ -563,13 +541,13 @@ pub mod pallet {
                 return pallet_balances::Pallet::<T>::total_issuance();
             }
             let token_info = Self::get_token_info(token);
-
             if token_info.is_some() {
                 let token = token_info.unwrap();
                 match token {
                     XToken::NEP141(_, _, total, _, _) => total,
                     XToken::ERC20(_, _, total, _, _) => total,
                     XToken::BEP20(_, _, total, _, _) => total,
+                    XToken::FND10(_, total) => total,
                 }
             } else {
                 Zero::zero()
@@ -743,6 +721,7 @@ pub mod pallet {
                 Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
                 Some(XToken::ERC20(_, name, _, _, _)) => Ok(name),
                 Some(XToken::BEP20(_, name, _, _, _)) => Ok(name),
+                Some(XToken::FND10(_, _)) => Err(()),
                 None => Err(()),
             }
         }
