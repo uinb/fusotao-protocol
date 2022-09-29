@@ -343,12 +343,8 @@ pub mod pallet {
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         DominatorClaimed(T::AccountId),
-        CoinHosted(T::AccountId, T::AccountId, Balance<T>),
         TokenHosted(T::AccountId, T::AccountId, TokenId<T>, Balance<T>),
-        CoinRevoked(T::AccountId, T::AccountId, Balance<T>),
         TokenRevoked(T::AccountId, T::AccountId, TokenId<T>, Balance<T>),
-        ProofAccepted(T::AccountId, u32),
-        ProofRejected(T::AccountId, u32),
         TaoStaked(T::AccountId, T::AccountId, Balance<T>),
         TaoUnstaked(T::AccountId, T::AccountId, Balance<T>),
         TaoUnstakeUnlock(T::AccountId, Balance<T>),
