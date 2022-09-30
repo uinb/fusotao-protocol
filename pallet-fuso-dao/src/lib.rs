@@ -24,6 +24,7 @@ pub mod pallet {
     use fuso_support::{
         constants::*,
         traits::{ReservableToken, Rewarding, Token},
+        XToken,
     };
     use sp_runtime::{
         traits::{CheckedAdd, Dispatchable, TrailingZeroInput, Zero},
@@ -217,20 +218,23 @@ pub mod pallet {
             entry_threshold: Balance<T>,
         ) -> DispatchResultWithPostInfo {
             let originator = ensure_signed(origin)?;
-            let treasury_account = Self::imply_account(name.clone(), ProposalIndex::default())?;
+            let treasury = Self::imply_account(name.clone(), ProposalIndex::default())?;
             ensure!(
                 !Orgs::<T>::contains_key(&treasury_account),
                 Error::<T>::DaoNameAlreadyExisted
             );
-            // let gov_token = match gov_token {
-            //     Existing(token_id) => token_id,
-            //     New {
-            //         token_symbol,
-            //         mint_by,
-            //     } => {
-
-            //     }
-            // }
+            let (gov_token, mintable, mint_by) = match gov_token {
+                Existing(token_id) => (token_id, false, token_id),
+                New {
+                    token_symbol,
+                    mint_by,
+                } => {
+                    let token_info = XToken::FND10();
+                    // TODO
+                    let token_id = T::Token::create(token_info)?;
+                    (token_id, true, mint_by)
+                }
+            };
             // TODO params check
             Orgs::<T>::insert(
                 treasury_account,
@@ -238,7 +242,10 @@ pub mod pallet {
                     name,
                     logo,
                     lang,
-                    treasury: treasury_account,
+                    gov_token,
+                    mintable,
+                    mint_by,
+                    treasury,
                     originator,
                     max_members,
                     rule,
