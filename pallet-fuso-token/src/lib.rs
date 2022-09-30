@@ -94,6 +94,7 @@ pub mod pallet {
         Overflow,
         TooManyReserves,
         InvalidDecimals,
+        TokenIsNotMintable,
     }
 
     #[pallet::storage]
@@ -259,7 +260,7 @@ pub mod pallet {
                             .ok_or(Error::<T>::InsufficientBalance)?;
                         unified_amount
                     }
-                    XToken::FND10(_, total) => total,
+                    XToken::FND10(_, _) => return Err(Error::<T>::TokenIsNotMintable.into()),
                 };
                 ensure!(!unified_amount.is_zero(), Error::<T>::AmountZero);
                 Balances::<T>::try_mutate_exists((&token, beneficiary), |to| -> DispatchResult {
@@ -427,7 +428,7 @@ pub mod pallet {
                     *total = Zero::zero();
                     TokenByName::<T>::insert(contract.clone(), id);
                 }
-                XToken::FND10(ref symbol, ref mut total) => {
+                XToken::FND10(ref symbol, _) => {
                     let name = AsciiStr::from_ascii(&symbol);
                     ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
                     let name = name.unwrap();
@@ -435,7 +436,6 @@ pub mod pallet {
                         name.len() >= 2 && name.len() <= 8,
                         Error::<T>::InvalidTokenName
                     );
-                    *total = Zero::zero();
                 }
             }
             NextTokenId::<T>::mutate(|id| *id += One::one());
