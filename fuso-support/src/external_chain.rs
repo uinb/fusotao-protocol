@@ -13,84 +13,26 @@
 // limitations under the License.
 
 use codec::{Decode, Encode};
-use sp_runtime::RuntimeDebug;
-use sp_std::{convert::TryFrom, fmt::Debug, vec::Vec};
+use scale_info::TypeInfo;
+use sp_std::vec::Vec;
 
-#[derive(Encode, Decode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub enum ExternalChain {
-    BTC,
-    LTC,
-    ETH,
-    ERC20(Vec<u8>),
-    TRX,
-    TRC20(Vec<u8>),
-    DOT,
-    FIL,
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
+pub enum XToken<Balance> {
+    // symbol, contract_address, total, stable, decimals
+    NEP141(Vec<u8>, Vec<u8>, Balance, bool, u8),
+    ERC20(Vec<u8>, Vec<u8>, Balance, bool, u8),
+    BEP20(Vec<u8>, Vec<u8>, Balance, bool, u8),
+    // symbol, total
+    FND10(Vec<u8>, Balance),
 }
 
-impl TryFrom<(u16, Option<Vec<u8>>)> for ExternalChain {
-    type Error = ();
-
-    fn try_from((chain, contract): (u16, Option<Vec<u8>>)) -> Result<ExternalChain, ()> {
-        match chain {
-            0 => Ok(ExternalChain::BTC),
-            1 => Ok(ExternalChain::LTC),
-            2 => match contract {
-                Some(addr) => Ok(ExternalChain::ERC20(addr)),
-                None => Ok(ExternalChain::ETH),
-            },
-            3 => match contract {
-                Some(addr) => Ok(ExternalChain::TRC20(addr)),
-                None => Ok(ExternalChain::TRX),
-            },
-            4 => Ok(ExternalChain::DOT),
-            5 => Ok(ExternalChain::FIL),
-            _ => Err(()),
+impl<Balance> XToken<Balance> {
+    pub fn is_stable(&self) -> bool {
+        match *self {
+            XToken::NEP141(_, _, _, stable, _) => stable,
+            XToken::ERC20(_, _, _, stable, _) => stable,
+            XToken::BEP20(_, _, _, stable, _) => stable,
+            XToken::FND10(_, _) => false,
         }
-    }
-}
-
-#[derive(Encode, Decode, PartialEq, Eq, Clone, RuntimeDebug)]
-pub struct ExternalChainAddress {
-    chain: ExternalChain,
-    pubkey: Vec<u8>,
-}
-
-// TODO
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub enum AddressError {
-    IllegalSs58,
-    IllegalKeccak256,
-}
-
-impl TryFrom<(ExternalChain, Vec<u8>)> for ExternalChainAddress {
-    type Error = AddressError;
-
-    // TODO
-    fn try_from((chain, _encoded_addr): (ExternalChain, Vec<u8>)) -> Result<Self, AddressError> {
-        match chain {
-            ExternalChain::BTC => Err(AddressError::IllegalSs58),
-            ExternalChain::ETH | ExternalChain::ERC20(_) => Err(AddressError::IllegalKeccak256),
-            _ => Err(AddressError::IllegalKeccak256),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Display for ExternalChain {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            // TODO codec
-            ExternalChain::ERC20(addr) => write!(f, "ERC20({})", HexDisplay::from(contract)),
-            ExternalChain::TRC20(addr) => write!(f, "TRC20({})", HexDisplay::from(contract)),
-            _ => write!(f, "{:?}", self),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Display for ExternalChainAddress {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
     }
 }

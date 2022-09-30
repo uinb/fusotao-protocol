@@ -2,6 +2,7 @@ use frame_support::traits::{BalanceStatus, Currency};
 use frame_support::{assert_noop, assert_ok};
 use frame_system::RawOrigin;
 use fuso_support::traits::{ReservableToken, Token as TokenTrait};
+use fuso_support::XToken;
 use sp_keyring::AccountKeyring;
 use sp_runtime::traits::Zero;
 use sp_runtime::MultiAddress;
@@ -10,7 +11,6 @@ use crate::mock::*;
 use crate::Error;
 use crate::Pallet;
 use crate::TokenAccountData;
-use crate::XToken;
 
 type Token = Pallet<Test>;
 
@@ -18,14 +18,15 @@ type Token = Pallet<Test>;
 fn issuing_token_and_transfer_should_work() {
     let ferdie: AccountId = AccountKeyring::Ferdie.into();
     let alice: AccountId = AccountKeyring::Alice.into();
+    let usdt = XToken::NEP141(
+        br#"USDT"#.to_vec(),
+        br#"usdt.testnet"#.to_vec(),
+        Zero::zero(),
+        true,
+        6,
+    );
     new_test_ext().execute_with(|| {
-        assert_ok!(Token::issue(
-            RawOrigin::Root.into(),
-            6,
-            true,
-            br#"USDT"#.to_vec(),
-            br#"usdt.testnet"#.to_vec(),
-        ));
+        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt,));
         let id = 1u32;
         assert_eq!(
             Token::get_token_info(&id),
@@ -76,14 +77,15 @@ const ONE: u128 = 1000000000000000000;
 fn reservable_token_should_work() {
     let ferdie: AccountId = AccountKeyring::Ferdie.into();
     let alice: AccountId = AccountKeyring::Alice.into();
+    let usdt = XToken::NEP141(
+        br#"USDT"#.to_vec(),
+        br#"usdt.testnet"#.to_vec(),
+        Zero::zero(),
+        true,
+        6,
+    );
     new_test_ext().execute_with(|| {
-        assert_ok!(Token::issue(
-            RawOrigin::Root.into(),
-            6,
-            true,
-            br#"USDT"#.to_vec(),
-            br#"usdt.testnet"#.to_vec(),
-        ));
+        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt,));
         let id = 1u32;
         assert_ok!(Token::do_mint(id, &ferdie, 1000000, None));
         assert_eq!(Token::can_reserve(&id, &ferdie, ONE), true);
@@ -177,30 +179,26 @@ fn test_xtoken_should_work() {
         // assert_eq!(token_id, 1);
         // let token_name = Token::try_get_asset_name(1).unwrap();
         // assert_eq!(String::from_utf8(token_name).unwrap(), "USDT".to_string());
-        assert_ok!(Token::issue(
-            RawOrigin::Root.into(),
-            6,
-            true,
+        let usdt = XToken::NEP141(
             br#"USDT"#.to_vec(),
             br#"usdt.testnet"#.to_vec(),
-        ));
+            Zero::zero(),
+            true,
+            6,
+        );
+        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt.clone(),));
         assert_noop!(
-            Token::issue(
-                RawOrigin::Root.into(),
-                6,
-                true,
-                br#"USDT"#.to_vec(),
-                br#"usdt.testnet"#.to_vec(),
-            ),
+            Token::issue(RawOrigin::Root.into(), usdt.clone()),
             Error::<Test>::InvalidToken
         );
-        assert_ok!(Token::issue(
-            RawOrigin::Root.into(),
-            6,
-            true,
+        let usdc = XToken::NEP141(
             br#"USDC"#.to_vec(),
             br#"usdc.testnet"#.to_vec(),
-        ));
+            Zero::zero(),
+            true,
+            6,
+        );
+        assert_ok!(Token::issue(RawOrigin::Root.into(), usdc,));
         let token_info: XToken<u128> = Token::get_token_info(1).unwrap();
         assert_eq!(
             token_info,

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::XToken;
 use codec::Codec;
 use codec::MaxEncodedLen;
 use frame_support::{traits::BalanceStatus, Parameter};
@@ -37,6 +38,8 @@ pub trait Token<AccountId> {
         + Copy
         + Codec
         + MaybeSerializeDeserialize;
+
+    fn create(token: XToken<Self::Balance>) -> Result<Self::TokenId, DispatchError>;
 
     fn native_token_id() -> Self::TokenId;
 

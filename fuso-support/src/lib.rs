@@ -19,6 +19,7 @@ pub use alloc::collections;
 
 pub mod external_chain;
 pub mod traits;
+pub use external_chain::*;
 
 pub mod constants {
     pub const RESERVE_FOR_STAKING: u8 = 0u8;
@@ -29,4 +30,6 @@ pub mod constants {
     pub const DOMINATOR_INACTIVE: u8 = 1u8;
     pub const DOMINATOR_ACTIVE: u8 = 2u8;
     pub const DOMINATOR_EVICTED: u8 = 3u8;
+    pub const STANDARD_DECIMALS: u8 = 18;
+    pub const MAX_DECIMALS: u8 = 24;
 }
