@@ -236,8 +236,8 @@ pub fn test_authorize() {
         match token_info {
             XToken::NEP141(_, _, total, _, _) => {
                 assert_eq!(total, 10000000000000000000);
-            },
-			_ => {}
+            }
+            _ => {}
         }
         assert_ok!(Verifier::register(
             Origin::signed(alice.clone()),
