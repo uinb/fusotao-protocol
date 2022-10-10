@@ -24,6 +24,7 @@ sp-io = { default-features = false, git = "https://github.com/paritytech/substra
 sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18" }
 pallet-balances = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18" }
 fuso-support = { path = "../fuso-support", default-features = false }
+pallet-chainbridge-support = {default-features = false, git = "https://github.com/uinb/octopus-chainbridge", branch = "fusotao-dev"}
 
 
 [dev-dependencies]

@@ -31,6 +31,7 @@ pub mod pallet {
         traits::{CheckedAdd, Dispatchable, TrailingZeroInput, Zero},
         DispatchError, DispatchResult,
     };
+	use pallet_chainbridge_support::traits::Agent;
     use sp_std::{boxed::Box, vec::Vec};
 
     #[pallet::config]
@@ -106,7 +107,7 @@ pub mod pallet {
         }
     }
 
-    pub trait Agent<AccountId> {
+  /*  pub trait Agent<AccountId> {
         type Origin;
         type Message;
 
@@ -119,5 +120,5 @@ pub mod pallet {
 
         /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
         fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult;
-    }
+    }*/
 }
