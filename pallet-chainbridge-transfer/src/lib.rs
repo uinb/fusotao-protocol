@@ -329,17 +329,8 @@ pub mod pallet {
 
 			let c = <<T as pallet::Config>::Agent as Agent<T::AccountId>>
 				::Message::decode(&mut &message[..]).map_err(|_| <Error<T>>::InvalidCallMessage)?;
-		//	T::Agent::execute_tx(,c);
-
-	/*		T::Agent::execute(b"ETH", depoister)
-				where T::Agent::Origin : From<()>*/
-
-		//	let c = <T as pallet::Config>::Call::decode( message.as_mut_slice());
-
-			///ensure!(!AssetsStored::<T>::contains_key(hash), <Error<T>>::AssetAlreadyExists);
-			//store the hash value
-			////<AssetsStored<T>>::insert(&hash, true);
-			//Self::deposit_event(Event::Remark(hash));
+			let controller = <<T as pallet::Config>::Agent as Agent<T::AccountId>>::Origin::from((b"ETH".to_vec(), depoister.to_vec()));
+			T::Agent::execute_tx(controller, c)?;
 			Ok(())
 		}
 

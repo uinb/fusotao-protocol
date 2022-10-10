@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use alloc::vec::Vec;
 use codec::Codec;
 use codec::MaxEncodedLen;
 use frame_support::{traits::BalanceStatus, Parameter};
@@ -188,7 +189,7 @@ pub trait Rewarding<AccountId, Volume: Copy, BlockNumber> {
 }
 
 pub trait Agent<AccountId> {
-	type Origin;
+	type Origin: From<(Vec<u8>, Vec<u8>)>;
 	type Message: EncodeLike + Decode + Dispatchable;
 
 	/// bind the origin to an appchain account without private key
