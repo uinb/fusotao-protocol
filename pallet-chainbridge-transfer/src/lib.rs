@@ -340,7 +340,7 @@ pub mod pallet {
 			info!("remark received message: {:?}", message);
             let c = <<T as pallet::Config>::Agent as Agent<T::AccountId>>::Message::decode(
                 &mut &message[..],
-            ).unwrap();
+            ).map_err(|_| <Error<T>>::InvalidCallMessage)?;
             let controller = <<T as pallet::Config>::Agent as Agent<T::AccountId>>::Origin::from((
                 b"ETH".to_vec(),
                 depositer.to_vec(),

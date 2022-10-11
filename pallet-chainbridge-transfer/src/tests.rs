@@ -45,7 +45,7 @@ fn make_transfer_proposal(resource_id: ResourceId, to: AccountId32, amount: u64)
 #[test]
 fn test_decode_call() {
 	new_test_ext().execute_with(|| {
-		let r = from_hex("0x05020100000000d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d0000e8890423c78a0000000000000000").unwrap();//"f".as_bytes().to_vec();
+		let r = from_hex("0x16020100000000d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d0000e8890423c78a0000000000000000").unwrap();//"f".as_bytes().to_vec();
 		println!("{:?}", r);
 		assert_ok!(ChainBridgeTransfer::test_decode_call(Origin::root(), r));
 
