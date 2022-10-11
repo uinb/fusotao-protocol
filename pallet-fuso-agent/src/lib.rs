@@ -103,11 +103,11 @@ pub mod pallet {
                 Some(agent) => agent,
                 None => Self::register_agent(origin)?,
             };
-            /*            msg.dispatch(frame_system::RawOrigin::Signed(agent).into())
+			msg.dispatch(frame_system::RawOrigin::Signed(agent).into())
             .map(|_| {
                 Self::deposit_event(Event::<T>::ControllerTxCompleted);
             })
-            .map_err(|e| e.error)*/
+            .map_err(|e| e.error)
             Ok(())
         }
     }
