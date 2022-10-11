@@ -64,6 +64,14 @@ pub mod pallet {
         BEP20(Vec<u8>, Vec<u8>, Balance, bool, u8),
     }
 
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
+    pub enum XTokenStandard {
+        //( symbol, contract_address, total, stable, decimals
+        NEP141,
+        ERC20,
+        BEP20,
+    }
+
     impl<Balance> XToken<Balance> {
         pub fn is_stable(&self) -> bool {
             match *self {
@@ -167,6 +175,7 @@ pub mod pallet {
             stable: bool,
             symbol: Vec<u8>,
             contract: Vec<u8>,
+            standard: XTokenStandard,
         ) -> DispatchResultWithPostInfo {
             let _ = ensure_root(origin)?;
             ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
@@ -184,16 +193,45 @@ pub mod pallet {
             let id = Self::next_token_id();
             NextTokenId::<T>::mutate(|id| *id += One::one());
             TokenByName::<T>::insert(contract.clone(), id);
-            Tokens::<T>::insert(
-                id,
-                XToken::NEP141(
-                    symbol.clone(),
-                    contract.clone(),
-                    Zero::zero(),
-                    stable,
-                    decimals,
-                ),
-            );
+            match standard {
+                XTokenStandard::NEP141 => {
+                    Tokens::<T>::insert(
+                        id,
+                        XToken::NEP141(
+                            symbol.clone(),
+                            contract.clone(),
+                            Zero::zero(),
+                            stable,
+                            decimals,
+                        ),
+                    );
+                }
+                XTokenStandard::ERC20 => {
+                    Tokens::<T>::insert(
+                        id,
+                        XToken::ERC20(
+                            symbol.clone(),
+                            contract.clone(),
+                            Zero::zero(),
+                            stable,
+                            decimals,
+                        ),
+                    );
+                }
+                XTokenStandard::BEP20 => {
+                    Tokens::<T>::insert(
+                        id,
+                        XToken::BEP20(
+                            symbol.clone(),
+                            contract.clone(),
+                            Zero::zero(),
+                            stable,
+                            decimals,
+                        ),
+                    );
+                }
+            }
+
             Self::deposit_event(Event::TokenIssued(id, symbol, contract));
             Ok(().into())
         }

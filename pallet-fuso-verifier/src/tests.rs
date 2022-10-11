@@ -223,6 +223,7 @@ pub fn test_authorize() {
             true,
             br#"USDT"#.to_vec(),
             br#"usdt.testnet"#.to_vec(),
+            pallet_fuso_token::XTokenStandard::NEP141
         ));
         assert_ok!(Token::do_mint(1, &ferdie, 10000000, None));
         // assert_ok!(Token::issue(
@@ -236,8 +237,8 @@ pub fn test_authorize() {
         match token_info {
             XToken::NEP141(_, _, total, _, _) => {
                 assert_eq!(total, 10000000000000000000);
-            },
-			_ => {}
+            }
+            _ => {}
         }
         assert_ok!(Verifier::register(
             Origin::signed(alice.clone()),

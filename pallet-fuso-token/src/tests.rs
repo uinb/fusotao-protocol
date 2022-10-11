@@ -7,10 +7,10 @@ use sp_runtime::traits::Zero;
 use sp_runtime::MultiAddress;
 
 use crate::mock::*;
-use crate::Error;
 use crate::Pallet;
 use crate::TokenAccountData;
 use crate::XToken;
+use crate::{Error, XTokenStandard};
 
 type Token = Pallet<Test>;
 
@@ -25,6 +25,7 @@ fn issuing_token_and_transfer_should_work() {
             true,
             br#"USDT"#.to_vec(),
             br#"usdt.testnet"#.to_vec(),
+            XTokenStandard::NEP141
         ));
         let id = 1u32;
         assert_eq!(
@@ -83,6 +84,7 @@ fn reservable_token_should_work() {
             true,
             br#"USDT"#.to_vec(),
             br#"usdt.testnet"#.to_vec(),
+            XTokenStandard::NEP141
         ));
         let id = 1u32;
         assert_ok!(Token::do_mint(id, &ferdie, 1000000, None));
@@ -183,6 +185,7 @@ fn test_xtoken_should_work() {
             true,
             br#"USDT"#.to_vec(),
             br#"usdt.testnet"#.to_vec(),
+            XTokenStandard::NEP141
         ));
         assert_noop!(
             Token::issue(
@@ -191,6 +194,7 @@ fn test_xtoken_should_work() {
                 true,
                 br#"USDT"#.to_vec(),
                 br#"usdt.testnet"#.to_vec(),
+                XTokenStandard::NEP141
             ),
             Error::<Test>::InvalidToken
         );
@@ -200,6 +204,7 @@ fn test_xtoken_should_work() {
             true,
             br#"USDC"#.to_vec(),
             br#"usdc.testnet"#.to_vec(),
+            XTokenStandard::NEP141
         ));
         let token_info: XToken<u128> = Token::get_token_info(1).unwrap();
         assert_eq!(

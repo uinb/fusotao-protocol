@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use alloc::vec::Vec;
 use codec::Codec;
 use codec::MaxEncodedLen;
+use codec::{Decode, EncodeLike};
 use frame_support::{traits::BalanceStatus, Parameter};
+use sp_runtime::traits::Dispatchable;
 use sp_runtime::{
     traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member},
     DispatchError, DispatchResult,
@@ -183,4 +186,19 @@ pub trait Rewarding<AccountId, Volume: Copy, BlockNumber> {
     fn acked_reward(who: &AccountId) -> Self::Balance;
 
     fn save_trading(trader: &AccountId, amount: Volume, at: BlockNumber) -> DispatchResult;
+}
+
+pub trait Agent<AccountId> {
+    type Origin: From<(Vec<u8>, Vec<u8>)>;
+    type Message: EncodeLike + Decode + Dispatchable;
+
+    /// bind the origin to an appchain account without private key
+    /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
+    fn register_agent(origin: Self::Origin) -> Result<AccountId, DispatchError>;
+
+    /// function AuthenticateTx(msgs []Any, connectionId string, portId string) returns (error)
+    fn authenticate_tx(origin: Self::Origin, msg: Self::Message) -> Result<(), DispatchError>;
+
+    /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
+    fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult;
 }
