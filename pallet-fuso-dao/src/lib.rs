@@ -50,7 +50,6 @@ pub mod pallet {
             + From<frame_system::Call<Self>>;
     }
 
-    // TODO
     pub type ProposalIndex = u32;
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, Debug)]
@@ -63,33 +62,13 @@ pub mod pallet {
         pub mint_by: TokenId,
         pub treasury: AccountId,
         pub originator: AccountId,
-        pub max_members: u32,
         pub rule: DAORule<BlockNumber>,
         pub valid: bool,
         pub proposal_index: ProposalIndex,
     }
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, Debug)]
-    pub enum Proposal<AccountId, BlockNumber, Function, TokenId, Balance> {
-        OnchainNeedCharge {
-            issuer: AccountId,
-            expire_at: BlockNumber,
-            status: u8,
-            url: Vec<u8>,
-            call: Function,
-            token_id: TokenId,
-            amount: Balance,
-            voting: (Balance, Balance, Balance),
-        },
-        OffchainNeedCharge {
-            issuer: AccountId,
-            expire_at: BlockNumber,
-            status: u8,
-            url: Vec<u8>,
-            token_id: TokenId,
-            amount: Balance,
-            voting: (Balance, Balance, Balance),
-        },
+    pub enum Proposal<AccountId, BlockNumber, Function, Balance> {
         Onchain {
             issuer: AccountId,
             expire_at: BlockNumber,
@@ -107,6 +86,8 @@ pub mod pallet {
         },
     }
 
+    pub type ProposalOf<T> = Proposal<T::AccountId, T::BlockNumber, T::Function, Balance<T>>;
+
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, Debug)]
     pub enum DAORule<Term> {
         Unanimity,
@@ -119,6 +100,7 @@ pub mod pallet {
         New {
             token_symbol: Vec<u8>,
             mint_by: TokenId,
+            max_supply: Balance,
         },
     }
 
@@ -152,7 +134,7 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         ProposalIndex,
-        Proposal<T::AccountId, T::BlockNumber, T::Function, TokenId<T>, Balance<T>>,
+        ProposalOf<T>,
         OptionQuery,
     >;
 
@@ -164,6 +146,11 @@ pub mod pallet {
     pub enum Error<T> {
         DaoNameAlreadyExisted,
         AccountImplyError,
+        DaoNotExists,
+        GovTokenIsNotMintable,
+        InsufficientBalance,
+        MinimalRequired,
+        GovTokenBeyondMaximum,
     }
 
     #[pallet::hooks]
@@ -181,8 +168,7 @@ pub mod pallet {
         pub fn proposal(
             origin: OriginFor<T>,
             org: T::AccountId,
-            proposal: Box<T::Function>,
-            expire_at: T::BlockNumber,
+            proposal: ProposalOf<T>,
         ) -> DispatchResultWithPostInfo {
             Ok(().into())
         }
@@ -205,6 +191,32 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // TODO
+        #[pallet::weight(1_000_000_000_000)]
+        pub fn purchase(
+            origin: OriginFor<T>,
+            treasury: T::AccountId,
+            amount: Balance<T>,
+        ) -> DispatchResultWithPostInfo {
+            let origin = ensure_signed(origin)?;
+            Orgs::<T>::try_mutate_exists(&treasury, |dao| -> DispatchResult {
+                ensure!(dao.is_some(), Error::<T>::DaoNotExists);
+                let dao = dao.unwrap();
+                ensure!(dao.mintable, Error::<T>::GovTokenIsNotMintable);
+                ensure!(amount >= dao.entry_threshold, Error::<T>::MinimalRequired);
+                ensure!(
+                    T::Asset::free_balance(&dao.mint_by, &origin) >= amount,
+                    Error::<T>::InsufficientBalance
+                );
+                ensure!(
+                    T::Asset::free_balance(&dao.gov_token, &treasury) >= amount,
+                    Error::<T>::GovTokenBeyondMaximum,
+                );
+                // TODO transfer
+            })?;
+            Ok(().into())
+        }
+
         /// invoke by the originators
         #[pallet::weight(1_000_000_000_000_000_000)]
         pub fn create(
@@ -212,15 +224,14 @@ pub mod pallet {
             name: Vec<u8>,
             logo: Vec<u8>,
             lang: Vec<u8>,
-            max_members: u32,
             gov_token: GovernanceToken<TokenId<T>, Balance<T>>,
             rule: DAORule<T::BlockNumber>,
             entry_threshold: Balance<T>,
         ) -> DispatchResultWithPostInfo {
             let originator = ensure_signed(origin)?;
-            let treasury = Self::imply_account(name.clone(), ProposalIndex::default())?;
+            let treasury = Self::imply_account(name.clone())?;
             ensure!(
-                !Orgs::<T>::contains_key(&treasury_account),
+                !Orgs::<T>::contains_key(&treasury),
                 Error::<T>::DaoNameAlreadyExisted
             );
             let (gov_token, mintable, mint_by) = match gov_token {
@@ -228,16 +239,16 @@ pub mod pallet {
                 New {
                     token_symbol,
                     mint_by,
+                    max_supply,
                 } => {
-                    let token_info = XToken::FND10();
-                    // TODO
+                    let token_info = XToken::FND10(token_symbol.clone(), max_supply);
                     let token_id = T::Token::create(token_info)?;
                     (token_id, true, mint_by)
                 }
             };
             // TODO params check
             Orgs::<T>::insert(
-                treasury_account,
+                treasury,
                 DAO {
                     name,
                     logo,
@@ -247,7 +258,6 @@ pub mod pallet {
                     mint_by,
                     treasury,
                     originator,
-                    max_members,
                     rule,
                     valid: false,
                     proposal_index: ProposalIndex::default(),
@@ -258,12 +268,8 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn imply_account(
-            name: Vec<u8>,
-            index: ProposalIndex,
-        ) -> Result<T::AccountId, Error<T>> {
-            let deterministic =
-                (b"#_fuso_dao_#", name, index).using_encoded(sp_io::hashing::blake2_256);
+        pub fn imply_account(name: Vec<u8>) -> Result<T::AccountId, Error<T>> {
+            let deterministic = (b"#_fuso_dao_#", name).using_encoded(sp_io::hashing::blake2_256);
             Decode::decode(&mut TrailingZeroInput::new(deterministic.as_ref()))
                 .map_err(|_| Error::<T>::AccountImplyError)
         }
