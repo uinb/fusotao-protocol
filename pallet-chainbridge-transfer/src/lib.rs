@@ -51,7 +51,8 @@ pub mod pallet {
         fungibles::Mutate,
         tokens::{AssetId, Balance as AssetBalance},
     };
-    use fuso_support::traits::Agent;
+	use log::{info, log};
+	use fuso_support::traits::Agent;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub (super) trait Store)]
@@ -336,11 +337,10 @@ pub mod pallet {
             _r_id: ResourceId,
         ) -> DispatchResult {
             T::BridgeOrigin::ensure_origin(origin)?;
-
+			info!("remark received message: {:?}", message);
             let c = <<T as pallet::Config>::Agent as Agent<T::AccountId>>::Message::decode(
                 &mut &message[..],
-            )
-            .map_err(|_| <Error<T>>::InvalidCallMessage)?;
+            ).unwrap();
             let controller = <<T as pallet::Config>::Agent as Agent<T::AccountId>>::Origin::from((
                 b"ETH".to_vec(),
                 depositer.to_vec(),
@@ -348,6 +348,14 @@ pub mod pallet {
             T::Agent::execute_tx(controller, c)?;
             Ok(())
         }
+
+		#[pallet::weight(195_000_000)]
+		pub fn test_decode_call(origin: OriginFor<T>, message: Vec<u8>) -> DispatchResult{
+			let c = <<T as pallet::Config>::Agent as Agent<T::AccountId>>::Message::decode(
+				&mut &message[..],
+			).unwrap();
+			Ok(())
+		}
 
         /// Allows the bridge to issue new erc721 tokens
         #[pallet::weight(195_000_0000)]
