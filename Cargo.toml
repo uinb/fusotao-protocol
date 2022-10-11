@@ -11,4 +11,7 @@ members = [
     'pallet-fuso-reward',
     'pallet-fuso-agent',
     'fuso-support',
+    'pallet-chainbridge',
+    'pallet-chainbridge-transfer',
+    'pallet-chainbridge-transfer/chainbridge-erc721'
 ]

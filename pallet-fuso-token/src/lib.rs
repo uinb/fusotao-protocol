@@ -250,21 +250,9 @@ pub mod pallet {
                 ensure!(token_info.is_some(), Error::<T>::InvalidToken);
                 let mut info = token_info.take().unwrap();
                 let unified_amount = match info {
-                    XToken::NEP141(_, _, ref mut total, _, decimals) => {
-                        let unified_amount = Self::unify_decimals(amount, decimals);
-                        *total = total
-                            .checked_add(&unified_amount)
-                            .ok_or(Error::<T>::InsufficientBalance)?;
-                        unified_amount
-                    }
-                    XToken::ERC20(_, _, ref mut total, _, decimals) => {
-                        let unified_amount = Self::unify_decimals(amount, decimals);
-                        *total = total
-                            .checked_add(&unified_amount)
-                            .ok_or(Error::<T>::InsufficientBalance)?;
-                        unified_amount
-                    }
-                    XToken::BEP20(_, _, ref mut total, _, decimals) => {
+                    XToken::NEP141(_, _, ref mut total, _, decimals)
+                    | XToken::ERC20(_, _, ref mut total, _, decimals)
+                    | XToken::BEP20(_, _, ref mut total, _, decimals) => {
                         let unified_amount = Self::unify_decimals(amount, decimals);
                         *total = total
                             .checked_add(&unified_amount)
@@ -308,21 +296,9 @@ pub mod pallet {
                 ensure!(token_info.is_some(), Error::<T>::BalanceZero);
                 let mut info = token_info.take().unwrap();
                 let unified_amount = match info {
-                    XToken::NEP141(_, _, ref mut total, _, decimals) => {
-                        let unified_amount = Self::unify_decimals(amount, decimals);
-                        *total = total
-                            .checked_sub(&unified_amount)
-                            .ok_or(Error::<T>::InsufficientBalance)?;
-                        unified_amount
-                    }
-                    XToken::ERC20(_, _, ref mut total, _, decimals) => {
-                        let unified_amount = Self::unify_decimals(amount, decimals);
-                        *total = total
-                            .checked_sub(&unified_amount)
-                            .ok_or(Error::<T>::InsufficientBalance)?;
-                        unified_amount
-                    }
-                    XToken::BEP20(_, _, ref mut total, _, decimals) => {
+                    XToken::NEP141(_, _, ref mut total, _, decimals)
+                    | XToken::ERC20(_, _, ref mut total, _, decimals)
+                    | XToken::BEP20(_, _, ref mut total, _, decimals) => {
                         let unified_amount = Self::unify_decimals(amount, decimals);
                         *total = total
                             .checked_sub(&unified_amount)
@@ -544,9 +520,9 @@ pub mod pallet {
             if token_info.is_some() {
                 let token = token_info.unwrap();
                 match token {
-                    XToken::NEP141(_, _, total, _, _) => total,
-                    XToken::ERC20(_, _, total, _, _) => total,
-                    XToken::BEP20(_, _, total, _, _) => total,
+                    XToken::NEP141(_, _, total, _, _)
+                    | XToken::ERC20(_, _, total, _, _)
+                    | XToken::BEP20(_, _, total, _, _) => total,
                     XToken::FND10(_, total) => total,
                 }
             } else {

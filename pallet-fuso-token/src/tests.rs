@@ -8,7 +8,6 @@ use sp_runtime::traits::Zero;
 use sp_runtime::MultiAddress;
 
 use crate::mock::*;
-use crate::Error;
 use crate::Pallet;
 use crate::TokenAccountData;
 

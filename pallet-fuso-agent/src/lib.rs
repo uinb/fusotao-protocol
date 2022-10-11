@@ -25,8 +25,10 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use codec::{Codec, EncodeLike};
+    use frame_support::log::info;
     use frame_support::{pallet_prelude::*, traits::Get, weights::GetDispatchInfo};
     use frame_system::{ensure_signed, pallet_prelude::*};
+    use fuso_support::traits::Agent;
     use sp_runtime::{
         traits::{CheckedAdd, Dispatchable, TrailingZeroInput, Zero},
         DispatchError, DispatchResult,
@@ -70,7 +72,10 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     /// IBC reference
-    impl<T: Config> Agent<T::AccountId> for Pallet<T> {
+    impl<T: Config> Agent<T::AccountId> for Pallet<T>
+    where
+        T::Controller: From<(Vec<u8>, Vec<u8>)>,
+    {
         type Message = T::Function;
         type Origin = T::Controller;
 
@@ -104,20 +109,5 @@ pub mod pallet {
                 })
                 .map_err(|e| e.error)
         }
-    }
-
-    pub trait Agent<AccountId> {
-        type Origin;
-        type Message;
-
-        /// bind the origin to an appchain account without private key
-        /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
-        fn register_agent(origin: Self::Origin) -> Result<AccountId, DispatchError>;
-
-        /// function AuthenticateTx(msgs []Any, connectionId string, portId string) returns (error)
-        fn authenticate_tx(origin: Self::Origin, msg: Self::Message) -> Result<(), DispatchError>;
-
-        /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
-        fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult;
     }
 }
