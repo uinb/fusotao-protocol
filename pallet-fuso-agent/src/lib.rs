@@ -107,7 +107,7 @@ pub mod pallet {
             .map(|_| {
                 Self::deposit_event(Event::<T>::ControllerTxCompleted);
             })
-            .map_err(|e| e.error)
+            .map_err(|e| e.error);
             Ok(())
         }
     }
