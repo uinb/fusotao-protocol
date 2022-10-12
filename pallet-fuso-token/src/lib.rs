@@ -42,6 +42,8 @@ pub mod pallet {
         traits::{ReservableToken, Token},
         XToken,
     };
+    use pallet_chainbridge_support::traits::AssetIdResourceIdProvider;
+    use pallet_chainbridge_support::ResourceId;
     use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
     use scale_info::TypeInfo;
     use sp_runtime::traits::{
@@ -128,7 +130,7 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
-        TokenIssued(T::TokenId, XToken<BalanceOf<T>>),
+        TokenIssued(T::TokenId, Vec<u8>),
         TokenTransfered(T::TokenId, T::AccountId, T::AccountId, BalanceOf<T>),
         TokenReserved(T::TokenId, T::AccountId, BalanceOf<T>),
         TokenUnreserved(T::TokenId, T::AccountId, BalanceOf<T>),
@@ -150,7 +152,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let _ = ensure_root(origin)?;
             let id = Self::create(token_info.clone())?;
-            Self::deposit_event(Event::<T>::TokenIssued(id, token_info));
+            Self::deposit_event(Event::<T>::TokenIssued(id, token_info.symbol()));
             Ok(().into())
         }
 
@@ -250,21 +252,9 @@ pub mod pallet {
                 ensure!(token_info.is_some(), Error::<T>::InvalidToken);
                 let mut info = token_info.take().unwrap();
                 let unified_amount = match info {
-                    XToken::NEP141(_, _, ref mut total, _, decimals) => {
-                        let unified_amount = Self::unify_decimals(amount, decimals);
-                        *total = total
-                            .checked_add(&unified_amount)
-                            .ok_or(Error::<T>::InsufficientBalance)?;
-                        unified_amount
-                    }
-                    XToken::ERC20(_, _, ref mut total, _, decimals) => {
-                        let unified_amount = Self::unify_decimals(amount, decimals);
-                        *total = total
-                            .checked_add(&unified_amount)
-                            .ok_or(Error::<T>::InsufficientBalance)?;
-                        unified_amount
-                    }
-                    XToken::BEP20(_, _, ref mut total, _, decimals) => {
+                    XToken::NEP141(_, _, ref mut total, _, decimals)
+                    | XToken::ERC20(_, _, ref mut total, _, decimals)
+                    | XToken::BEP20(_, _, ref mut total, _, decimals) => {
                         let unified_amount = Self::unify_decimals(amount, decimals);
                         *total = total
                             .checked_add(&unified_amount)
@@ -308,21 +298,9 @@ pub mod pallet {
                 ensure!(token_info.is_some(), Error::<T>::BalanceZero);
                 let mut info = token_info.take().unwrap();
                 let unified_amount = match info {
-                    XToken::NEP141(_, _, ref mut total, _, decimals) => {
-                        let unified_amount = Self::unify_decimals(amount, decimals);
-                        *total = total
-                            .checked_sub(&unified_amount)
-                            .ok_or(Error::<T>::InsufficientBalance)?;
-                        unified_amount
-                    }
-                    XToken::ERC20(_, _, ref mut total, _, decimals) => {
-                        let unified_amount = Self::unify_decimals(amount, decimals);
-                        *total = total
-                            .checked_sub(&unified_amount)
-                            .ok_or(Error::<T>::InsufficientBalance)?;
-                        unified_amount
-                    }
-                    XToken::BEP20(_, _, ref mut total, _, decimals) => {
+                    XToken::NEP141(_, _, ref mut total, _, decimals)
+                    | XToken::ERC20(_, _, ref mut total, _, decimals)
+                    | XToken::BEP20(_, _, ref mut total, _, decimals) => {
                         let unified_amount = Self::unify_decimals(amount, decimals);
                         *total = total
                             .checked_sub(&unified_amount)
@@ -544,9 +522,9 @@ pub mod pallet {
             if token_info.is_some() {
                 let token = token_info.unwrap();
                 match token {
-                    XToken::NEP141(_, _, total, _, _) => total,
-                    XToken::ERC20(_, _, total, _, _) => total,
-                    XToken::BEP20(_, _, total, _, _) => total,
+                    XToken::NEP141(_, _, total, _, _)
+                    | XToken::ERC20(_, _, total, _, _)
+                    | XToken::BEP20(_, _, total, _, _) => total,
                     XToken::FND10(_, total) => total,
                 }
             } else {
@@ -719,11 +697,20 @@ pub mod pallet {
             let token_result = Self::get_token_info(asset_id);
             match token_result {
                 Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
-                Some(XToken::ERC20(_, name, _, _, _)) => Ok(name),
-                Some(XToken::BEP20(_, name, _, _, _)) => Ok(name),
+                //for bridge of near<-> substrate, provide nep141 mapping only.
+                Some(XToken::ERC20(_, name, _, _, _)) => Err(()),
+                Some(XToken::BEP20(_, name, _, _, _)) => Err(()),
                 Some(XToken::FND10(_, _)) => Err(()),
                 None => Err(()),
             }
+        }
+    }
+
+    impl<T: Config> AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
+        type Err = Error<T>;
+
+        fn try_get_asset_id(resource_id: ResourceId) -> Result<<T as Config>::TokenId, Self::Err> {
+            Self::get_token_by_name(resource_id.as_ref().to_vec()).ok_or(Error::InvalidToken)
         }
     }
 }

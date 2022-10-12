@@ -26,6 +26,7 @@ sp-runtime = { default-features = false, git = "https://github.com/paritytech/su
 pallet-balances = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18" }
 pallet-octopus-support = { git = "https://github.com/octopus-network/octopus-pallets.git", tag="v0.9.18-3", default-features = false }
 fuso-support = { path = "../fuso-support", default-features = false }
+pallet-chainbridge-support = { git = "https://github.com/uinb/fusotao-chainbridge.git", branch = "master", default-features = false, package = "pallet-chainbridge-support"}
 
 [dev-dependencies]
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18" }
@@ -39,7 +40,8 @@ std = [
     'frame-system/std',
     'frame-benchmarking/std',
     'sp-std/std',
-    "pallet-octopus-support/std"
+    "pallet-octopus-support/std",
+	"pallet-chainbridge-support/std"
 ]
 runtime-benchmarks = [
     'frame-benchmarking',

@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use crate::XToken;
-use codec::Codec;
-use codec::MaxEncodedLen;
+use codec::{Codec, EncodeLike, MaxEncodedLen};
 use frame_support::{traits::BalanceStatus, Parameter};
 use sp_runtime::{
     traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member},
