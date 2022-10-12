@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use alloc::string::String;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_std::vec::Vec;
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
 pub enum XToken<Balance> {
-    // symbol, contract_address, total, stable, decimals
+    // symbol, contract_address/resourceId, total, stable, decimals
     NEP141(Vec<u8>, Vec<u8>, Balance, bool, u8),
-    ERC20(Vec<u8>, Vec<u8>, Balance, bool, u8),
+    ERC20(Vec<u8>, Vec<u8>,  Balance, bool, u8),
     BEP20(Vec<u8>, Vec<u8>, Balance, bool, u8),
     // symbol, total
     FND10(Vec<u8>, Balance),
