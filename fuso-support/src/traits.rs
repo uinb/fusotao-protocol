@@ -48,6 +48,13 @@ pub trait Token<AccountId> {
 
     fn total_issuance(token: &Self::TokenId) -> Self::Balance;
 
+    fn transfer(
+        token: &Self::TokenId,
+        from: &AccountId,
+        to: &AccountId,
+        amount: Balance,
+    ) -> Result<(), DispatchError>;
+
     fn try_mutate_account<R>(
         token: &Self::TokenId,
         who: &AccountId,

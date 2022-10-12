@@ -58,8 +58,8 @@ pub mod pallet {
         pub logo: Vec<u8>,
         pub lang: Vec<u8>,
         pub gov_token: TokenId,
-        pub mintable: bool,
-        pub mint_by: TokenId,
+        pub swapable: bool,
+        pub swap_by: TokenId,
         pub treasury: AccountId,
         pub originator: AccountId,
         pub rule: DAORule<BlockNumber>,
@@ -99,7 +99,7 @@ pub mod pallet {
         Existing(TokenId),
         New {
             token_symbol: Vec<u8>,
-            mint_by: TokenId,
+            swap_by: TokenId,
             max_supply: Balance,
         },
     }
@@ -191,7 +191,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // TODO
+        #[tranactional]
         #[pallet::weight(1_000_000_000_000)]
         pub fn purchase(
             origin: OriginFor<T>,
@@ -202,17 +202,18 @@ pub mod pallet {
             Orgs::<T>::try_mutate_exists(&treasury, |dao| -> DispatchResult {
                 ensure!(dao.is_some(), Error::<T>::DaoNotExists);
                 let dao = dao.unwrap();
-                ensure!(dao.mintable, Error::<T>::GovTokenIsNotMintable);
+                ensure!(dao.swapable, Error::<T>::GovTokenIsNotMintable);
                 ensure!(amount >= dao.entry_threshold, Error::<T>::MinimalRequired);
                 ensure!(
-                    T::Asset::free_balance(&dao.mint_by, &origin) >= amount,
+                    T::Asset::free_balance(&dao.swap_by, &origin) >= amount,
                     Error::<T>::InsufficientBalance
                 );
                 ensure!(
                     T::Asset::free_balance(&dao.gov_token, &treasury) >= amount,
                     Error::<T>::GovTokenBeyondMaximum,
                 );
-                // TODO transfer
+                T::Asset::transfer(&dao.swap_by, origin, treasury, amount)?;
+                T::Asset::transfer(&dao.gov_token, treasury, origin, amount)?;
             })?;
             Ok(().into())
         }
@@ -234,16 +235,16 @@ pub mod pallet {
                 !Orgs::<T>::contains_key(&treasury),
                 Error::<T>::DaoNameAlreadyExisted
             );
-            let (gov_token, mintable, mint_by) = match gov_token {
+            let (gov_token, swapable, mint_by) = match gov_token {
                 Existing(token_id) => (token_id, false, token_id),
                 New {
                     token_symbol,
-                    mint_by,
+                    swap_by,
                     max_supply,
                 } => {
                     let token_info = XToken::FND10(token_symbol.clone(), max_supply);
                     let token_id = T::Token::create(token_info)?;
-                    (token_id, true, mint_by)
+                    (token_id, true, swap_by)
                 }
             };
             // TODO params check
@@ -254,7 +255,7 @@ pub mod pallet {
                     logo,
                     lang,
                     gov_token,
-                    mintable,
+                    swapable,
                     mint_by,
                     treasury,
                     originator,
