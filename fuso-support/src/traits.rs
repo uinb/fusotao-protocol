@@ -186,18 +186,3 @@ pub trait Rewarding<AccountId, Volume: Copy, BlockNumber> {
 
     fn save_trading(trader: &AccountId, amount: Volume, at: BlockNumber) -> DispatchResult;
 }
-
-pub trait Agent<AccountId> {
-    type Origin: EncodeLike + Codec;
-    type Message: EncodeLike + Codec;
-
-    /// bind the origin to an appchain account without private key
-    /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
-    fn register_agent(origin: Self::Origin) -> Result<AccountId, DispatchError>;
-
-    /// function AuthenticateTx(msgs []Any, connectionId string, portId string) returns (error)
-    fn authenticate_tx(origin: Self::Origin, msg: Self::Message) -> Result<(), DispatchError>;
-
-    /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
-    fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult;
-}
