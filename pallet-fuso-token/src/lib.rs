@@ -37,16 +37,16 @@ pub mod pallet {
         transactional,
     };
     use frame_system::pallet_prelude::*;
-	use pallet_chainbridge_support::ResourceId;
-	use pallet_chainbridge_support::traits::AssetIdResourceIdProvider;
-	use fuso_support::{
+    use fuso_support::{
         constants::*,
         traits::{ReservableToken, Token},
         XToken,
     };
+    use pallet_chainbridge_support::traits::AssetIdResourceIdProvider;
+    use pallet_chainbridge_support::ResourceId;
     use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
     use scale_info::TypeInfo;
-	use sp_runtime::traits::{
+    use sp_runtime::traits::{
         AtLeast32BitUnsigned, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Member, One,
         StaticLookup, Zero,
     };
@@ -130,7 +130,7 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
-        TokenIssued(T::TokenId, XToken<BalanceOf<T>>),
+        TokenIssued(T::TokenId, Vec<u8>),
         TokenTransfered(T::TokenId, T::AccountId, T::AccountId, BalanceOf<T>),
         TokenReserved(T::TokenId, T::AccountId, BalanceOf<T>),
         TokenUnreserved(T::TokenId, T::AccountId, BalanceOf<T>),
@@ -152,7 +152,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let _ = ensure_root(origin)?;
             let id = Self::create(token_info.clone())?;
-            Self::deposit_event(Event::<T>::TokenIssued(id, token_info));
+            Self::deposit_event(Event::<T>::TokenIssued(id, token_info.symbol()));
             Ok(().into())
         }
 
@@ -697,7 +697,7 @@ pub mod pallet {
             let token_result = Self::get_token_info(asset_id);
             match token_result {
                 Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
-				//for bridge of near<-> substrate, provide nep141 mapping only.
+                //for bridge of near<-> substrate, provide nep141 mapping only.
                 Some(XToken::ERC20(_, name, _, _, _)) => Err(()),
                 Some(XToken::BEP20(_, name, _, _, _)) => Err(()),
                 Some(XToken::FND10(_, _)) => Err(()),
@@ -706,13 +706,11 @@ pub mod pallet {
         }
     }
 
+    impl<T: Config> AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
+        type Err = Error<T>;
 
-	impl<T: Config> AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
-		type Err = Error<T>;
-
-		fn try_get_asset_id(resource_id: ResourceId) -> Result<<T as Config>::TokenId, Self::Err> {
-			Self::get_token_by_name(resource_id.as_ref().to_vec()).ok_or(Error::InvalidToken)
-		}
-
-	}
+        fn try_get_asset_id(resource_id: ResourceId) -> Result<<T as Config>::TokenId, Self::Err> {
+            Self::get_token_by_name(resource_id.as_ref().to_vec()).ok_or(Error::InvalidToken)
+        }
+    }
 }
