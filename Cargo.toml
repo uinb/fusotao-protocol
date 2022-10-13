@@ -9,5 +9,7 @@ members = [
     'pallet-fuso-verifier/rpc',
     'pallet-fuso-foundation',
     'pallet-fuso-reward',
+    'pallet-chainbridge',
+    'pallet-chainbridge-handler',
     'fuso-support',
 ]
