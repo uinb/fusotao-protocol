@@ -149,7 +149,6 @@ impl pallet_fuso_token::Config for Test {
 
 parameter_types! {
     pub NativeResourceId: ResourceId = bridge::derive_resource_id(0, &blake2_128(b"TAO")); // native token id
-    pub HashId: ResourceId = bridge::derive_resource_id(1, &blake2_128(b"hash"));
     // pub Erc721Id: bridge::ResourceId = bridge::derive_resource_id(1, &blake2_128(b"NFT"));
     pub NativeTokenMaxValue : Balance = 1000_000_000_000_000_0000u128; // need to set correct value
     pub DonorAccount: AccountId32 = AccountId32::new([0u8; 32]);
@@ -173,10 +172,8 @@ impl Config for Test {
     type Currency = Balances;
     type DonationForAgent = DonationForAgent;
     type DonorAccount = DonorAccount;
-    // type Erc721Id = Erc721Id;
     type Event = Event;
     type Fungibles = Assets;
-    type HashId = HashId;
     type NativeResourceId = NativeResourceId;
     type NativeTokenMaxValue = NativeTokenMaxValue;
 }

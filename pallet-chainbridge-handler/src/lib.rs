@@ -93,12 +93,7 @@ pub mod pallet {
         /// Max native token value
         type NativeTokenMaxValue: Get<BalanceOf<Self>>;
 
-        /// Ids can be defined by the runtime and passed in, perhaps from blake2b_128 hashes.
-        type HashId: Get<ResourceId>;
-
         type NativeResourceId: Get<ResourceId>;
-
-        // type Erc721Id: Get<ResourceId>;
 
         type DonorAccount: Get<Self::AccountId>;
 
@@ -159,46 +154,14 @@ pub mod pallet {
         #[pallet::weight(195_000_0000)]
         pub fn native_limit(origin: OriginFor<T>, value: bool) -> DispatchResult {
             ensure_root(origin)?;
-
             <NativeCheck<T>>::put(value);
-
             Ok(())
-        }
-
-        //
-        // Initiation calls. These start a bridge transfer.
-        //
-
-        /// Transfers an arbitrary hash to a (whitelisted) destination chain.
-        #[pallet::weight(195_000_0000)]
-        pub fn transfer_hash(
-            origin: OriginFor<T>,
-            hash: T::Hash,
-            dest_id: ChainId,
-        ) -> DispatchResult {
-            ensure_signed(origin)?;
-
-            let resource_id = T::HashId::get();
-            let metadata: Vec<u8> = hash.as_ref().to_vec();
-            <bridge::Pallet<T>>::transfer_generic(dest_id, resource_id, metadata)
-        }
-
-        #[pallet::weight(195_000_0000)]
-        pub fn transfer_native(
-            origin: OriginFor<T>,
-            amount: BalanceOf<T>,
-            recipient: Vec<u8>,
-            dest_id: ChainId,
-        ) -> DispatchResult {
-            let native_token = T::NativeResourceId::get();
-
-            Self::generic_token_transfer(origin, amount, native_token, recipient, dest_id)
         }
 
         /// Transfers some amount of the native token to some recipient on a (whitelisted)
         /// destination chain.
         #[pallet::weight(195_000_0000)]
-        pub fn generic_token_transfer(
+        pub fn transfer_out(
             origin: OriginFor<T>,
             amount: BalanceOf<T>,
             r_id: ResourceId,
@@ -212,49 +175,27 @@ pub mod pallet {
             );
             // TODO
             // check recipient address is verify
-
             match r_id == T::NativeResourceId::get() {
                 true => Self::do_lock(source, amount, r_id, recipient, dest_id)?,
                 false => Self::do_burn_assets(source, amount, r_id, recipient, dest_id)?,
             }
-
             Ok(())
         }
-
-        /// Transfer a non-fungible token (erc721) to a (whitelisted) destination chain.
-        #[pallet::weight(195_000_0000)]
-        pub fn transfer_erc721(
-            origin: OriginFor<T>,
-            _recipient: Vec<u8>,
-            _token_id: U256,
-            _dest_id: ChainId,
-        ) -> DispatchResult {
-            let _ = ensure_signed(origin)?;
-            Ok(())
-        }
-
-        //
-        // Executable calls. These can be triggered by a bridge transfer initiated on another chain
-        //
 
         /// Executes a simple currency transfer using the bridge account as the source
         /// Triggered by a initial transfer on source chain, executed by relayer when proposal was
         /// resolved. this function by bridge triggered transfer
         #[pallet::weight(195_000_0000)]
-        pub fn transfer(
+        pub fn transfer_in(
             origin: OriginFor<T>,
             to: T::AccountId,
             amount: BalanceOf<T>,
             r_id: ResourceId,
         ) -> DispatchResult {
             let source = T::BridgeOrigin::ensure_origin(origin)?;
-
-            // this do native transfer
             match r_id == T::NativeResourceId::get() {
                 true => Self::do_unlock(source, to, amount.into())?,
-                false => {
-                    Self::do_mint_assets(to, amount, r_id)?;
-                }
+                false => Self::do_mint_assets(to, amount, r_id)?,
             }
             Ok(())
         }
@@ -272,20 +213,6 @@ pub mod pallet {
                 .map_err(|_| <Error<T>>::InvalidCallMessage)?;
             let controller = (b"ETH".to_vec(), depositer);
             Self::execute_tx(controller, c)?;
-            Ok(())
-        }
-
-        /// Allows the bridge to issue new erc721 tokens
-        #[pallet::weight(195_000_0000)]
-        pub fn mint_erc721(
-            origin: OriginFor<T>,
-            _recipient: T::AccountId,
-            _id: U256,
-            _metadata: Vec<u8>,
-            _r_id: ResourceId,
-        ) -> DispatchResult {
-            T::BridgeOrigin::ensure_origin(origin)?;
-            // <erc721::Pallet<T>>::mint_token(recipient, id, metadata)?;
             Ok(())
         }
     }

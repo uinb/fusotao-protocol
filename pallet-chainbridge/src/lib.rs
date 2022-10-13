@@ -88,8 +88,8 @@ impl<AccountId: PartialEq, BlockNumber: PartialOrd + Default>
 impl<AccountId, BlockNumber: Default> Default for ProposalVotes<AccountId, BlockNumber> {
     fn default() -> Self {
         Self {
-            votes_for: vec![],
-            votes_against: vec![],
+            votes_for: sp_std::vec![],
+            votes_against: sp_std::vec![],
             status: ProposalStatus::Initiated,
             expiry: BlockNumber::default(),
         }
