@@ -221,8 +221,7 @@ fn transfer_non_native() {
         // ));
         let denom = XToken::ERC20(
             br#"DENOM"#.to_vec(),
-            hex_literal::hex!("3c56dd5ed61af7e7b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2")
-                .to_vec(),
+            resource_id.to_vec(),
             Zero::zero(),
             true,
             18,
@@ -233,7 +232,7 @@ fn transfer_non_native() {
         assert_ok!(Assets::do_mint(1, &ferdie, amount, None));
 
         // make sure have some  amount after mint
-        assert_eq!(Assets::balance(0, &ferdie), amount);
+        assert_eq!(Assets::free_balance(&1, &ferdie), amount);
 
         assert_ok!(Bridge::whitelist_chain(Origin::root(), dest_chain.clone()));
         assert_ok!(ChainBridgeTransfer::generic_token_transfer(
@@ -354,14 +353,16 @@ fn create_sucessful_transfer_proposal_non_native_token() {
         let r_id = bridge::derive_resource_id(src_id, b"transfer");
         let resource = b"ChainBridgeTransfer.transfer".to_vec();
         // let resource_id = NativeTokenId::get();
-        let resource_id = bridge::derive_resource_id(src_id, b"DENOM");
+        let resource_id = bridge::derive_resource_id(
+            src_id,
+            &hex_literal::hex!("3c56dd5ed61af7e7b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2"),
+        );
         let proposal = make_transfer_proposal(resource_id, RELAYER_A, 10);
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
 
         let denom = XToken::ERC20(
             br#"DENOM"#.to_vec(),
-            hex_literal::hex!("3c56dd5ed61af7e7b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2")
-                .to_vec(),
+            resource_id.to_vec(),
             Zero::zero(),
             true,
             18,
@@ -429,14 +430,14 @@ fn create_sucessful_transfer_proposal_non_native_token() {
         assert_eq!(prop, expected);
 
         // mint 10 resource_id to RELAYER_A
-        assert_eq!(Assets::balance(0, &RELAYER_A), 10);
+        assert_eq!(Assets::free_balance(&1, &RELAYER_A), 10);
 
         assert_events(vec![
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_A)),
             Event::Bridge(bridge::Event::VoteAgainst(src_id, prop_id, RELAYER_B)),
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_C)),
             Event::Bridge(bridge::Event::ProposalApproved(src_id, prop_id)),
-            Event::Assets(assets::Event::TokenIssued(1, b"DENOM".to_vec())),
+            Event::Assets(assets::Event::TokenMinted(1, RELAYER_A, 10)),
             Event::Bridge(bridge::Event::ProposalSucceeded(src_id, prop_id)),
         ]);
     })

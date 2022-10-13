@@ -10,7 +10,7 @@ use fuso_support::chainbridge::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_runtime::{
-    traits::{AccountIdConversion, Dispatchable},
+    traits::{AccountIdConversion, Dispatchable, TrailingZeroInput},
     RuntimeDebug,
 };
 use sp_std::prelude::*;
@@ -26,13 +26,8 @@ const DEFAULT_RELAYER_THRESHOLD: u32 = 1;
 const MODULE_ID: PalletId = PalletId(*b"oc/bridg");
 
 pub fn derive_resource_id(chain: u8, id: &[u8]) -> ResourceId {
-    let mut r_id: ResourceId = [0; 32];
-    r_id[31] = chain; // last byte is chain id
-    let range = if id.len() > 31 { 31 } else { id.len() }; // Use at most 31 bytes
-    for i in 0..range {
-        r_id[30 - i] = id[range - 1 - i]; // Ensure left padding for eth compatibilit
-    }
-    r_id
+    let hash = (chain, id.to_vec()).using_encoded(sp_io::hashing::blake2_256);
+    Decode::decode(&mut TrailingZeroInput::new(hash.as_ref())).unwrap()
 }
 
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
