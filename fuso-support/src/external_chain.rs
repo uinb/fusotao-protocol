@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use alloc::string::String;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_std::vec::Vec;

@@ -39,11 +39,9 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use fuso_support::{
         constants::*,
-        traits::{ReservableToken, Token},
+        traits::{AssetIdResourceIdProvider, ReservableToken, Token},
         XToken,
     };
-    use pallet_chainbridge_support::traits::AssetIdResourceIdProvider;
-    use pallet_chainbridge_support::ResourceId;
     use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
     use scale_info::TypeInfo;
     use sp_runtime::traits::{
@@ -687,30 +685,24 @@ pub mod pallet {
     impl<T: Config> TokenIdAndAssetIdProvider<T::TokenId> for Pallet<T> {
         type Err = ();
 
-        fn try_get_asset_id(
-            token_id: impl AsRef<[u8]>,
-        ) -> Result<<T as Config>::TokenId, Self::Err> {
+        fn try_get_asset_id(token_id: impl AsRef<[u8]>) -> Result<T::TokenId, Self::Err> {
             Self::get_token_by_name(token_id.as_ref().to_vec()).ok_or(())
         }
 
-        fn try_get_token_id(asset_id: <T as Config>::TokenId) -> Result<Vec<u8>, Self::Err> {
+        fn try_get_token_id(asset_id: T::TokenId) -> Result<Vec<u8>, Self::Err> {
             let token_result = Self::get_token_info(asset_id);
             match token_result {
                 Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
                 //for bridge of near<-> substrate, provide nep141 mapping only.
-                Some(XToken::ERC20(_, name, _, _, _)) => Err(()),
-                Some(XToken::BEP20(_, name, _, _, _)) => Err(()),
-                Some(XToken::FND10(_, _)) => Err(()),
-                None => Err(()),
+                _ => Err(()),
             }
         }
     }
 
     impl<T: Config> AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
-        type Err = Error<T>;
-
-        fn try_get_asset_id(resource_id: ResourceId) -> Result<<T as Config>::TokenId, Self::Err> {
-            Self::get_token_by_name(resource_id.as_ref().to_vec()).ok_or(Error::InvalidToken)
+        fn try_get_asset_id(resource_id: impl AsRef<[u8]>) -> Result<T::TokenId, DispatchError> {
+            Self::get_token_by_name(resource_id.as_ref().to_vec())
+                .ok_or(Error::<T>::InvalidToken.into())
         }
     }
 }

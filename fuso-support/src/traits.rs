@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::XToken;
-use codec::{Codec, EncodeLike, MaxEncodedLen};
+use codec::{Codec, MaxEncodedLen};
 use frame_support::{traits::BalanceStatus, Parameter};
 use sp_runtime::{
     traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member},
@@ -185,4 +185,8 @@ pub trait Rewarding<AccountId, Volume: Copy, BlockNumber> {
     fn acked_reward(who: &AccountId) -> Self::Balance;
 
     fn save_trading(trader: &AccountId, amount: Volume, at: BlockNumber) -> DispatchResult;
+}
+
+pub trait AssetIdResourceIdProvider<TokenId> {
+    fn try_get_asset_id(resource_id: impl AsRef<[u8]>) -> Result<TokenId, DispatchError>;
 }
