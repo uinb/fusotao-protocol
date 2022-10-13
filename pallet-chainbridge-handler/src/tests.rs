@@ -2,7 +2,7 @@
 use super::{
     mock::{
         assert_events, expect_event, new_test_ext, Assets, Balances, Bridge, Call,
-        ChainBridgeTransfer, Event, HashId, NativeResourceId, Origin, ProposalLifetime, Test,
+        ChainBridgeTransfer, Event, NativeResourceId, Origin, ProposalLifetime, Test,
         ENDOWED_BALANCE, RELAYER_A, RELAYER_B, RELAYER_C,
     },
     *,
@@ -26,46 +26,20 @@ use sp_runtime::ModuleError;
 
 const TEST_THRESHOLD: u32 = 2;
 
-fn make_remark_proposal(hash: H256) -> Call {
-    let resource_id = HashId::get();
+fn make_remark_proposal(call: Vec<u8>) -> Call {
     let depositer = [0u8; 20];
     Call::ChainBridgeTransfer(crate::Call::remark {
-        message: hash.as_bytes().to_vec(),
+        message: call,
         depositer,
-        r_id: resource_id,
+        r_id: Default::default(),
     })
 }
 
 fn make_transfer_proposal(resource_id: ResourceId, to: AccountId32, amount: u64) -> Call {
-    Call::ChainBridgeTransfer(crate::Call::transfer {
+    Call::ChainBridgeTransfer(crate::Call::transfer_in {
         to,
         amount: amount.into(),
         r_id: resource_id,
-    })
-}
-
-#[test]
-fn transfer_hash() {
-    new_test_ext().execute_with(|| {
-        let dest_chain = 0;
-        let resource_id = HashId::get();
-        let hash: H256 = "ABC".using_encoded(blake2_256).into();
-
-        assert_ok!(Bridge::set_threshold(Origin::root(), TEST_THRESHOLD,));
-
-        assert_ok!(Bridge::whitelist_chain(Origin::root(), dest_chain.clone()));
-        assert_ok!(ChainBridgeTransfer::transfer_hash(
-            Origin::signed(AccountId32::new([1u8; 32])),
-            hash.clone(),
-            dest_chain,
-        ));
-
-        expect_event(bridge::Event::GenericTransfer(
-            dest_chain,
-            1,
-            resource_id,
-            hash.as_ref().to_vec(),
-        ));
     })
 }
 
@@ -78,9 +52,10 @@ fn transfer_native() {
         let recipient = b"davirain.xyz".to_vec(); // recipient account
 
         assert_ok!(Bridge::whitelist_chain(Origin::root(), dest_chain.clone()));
-        assert_ok!(ChainBridgeTransfer::transfer_native(
+        assert_ok!(ChainBridgeTransfer::transfer_out(
             Origin::signed(RELAYER_A),
             amount.clone(),
+            resource_id.clone(),
             recipient.clone(),
             dest_chain,
         ));
@@ -235,7 +210,7 @@ fn transfer_non_native() {
         assert_eq!(Assets::free_balance(&1, &ferdie), amount);
 
         assert_ok!(Bridge::whitelist_chain(Origin::root(), dest_chain.clone()));
-        assert_ok!(ChainBridgeTransfer::generic_token_transfer(
+        assert_ok!(ChainBridgeTransfer::transfer_out(
             Origin::signed(ferdie.clone()),
             amount,
             resource_id,
@@ -243,7 +218,7 @@ fn transfer_non_native() {
             dest_chain,
         ));
 
-        // maket sure transfer have 0 amount
+        // make sure transfer have 0 amount
         assert_eq!(Assets::balance(0, &ferdie), 0);
 
         assert_events(vec![Event::Bridge(bridge::Event::FungibleTransfer(
@@ -264,7 +239,7 @@ fn transfer() {
         let resource_id = NativeResourceId::get();
         assert_eq!(Balances::free_balance(&bridge_id), ENDOWED_BALANCE);
         // Transfer and check result
-        assert_ok!(ChainBridgeTransfer::transfer(
+        assert_ok!(ChainBridgeTransfer::transfer_in(
             Origin::signed(Bridge::account_id()),
             RELAYER_A,
             10,
@@ -284,8 +259,10 @@ fn transfer() {
 #[test]
 fn execute_remark() {
     new_test_ext().execute_with(|| {
-        let hash: H256 = "ABC".using_encoded(blake2_256).into();
-        let proposal = make_remark_proposal(hash.clone());
+        let call = frame_system::Call::remark::<Test> {
+            remark: vec![0xff; 32],
+        };
+        let proposal = make_remark_proposal(call.encode());
         let prop_id = 1;
         let src_id = 1;
         let r_id = bridge::derive_resource_id(src_id, b"hash");
@@ -321,14 +298,13 @@ fn execute_remark_bad_origin() {
     new_test_ext().execute_with(|| {
         let depositer = [0u8; 20];
         let hash: H256 = "ABC".using_encoded(blake2_256).into();
-        let resource_id = HashId::get();
         // Don't allow any signed origin except from bridge addr
         assert_noop!(
             ChainBridgeTransfer::remark(
                 Origin::signed(RELAYER_A),
                 hash.as_bytes().to_vec(),
                 depositer,
-                resource_id
+                Default::default(),
             ),
             DispatchError::BadOrigin
         );
@@ -338,7 +314,7 @@ fn execute_remark_bad_origin() {
                 Origin::root(),
                 hash.as_bytes().to_vec(),
                 depositer,
-                resource_id
+                Default::default(),
             ),
             DispatchError::BadOrigin
         );
