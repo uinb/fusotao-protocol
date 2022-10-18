@@ -5,6 +5,7 @@ use frame_benchmarking::vec;
 pub use frame_benchmarking::{account, benchmarks};
 use frame_system::RawOrigin;
 use fuso_support::constants::*;
+use fuso_support::external_chain::XToken;
 use sp_runtime::traits::CheckedAdd;
 use sp_runtime::traits::StaticLookup;
 use sp_runtime::DispatchResult;
@@ -121,10 +122,13 @@ benchmarks! {
         let dominator = T::Lookup::unlookup(ben.clone());
         pallet_fuso_token::Pallet::<T>::issue(
             <T as frame_system::Config>::Origin::from(RawOrigin::Signed(lance.clone())),
-            6,
-            true,
-            br#"USDT"#.to_vec(),
-            br#"usdt.testnet"#.to_vec(),
+            XToken::NEP141(
+                br#"USDT"#.to_vec(),
+                br#"usdt.testnet"#.to_vec(),
+                0u32.into(),
+                true,
+                6
+            )
         )?;
         pallet_fuso_token::Pallet::<T>::do_mint(
             1u32.into(),
@@ -152,10 +156,14 @@ benchmarks! {
         Verifier::<T>::launch(<T as frame_system::Config>::Origin::from(RawOrigin::Root), dominator.clone())?;
         pallet_fuso_token::Pallet::<T>::issue(
             <T as frame_system::Config>::Origin::from(RawOrigin::Signed(lance.clone())),
-            6,
-            true,
-            br#"USDT"#.to_vec(),
-            br#"usdt.testnet"#.to_vec(),
+               XToken::NEP141(
+                br#"USDT"#.to_vec(),
+                br#"usdt.testnet"#.to_vec(),
+                0u32.into(),
+                true,
+                6
+            )
+
         )?;
         pallet_fuso_token::Pallet::<T>::do_mint(
             1u32.into(),

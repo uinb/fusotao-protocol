@@ -715,4 +715,9 @@ impl<T: Config> EnsureOrigin<T::Origin> for EnsureBridge<T> {
     fn successful_origin() -> T::Origin {
         T::Origin::from(frame_system::RawOrigin::Signed(<Pallet<T>>::account_id()))
     }
+
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    fn successful_origin() -> T::Origin {
+        unimplemented!()
+    }
 }
