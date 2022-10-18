@@ -15,8 +15,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 pub extern crate alloc;
 
-pub use alloc::collections;
-
 pub mod external_chain;
 pub mod traits;
 pub use external_chain::*;

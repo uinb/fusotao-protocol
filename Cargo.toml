@@ -11,5 +11,6 @@ members = [
     'pallet-fuso-reward',
     'pallet-chainbridge',
     'pallet-chainbridge-handler',
+    'pallet-fuso-dao',
     'fuso-support',
 ]
