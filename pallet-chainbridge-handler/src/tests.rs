@@ -1,5 +1,4 @@
 #![cfg(test)]
-
 use super::{
     mock::{
         assert_events, expect_event, new_test_ext, Assets, Balances, Bridge, Call,
@@ -207,16 +206,13 @@ fn transfer_non_native() {
             hex::decode(contract_address).unwrap().as_slice(),
         )
         .unwrap();
-
         assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom,));
-
         let amount: Balance = 1 * DOLLARS;
         assert_ok!(Assets::do_mint(1, &ferdie, amount, None));
 
         // make sure have some  amount after mint
         assert_eq!(Assets::free_balance(&1, &ferdie), amount);
         assert_ok!(Bridge::whitelist_chain(Origin::root(), dest_chain.clone()));
-
         assert_ok!(ChainBridgeTransfer::transfer_out(
             Origin::signed(ferdie.clone()),
             amount,

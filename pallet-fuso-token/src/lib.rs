@@ -444,7 +444,6 @@ pub mod pallet {
                     *total = Zero::zero();
                     let r_id = derive_resource_id(token_info.chain_id(), contract)
                         .map_err(|e| Error::<T>::ContractTooLong)?;
-                    println!("------------------{:?}", r_id);
                     TokenByName::<T>::insert(r_id.to_vec(), id);
                 }
                 XToken::FND10(ref symbol, ref mut total) => {

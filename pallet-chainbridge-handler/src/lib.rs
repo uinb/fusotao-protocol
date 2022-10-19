@@ -2,8 +2,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(dead_code)]
 
-extern crate core;
-
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
