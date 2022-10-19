@@ -332,7 +332,8 @@ fn create_sucessful_transfer_proposal_non_native_token() {
         let resource_id = bridge::derive_resource_id(
             src_id,
             &hex_literal::hex!("b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2"),
-        ).unwrap();
+        )
+        .unwrap();
         let proposal = make_transfer_proposal(resource_id, RELAYER_A, 10);
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
 

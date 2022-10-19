@@ -10,12 +10,12 @@ use crate::{mock::new_test_ext_initialized, Event as ChainBridgeEvent};
 use frame_support::{assert_noop, assert_ok};
 
 #[test]
-fn test_decode_resource_id(){
-	let c: [u8;11] = [20,10,12,22,55,33,55,77,2,99,96];
-	let resource_id  = derive_resource_id(2, c.as_ref()).unwrap();
-	let r = decode_resource_id(resource_id);
-	assert_eq!(r.0, 2);
-	assert_eq!(r.1, c.to_vec());
+fn test_decode_resource_id() {
+    let c: [u8; 11] = [20, 10, 12, 22, 55, 33, 55, 77, 2, 99, 96];
+    let resource_id = derive_resource_id(2, c.as_ref()).unwrap();
+    let r = decode_resource_id(resource_id);
+    assert_eq!(r.0, 2);
+    assert_eq!(r.1, c.to_vec());
 }
 #[test]
 fn complete_proposal_approved() {
