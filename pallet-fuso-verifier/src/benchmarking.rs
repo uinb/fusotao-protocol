@@ -163,7 +163,6 @@ benchmarks! {
                 true,
                 6
             )
-
         )?;
         pallet_fuso_token::Pallet::<T>::do_mint(
             1u32.into(),
