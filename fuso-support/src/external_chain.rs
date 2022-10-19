@@ -44,6 +44,13 @@ impl<Balance> XToken<Balance> {
             | XToken::FND10(symbol, _) => symbol.clone(),
         }
     }
+
+    pub fn chain_id(&self) -> u8 {
+        match &*self {
+            XToken::ERC20(_, _, _, _, _) => 5u8,
+            _ => unimplemented!(),
+        }
+    }
 }
 
 pub mod chainbridge {

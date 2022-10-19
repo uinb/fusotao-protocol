@@ -25,27 +25,6 @@ mod tests;
 const DEFAULT_RELAYER_THRESHOLD: u32 = 1;
 const MODULE_ID: PalletId = PalletId(*b"oc/bridg");
 
-pub fn derive_resource_id(chain: u8, id: &[u8]) -> Result<ResourceId, String> {
-    let mut r_id: ResourceId = [0; 32];
-    let id_len = id.len();
-    r_id[31] = chain; // last byte is chain id
-    if id_len > 30 {
-        return Err("id is too long".to_string());
-    }
-    for i in 0..id_len {
-        r_id[30 - i] = id[id_len - 1 - i]; // Ensure left padding for eth compatibilit
-    }
-    r_id[0] = id_len as u8;
-    Ok(r_id)
-}
-
-pub fn decode_resource_id(r_id: ResourceId) -> (u8, Vec<u8>) {
-    let chainid = r_id[31];
-    let id_len = r_id[0];
-    let start = (31 - id_len) as usize;
-    let v: &[u8] = &r_id[start..31];
-    (chainid, v.to_vec())
-}
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub enum ProposalStatus {
     Initiated,

@@ -39,6 +39,7 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use fuso_support::{
         constants::*,
+        derive_resource_id,
         traits::{AssetIdResourceIdProvider, ReservableToken, Token},
         XToken,
     };
@@ -94,6 +95,7 @@ pub mod pallet {
         Overflow,
         TooManyReserves,
         InvalidDecimals,
+        ContractTooLong,
     }
 
     #[pallet::storage]
@@ -410,7 +412,6 @@ pub mod pallet {
             let id = Self::next_token_id();
             match token_info {
                 XToken::NEP141(ref symbol, ref contract, ref mut total, _, decimals)
-                | XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals)
                 | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
                     ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
                     let name = AsciiStr::from_ascii(&symbol);
@@ -426,6 +427,25 @@ pub mod pallet {
                     );
                     *total = Zero::zero();
                     TokenByName::<T>::insert(contract.clone(), id);
+                }
+                XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals) => {
+                    ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
+                    let name = AsciiStr::from_ascii(&symbol);
+                    ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
+                    let name = name.unwrap();
+                    ensure!(
+                        name.len() >= 2 && name.len() <= 8,
+                        Error::<T>::InvalidTokenName
+                    );
+                    ensure!(
+                        !TokenByName::<T>::contains_key(&contract),
+                        Error::<T>::InvalidToken
+                    );
+                    *total = Zero::zero();
+                    let r_id = derive_resource_id(token_info.chain_id(), contract)
+                        .map_err(|e| Error::<T>::ContractTooLong)?;
+                    println!("------------------{:?}", r_id);
+                    TokenByName::<T>::insert(r_id.to_vec(), id);
                 }
                 XToken::FND10(ref symbol, ref mut total) => {
                     let name = AsciiStr::from_ascii(&symbol);

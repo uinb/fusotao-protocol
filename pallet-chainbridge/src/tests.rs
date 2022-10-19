@@ -8,6 +8,7 @@ use super::{
 };
 use crate::{mock::new_test_ext_initialized, Event as ChainBridgeEvent};
 use frame_support::{assert_noop, assert_ok};
+use fuso_support::{decode_resource_id, derive_resource_id};
 
 #[test]
 fn test_decode_resource_id() {

@@ -16,9 +16,12 @@
 pub extern crate alloc;
 
 pub use alloc::collections;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 pub mod external_chain;
 pub mod traits;
+use crate::chainbridge::ResourceId;
 pub use external_chain::*;
 
 pub mod constants {
@@ -32,4 +35,26 @@ pub mod constants {
     pub const DOMINATOR_EVICTED: u8 = 3u8;
     pub const STANDARD_DECIMALS: u8 = 18;
     pub const MAX_DECIMALS: u8 = 24;
+}
+
+pub fn derive_resource_id(chain: u8, id: &[u8]) -> Result<ResourceId, String> {
+    let mut r_id: ResourceId = [0; 32];
+    let id_len = id.len();
+    r_id[31] = chain; // last byte is chain id
+    if id_len > 30 {
+        return Err("id is too long".to_string());
+    }
+    for i in 0..id_len {
+        r_id[30 - i] = id[id_len - 1 - i]; // Ensure left padding for eth compatibilit
+    }
+    r_id[0] = id_len as u8;
+    Ok(r_id)
+}
+
+pub fn decode_resource_id(r_id: ResourceId) -> (u8, Vec<u8>) {
+    let chainid = r_id[31];
+    let id_len = r_id[0];
+    let start = (31 - id_len) as usize;
+    let v: &[u8] = &r_id[start..31];
+    (chainid, v.to_vec())
 }
