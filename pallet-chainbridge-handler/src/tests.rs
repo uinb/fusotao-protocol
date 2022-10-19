@@ -175,7 +175,7 @@ fn transfer_non_native() {
     new_test_ext().execute_with(|| {
         let dest_chain = 0;
         // get resource id
-        let resource_id = bridge::derive_resource_id(dest_chain, b"DENOM");
+        let resource_id = bridge::derive_resource_id(dest_chain, b"DENOM").unwrap();
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
         let recipient = vec![99];
         // set token_id
@@ -265,7 +265,7 @@ fn execute_remark() {
         let proposal = make_remark_proposal(call.encode());
         let prop_id = 1;
         let src_id = 1;
-        let r_id = bridge::derive_resource_id(src_id, b"hash");
+        let r_id = bridge::derive_resource_id(src_id, b"hash").unwrap();
         let resource = b"Example.remark".to_vec();
 
         assert_ok!(Bridge::set_threshold(Origin::root(), TEST_THRESHOLD,));
@@ -326,13 +326,13 @@ fn create_sucessful_transfer_proposal_non_native_token() {
     new_test_ext().execute_with(|| {
         let prop_id = 1;
         let src_id = 1;
-        let r_id = bridge::derive_resource_id(src_id, b"transfer");
+        let r_id = bridge::derive_resource_id(src_id, b"transfer").unwrap();
         let resource = b"ChainBridgeTransfer.transfer".to_vec();
         // let resource_id = NativeTokenId::get();
         let resource_id = bridge::derive_resource_id(
             src_id,
-            &hex_literal::hex!("3c56dd5ed61af7e7b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2"),
-        );
+            &hex_literal::hex!("b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2"),
+        ).unwrap();
         let proposal = make_transfer_proposal(resource_id, RELAYER_A, 10);
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
 
@@ -424,7 +424,7 @@ fn create_sucessful_transfer_proposal_native_token() {
     new_test_ext().execute_with(|| {
         let prop_id = 1;
         let src_id = 1;
-        let r_id = bridge::derive_resource_id(src_id, b"transfer");
+        let r_id = bridge::derive_resource_id(src_id, b"transfer").unwrap();
         let resource = b"ChainBridgeTransfer.transfer".to_vec();
         let resource_id = NativeResourceId::get();
         let proposal = make_transfer_proposal(resource_id, RELAYER_A, 10);

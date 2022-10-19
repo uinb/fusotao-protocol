@@ -98,7 +98,7 @@ construct_runtime!(
 );
 
 parameter_types! {
-    pub Erc721Id: bridge::ResourceId = bridge::derive_resource_id(1, &blake2_128(b"NFT"));
+    pub Erc721Id: bridge::ResourceId = bridge::derive_resource_id(1, &blake2_128(b"NFT")).unwrap();
 }
 
 impl Config for Test {
