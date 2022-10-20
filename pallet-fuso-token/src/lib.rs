@@ -437,13 +437,14 @@ pub mod pallet {
                         name.len() >= 2 && name.len() <= 8,
                         Error::<T>::InvalidTokenName
                     );
-                    ensure!(
-                        !TokenByName::<T>::contains_key(&contract),
-                        Error::<T>::InvalidToken
-                    );
+
                     *total = Zero::zero();
                     let r_id = derive_resource_id(token_info.chain_id(), contract)
-                        .map_err(|e| Error::<T>::ContractTooLong)?;
+                        .map_err(|_e| Error::<T>::ContractTooLong)?;
+					ensure!(
+                        !TokenByName::<T>::contains_key(&r_id.to_vec()),
+                        Error::<T>::InvalidToken
+                    );
                     TokenByName::<T>::insert(r_id.to_vec(), id);
                 }
                 XToken::FND10(ref symbol, ref mut total) => {
