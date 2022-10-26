@@ -441,7 +441,7 @@ pub mod pallet {
                     *total = Zero::zero();
                     let r_id = derive_resource_id(token_info.chain_id(), contract)
                         .map_err(|_e| Error::<T>::ContractTooLong)?;
-					ensure!(
+                    ensure!(
                         !TokenByName::<T>::contains_key(&r_id.to_vec()),
                         Error::<T>::InvalidToken
                     );

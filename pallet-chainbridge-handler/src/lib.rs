@@ -44,6 +44,7 @@ const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use scale_info::TypeDefPrimitive::U32;
     // use log::{info, log};
 
     #[pallet::pallet]
@@ -111,7 +112,7 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn agents)]
-    pub type Agents<T: Config> = StorageMap<_, Blake2_128Concat, Depositer, T::AccountId>;
+    pub type Agents<T: Config> = StorageMap<_, Blake2_128Concat, Depositer, (T::AccountId, u32)>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
@@ -144,6 +145,7 @@ pub mod pallet {
         AssetAlreadyExists,
         InvalidCallMessage,
         RegisterAgentFailed,
+        DepositerNotFound,
     }
 
     #[pallet::hooks]
@@ -209,10 +211,19 @@ pub mod pallet {
             _r_id: ResourceId,
         ) -> DispatchResult {
             T::BridgeOrigin::ensure_origin(origin)?;
-            let c = <T as Config>::Call::decode(&mut &message[..])
+            let nonce: u32 = Decode::decode(&mut &message[0..4]).unwrap();
+            let c = <T as Config>::Call::decode(&mut &message[4..])
                 .map_err(|_| <Error<T>>::InvalidCallMessage)?;
             let controller = (b"ETH".to_vec(), depositer);
             Self::execute_tx(controller, c)?;
+            Agents::<T>::try_mutate_exists(depositer, |v| -> Result<(), DispatchError> {
+                ensure!(v.is_some(), Error::<T>::DepositerNotFound);
+                let mut map = v.take().unwrap();
+                map.1 = nonce;
+                v.replace(map);
+                Ok(())
+            });
+
             Ok(())
         }
     }
@@ -236,7 +247,7 @@ impl<T: Config> Agent<T::AccountId> for Pallet<T> {
                 T::DonationForAgent::get(),
                 ExistenceRequirement::KeepAlive,
             )?;
-            Agents::<T>::insert(origin.1.clone(), host_addr.clone());
+            Agents::<T>::insert(origin.1.clone(), (host_addr.clone(), 0u32));
         }
         Ok(host_addr)
     }
