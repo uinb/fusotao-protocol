@@ -44,8 +44,6 @@ const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use scale_info::TypeDefPrimitive::U32;
-    // use log::{info, log};
 
     #[pallet::pallet]
     #[pallet::generate_store(pub (super) trait Store)]
@@ -222,8 +220,7 @@ pub mod pallet {
                 map.1 = nonce;
                 v.replace(map);
                 Ok(())
-            });
-
+            })?;
             Ok(())
         }
     }
