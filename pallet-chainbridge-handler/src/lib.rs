@@ -209,6 +209,8 @@ pub mod pallet {
             _r_id: ResourceId,
         ) -> DispatchResult {
             T::BridgeOrigin::ensure_origin(origin)?;
+            let message_length = message.len();
+            ensure!(message_length > 4, Error::<T>::InvalidCallMessage);
             let nonce: u32 = Decode::decode(&mut &message[0..4]).unwrap();
             let c = <T as Config>::Call::decode(&mut &message[4..])
                 .map_err(|_| <Error<T>>::InvalidCallMessage)?;
