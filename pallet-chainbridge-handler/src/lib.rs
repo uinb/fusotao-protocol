@@ -7,43 +7,33 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-pub mod fungible;
-pub mod token;
-
-use codec::{Codec, EncodeLike};
-// use frame_support::{ dispatch::DispatchResult, ensure};
-use frame_support::{
-    pallet_prelude::*,
-    sp_runtime::traits::AtLeast32BitUnsigned,
-    sp_std::fmt::Debug,
-    traits::{
-        fungibles::Mutate, tokens::Balance as AssetBalance, Currency, EnsureOrigin,
-        ExistenceRequirement, ExistenceRequirement::AllowDeath, Get, StorageVersion,
-    },
-    weights::GetDispatchInfo,
-};
-use frame_system::{ensure_signed, pallet_prelude::*};
-use fuso_support::{
-    chainbridge::*,
-    traits::{Agent, AssetIdResourceIdProvider},
-};
-use pallet_chainbridge as bridge;
-use sp_core::U256;
-use sp_runtime::traits::{Dispatchable, SaturatedConversion, TrailingZeroInput};
-use sp_std::{convert::From, prelude::*};
-
-type Depositer = EthAddress;
-type BalanceOf<T> =
-    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
-
 pub use pallet::*;
-
-/// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::*;
+    use codec::{Codec, EncodeLike};
+    use frame_support::{
+        pallet_prelude::*,
+        sp_runtime::traits::AtLeast32BitUnsigned,
+        sp_std::fmt::Debug,
+        traits::{
+            fungibles::Mutate, tokens::Balance as AssetBalance, Currency, EnsureOrigin,
+            ExistenceRequirement, ExistenceRequirement::AllowDeath, Get, StorageVersion,
+        },
+        weights::GetDispatchInfo,
+    };
+    use frame_system::{ensure_signed, pallet_prelude::*};
+    use fuso_support::{chainbridge::*, traits::Agent};
+    use pallet_chainbridge as bridge;
+    use sp_core::U256;
+    use sp_runtime::traits::{Dispatchable, SaturatedConversion, TrailingZeroInput};
+    use sp_std::{convert::From, prelude::*};
+
+    type Depositer = EthAddress;
+    type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
     #[pallet::pallet]
     #[pallet::generate_store(pub (super) trait Store)]
@@ -103,10 +93,14 @@ pub mod pallet {
     #[pallet::getter(fn native_check)]
     pub type NativeCheck<T> = StorageValue<_, bool, ValueQuery>;
 
-    /// store generic hash
     #[pallet::storage]
     #[pallet::getter(fn assets_stored)]
     pub type AssetsStored<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, bool>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn associated_dominator)]
+    pub type AssociatedDominator<T: Config> =
+        StorageMap<_, Blake2_128Concat, u32, T::AccountId, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn agents)]
@@ -136,7 +130,7 @@ pub mod pallet {
     pub enum Error<T> {
         InvalidTransfer,
         InvalidTokenId,
-        InValidResourceId,
+        InvalidResourceId,
         WrongAssetId,
         InvalidTokenName,
         OverTransferLimit,
@@ -175,7 +169,7 @@ pub mod pallet {
             );
             // TODO
             // check recipient address is verify
-            match r_id == T::NativeResourceId::get() {
+            match Self::is_native_resource(r_id) {
                 true => Self::do_lock(source, amount, r_id, recipient, dest_id)?,
                 false => Self::do_burn_assets(source, amount, r_id, recipient, dest_id)?,
             }
@@ -193,9 +187,30 @@ pub mod pallet {
             r_id: ResourceId,
         ) -> DispatchResult {
             let source = T::BridgeOrigin::ensure_origin(origin)?;
-            match r_id == T::NativeResourceId::get() {
-                true => Self::do_unlock(source, to, amount.into())?,
-                false => Self::do_mint_assets(to, amount, r_id)?,
+            match Self::is_native_resource(r_id) {
+                true => {
+                    Self::do_unlock(source, to, amount.into())?;
+                    let (_, associated, _) = decode_resource_id(r_id);
+                    match Self::associated_dominator(associated as u32) {
+                        Some(dominator) => {
+                            // TODO AUTHORIZE
+                        }
+                        None => {}
+                    }
+                }
+                false => {
+                    Self::do_mint_assets(to, amount, r_id)?;
+                    let (chain_id, associated, maybe_contract) = decode_resource_id(r_id);
+                    match Self::associated_dominator(associated as u32) {
+                        Some(dominator) => {
+                            let token =
+                                T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)
+                                    .map_err(|_| Error::<T>::InvalidResourceId)?;
+                            // TODO AUTHORIZE
+                        }
+                        None => {}
+                    }
+                }
             }
             Ok(())
         }
@@ -226,41 +241,129 @@ pub mod pallet {
             Ok(())
         }
     }
-}
 
-/// IBC reference
-impl<T: Config> Agent<T::AccountId> for Pallet<T> {
-    type Message = <T as pallet::Config>::Call;
-    type Origin = (Vec<u8>, Depositer);
+    /// IBC reference
+    impl<T: Config> Agent<T::AccountId> for Pallet<T> {
+        type Message = <T as Config>::Call;
+        type Origin = (Vec<u8>, Depositer);
 
-    /// bind the origin to an appchain account without private key
-    /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
-    fn register_agent(origin: Self::Origin) -> Result<T::AccountId, DispatchError> {
-        let hash = (b"-*-#fusotao#-*-", origin.clone()).using_encoded(sp_io::hashing::blake2_256);
-        let host_addr = Decode::decode(&mut TrailingZeroInput::new(hash.as_ref()))
-            .map_err(|_| Error::<T>::RegisterAgentFailed)?;
-        if !Agents::<T>::contains_key(&origin.1) {
-            T::Currency::transfer(
-                &T::DonorAccount::get(),
-                &host_addr,
-                T::DonationForAgent::get(),
-                ExistenceRequirement::KeepAlive,
-            )?;
-            Agents::<T>::insert(origin.1.clone(), (host_addr.clone(), 0u32));
+        /// bind the origin to an appchain account without private key
+        /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
+        fn register_agent(origin: Self::Origin) -> Result<T::AccountId, DispatchError> {
+            let hash =
+                (b"-*-#fusotao#-*-", origin.clone()).using_encoded(sp_io::hashing::blake2_256);
+            let host_addr = Decode::decode(&mut TrailingZeroInput::new(hash.as_ref()))
+                .map_err(|_| Error::<T>::RegisterAgentFailed)?;
+            if !Agents::<T>::contains_key(&origin.1) {
+                T::Currency::transfer(
+                    &T::DonorAccount::get(),
+                    &host_addr,
+                    T::DonationForAgent::get(),
+                    ExistenceRequirement::KeepAlive,
+                )?;
+                Agents::<T>::insert(origin.1.clone(), (host_addr.clone(), 0u32));
+            }
+            Ok(host_addr)
         }
-        Ok(host_addr)
+
+        /// function AuthenticateTx(msgs []Any, connectionId string, portId string) returns (error)
+        fn authenticate_tx(
+            _origin: Self::Origin,
+            _msg: Self::Message,
+        ) -> Result<(), DispatchError> {
+            Ok(())
+        }
+
+        /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
+        fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult {
+            let agent = Self::register_agent(origin)?;
+            msg.dispatch(frame_system::RawOrigin::Signed(agent).into())
+                .map(|_| ().into())
+                .map_err(|e| e.error)
+        }
     }
 
-    /// function AuthenticateTx(msgs []Any, connectionId string, portId string) returns (error)
-    fn authenticate_tx(_origin: Self::Origin, _msg: Self::Message) -> Result<(), DispatchError> {
-        Ok(())
-    }
+    impl<T: Config> Pallet<T> {
+        fn is_native_resource(mut r_id: ResourceId) -> bool {
+            let native = T::NativeResourceId::get();
+            r_id[30] = 0;
+            native == r_id
+        }
 
-    /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
-    fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult {
-        let agent = Self::register_agent(origin)?;
-        msg.dispatch(frame_system::RawOrigin::Signed(agent).into())
-            .map(|_| ().into())
-            .map_err(|e| e.error)
+        pub(crate) fn do_lock(
+            sender: T::AccountId,
+            amount: BalanceOf<T>,
+            r_id: ResourceId,
+            recipient: Vec<u8>,
+            dest_id: ChainId,
+        ) -> DispatchResult {
+            log::info!("transfer native token");
+            let bridge_id = <bridge::Pallet<T>>::account_id();
+
+            if <NativeCheck<T>>::get() {
+                let free_balance = <T as Config>::Currency::free_balance(&bridge_id);
+                let total_balance = free_balance + amount;
+
+                let right_balance = T::NativeTokenMaxValue::get() / 3u8.into();
+                if total_balance > right_balance {
+                    return Err(Error::<T>::OverTransferLimit)?;
+                }
+            }
+
+            <T as Config>::Currency::transfer(&sender, &bridge_id, amount.into(), AllowDeath)?;
+
+            log::info!("transfer native token successful");
+            <bridge::Pallet<T>>::transfer_fungible(
+                dest_id,
+                r_id,
+                recipient.clone(),
+                U256::from(amount.saturated_into::<u128>()),
+            )?;
+
+            Ok(())
+        }
+
+        pub(crate) fn do_unlock(
+            sender: T::AccountId,
+            to: T::AccountId,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            <T as Config>::Currency::transfer(&sender, &to, amount.into(), AllowDeath)?;
+            Ok(())
+        }
+
+        pub(crate) fn do_burn_assets(
+            who: T::AccountId,
+            amount: BalanceOf<T>,
+            r_id: ResourceId,
+            recipient: Vec<u8>,
+            dest_id: ChainId,
+        ) -> DispatchResult {
+            let amount = amount.saturated_into::<u128>();
+            let (chain_id, _, maybe_contract) = decode_resource_id(r_id);
+            let token_id = T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)
+                .map_err(|_| Error::<T>::InvalidResourceId)?;
+            <T::Fungibles as Mutate<T::AccountId>>::burn_from(token_id, &who, amount.into())?;
+            <bridge::Pallet<T>>::transfer_fungible(
+                dest_id,
+                r_id,
+                recipient.clone(),
+                U256::from(amount.saturated_into::<u128>()),
+            )?;
+            Ok(())
+        }
+
+        pub(crate) fn do_mint_assets(
+            who: T::AccountId,
+            amount: BalanceOf<T>,
+            r_id: ResourceId,
+        ) -> DispatchResult {
+            let amount = amount.saturated_into::<u128>();
+            let (chain_id, _, maybe_contract) = decode_resource_id(r_id);
+            let token_id = T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)
+                .map_err(|_| Error::<T>::InvalidResourceId)?;
+            <T::Fungibles as Mutate<T::AccountId>>::mint_into(token_id, &who, amount.into())?;
+            Ok(())
+        }
     }
 }
