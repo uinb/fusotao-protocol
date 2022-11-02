@@ -410,9 +410,7 @@ pub mod pallet {
         fn create(mut token_info: XToken<BalanceOf<T>>) -> Result<Self::TokenId, DispatchError> {
             let id = Self::next_token_id();
             match token_info {
-                XToken::NEP141(ref symbol, ref contract, ref mut total, _, decimals)
-                | XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals)
-                | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
+                XToken::NEP141(ref symbol, ref contract, ref mut total, _, decimals) => {
                     ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
                     let name = AsciiStr::from_ascii(&symbol);
                     ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
@@ -427,6 +425,22 @@ pub mod pallet {
                     );
                     *total = Zero::zero();
                     TokenByName::<T>::insert(contract.clone(), id);
+                }
+                XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals)
+                | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
+                    ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
+                    let name = AsciiStr::from_ascii(&symbol);
+                    ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
+                    let name = name.unwrap();
+                    ensure!(
+                        name.len() >= 2 && name.len() <= 8,
+                        Error::<T>::InvalidTokenName
+                    );
+                    ensure!(
+                        !TokenByName::<T>::contains_key(&contract),
+                        Error::<T>::InvalidToken
+                    );
+                    *total = Zero::zero();
                 }
                 XToken::FND10(ref symbol, ref mut total) => {
                     let name = AsciiStr::from_ascii(&symbol);

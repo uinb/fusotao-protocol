@@ -26,10 +26,11 @@ pub mod pallet {
     use fuso_support::{chainbridge::*, traits::Agent};
     use pallet_chainbridge as bridge;
     use sp_core::U256;
-    use sp_runtime::traits::{Dispatchable, SaturatedConversion, TrailingZeroInput};
+    use sp_runtime::traits::{Dispatchable, SaturatedConversion, StaticLookup, TrailingZeroInput};
     use sp_std::{convert::From, prelude::*};
 
     type Depositer = EthAddress;
+
     type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -100,7 +101,7 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn associated_dominator)]
     pub type AssociatedDominator<T: Config> =
-        StorageMap<_, Blake2_128Concat, u32, T::AccountId, OptionQuery>;
+        StorageMap<_, Blake2_128Concat, u8, T::AccountId, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn agents)]
@@ -191,9 +192,14 @@ pub mod pallet {
                 true => {
                     Self::do_unlock(source, to, amount.into())?;
                     let (_, associated, _) = decode_resource_id(r_id);
-                    match Self::associated_dominator(associated as u32) {
+                    match Self::associated_dominator(associated) {
                         Some(dominator) => {
-                            // TODO AUTHORIZE
+                            // <verifier::Pallet<T>>::authorize_to(
+                            //     to,
+                            //     dominator,
+                            //     <T as verifier::Config>::Asset::native_token_id(),
+                            //     amount,
+                            // );
                         }
                         None => {}
                     }
@@ -201,7 +207,7 @@ pub mod pallet {
                 false => {
                     Self::do_mint_assets(to, amount, r_id)?;
                     let (chain_id, associated, maybe_contract) = decode_resource_id(r_id);
-                    match Self::associated_dominator(associated as u32) {
+                    match Self::associated_dominator(associated) {
                         Some(dominator) => {
                             let token =
                                 T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)

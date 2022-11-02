@@ -24,7 +24,7 @@ sp-arithmetic = { git = "https://github.com/paritytech/substrate.git", branch = 
 sp-core = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18", default-features = false }
 pallet-chainbridge = { path = "../pallet-chainbridge", default-features = false }
 fuso-support = { path = "../fuso-support", default-features = false }
-# pallet-chainbridge-erc721 = {path = "./chainbridge-erc721", default-features = false }
+pallet-fuso-verifier = { path = "../pallet-fuso-verifier", default-features = false }
 
 [dev-dependencies]
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18" }
