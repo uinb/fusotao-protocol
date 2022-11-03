@@ -344,6 +344,179 @@ pub fn test_authorize() {
     });
 }
 
+#[test]
+pub fn test_revoke() {
+    new_tester().execute_with(|| {
+        run_to_block(100);
+        let alice: AccountId = AccountKeyring::Alice.into();
+        let bob: AccountId = AccountKeyring::Bob.into();
+        let ferdie: AccountId = AccountKeyring::Ferdie.into();
+        frame_system::Pallet::<Test>::set_block_number(15);
+        let usdt = XToken::NEP141(
+            br#"USDT"#.to_vec(),
+            br#"usdt.testnet"#.to_vec(),
+            Zero::zero(),
+            true,
+            6,
+        );
+
+        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt,));
+        assert_ok!(Token::do_mint(1, &ferdie, 10000000, None));
+        // assert_ok!(Token::issue(
+        //     Origin::signed(ferdie.clone()),
+        //     10000000000000000000,
+        //     br#"USDT"#.to_vec()
+        // ));
+        let token_info = Token::get_token_info(1);
+        assert!(token_info.is_some());
+        let token_info: XToken<u128> = token_info.unwrap();
+        match token_info {
+            XToken::NEP141(_, _, total, _, _) => {
+                assert_eq!(total, 10000000000000000000);
+            }
+            _ => {}
+        }
+        assert_ok!(Verifier::register(
+            Origin::signed(alice.clone()),
+            b"cool".to_vec()
+        ));
+        assert_ok!(Verifier::launch(
+            RawOrigin::Root.into(),
+            MultiAddress::Id(alice.clone())
+        ));
+        assert_ok!(Verifier::stake(
+            Origin::signed(ferdie.clone()),
+            MultiAddress::Id(alice.clone()),
+            800000000000
+        ));
+        run_to_block(1000);
+        assert_ok!(Verifier::authorize(
+            Origin::signed(ferdie.clone()),
+            MultiAddress::Id(alice.clone()),
+            1,
+            500000000000
+        ));
+        assert_eq!(
+            Verifier::receipts(alice.clone(), ferdie.clone()),
+            Some(Receipt::Authorize(1, 500000000000u128.into(), 1000))
+        );
+        use codec::Encode;
+        let mut states = GlobalStates::default();
+        let key = [&[0x00][..], &ferdie.encode()[..], &u32::to_le_bytes(1)[..]].concat();
+        let leaves = vec![MerkleLeaf {
+            key: key.clone(),
+            old_v: [0u8; 32],
+            new_v: u128le_to_h256(500000000000, 0),
+        }];
+        let proof = gen_proofs(&mut states, &leaves);
+        assert_ok!(Verifier::verify(
+            Origin::signed(alice.clone()),
+            vec![Proof {
+                event_id: 1,
+                user_id: ferdie.clone(),
+                cmd: Command::TransferIn(1.into(), 500000000000.into()),
+                leaves,
+                maker_page_delta: 0,
+                maker_account_delta: 0,
+                merkle_proof: proof,
+                root: states.root().clone().into(),
+            }]
+        ));
+        assert_eq!(Verifier::receipts(alice.clone(), ferdie.clone()), None);
+
+        assert_ok!(Verifier::revoke_with_callback(
+            Origin::signed(ferdie.clone()),
+            MultiAddress::Id(alice.clone()),
+            1,
+            500000000000,
+            Box::new(crate::mock::Call::Balances(
+                pallet_balances::Call::<Test>::transfer {
+                    dest: MultiAddress::Id(bob.clone()),
+                    value: 500000000000u128.into(),
+                }
+            )),
+        ));
+        assert_eq!(
+            Verifier::receipts(alice.clone(), ferdie.clone()),
+            Some(Receipt::RevokeWithCallback(
+                1,
+                500000000000u128.into(),
+                1000,
+                crate::mock::Call::Balances(pallet_balances::Call::<Test>::transfer {
+                    dest: MultiAddress::Id(bob.clone()),
+                    value: 500000000000u128.into(),
+                })
+            ))
+        );
+        // let call = crate::mock::Call::Balances(pallet_balances::Call::<Test>::transfer {
+        //     dest: MultiAddress::Id(bob.clone()),
+        //     value: 500000000000u128.into(),
+        // });
+
+        // frame_support::dispatch::Dispatchable::dispatch(
+        //     call,
+        //     RawOrigin::Signed(ferdie.clone()).into(),
+        // )
+        // .unwrap();
+        let leaves = vec![MerkleLeaf {
+            key: key.clone(),
+            new_v: [0u8; 32],
+            old_v: u128le_to_h256(500000000000, 0),
+        }];
+        let proof = gen_proofs(&mut states, &leaves);
+        assert_ok!(Verifier::verify(
+            Origin::signed(alice.clone()),
+            vec![Proof {
+                event_id: 2,
+                user_id: ferdie.clone(),
+                cmd: Command::TransferOut(1.into(), 500000000000.into()),
+                leaves,
+                maker_page_delta: 0,
+                maker_account_delta: 0,
+                merkle_proof: proof,
+                root: states.root().clone().into(),
+            }]
+        ));
+        assert_eq!(Verifier::receipts(alice.clone(), ferdie.clone()), None);
+        run_to_block(1002);
+        assert_eq!(Balances::free_balance(bob.clone()), 500000000000);
+    });
+}
+
+fn u128le_to_h256(a0: u128, a1: u128) -> [u8; 32] {
+    let mut v: [u8; 32] = Default::default();
+    v[..16].copy_from_slice(&a0.to_le_bytes());
+    v[16..].copy_from_slice(&a1.to_le_bytes());
+    v
+}
+
+type GlobalStates = smt::SparseMerkleTree<
+    smt::blake2b::Blake2bHasher,
+    smt::H256,
+    smt::default_store::DefaultStore<smt::H256>,
+>;
+
+fn gen_proofs(merkle_tree: &mut GlobalStates, leaves: &Vec<MerkleLeaf>) -> Vec<u8> {
+    let keys = leaves
+        .iter()
+        .map(|leaf| sp_io::hashing::blake2_256(&leaf.key).into())
+        .collect::<Vec<_>>();
+    leaves.iter().for_each(|leaf| {
+        merkle_tree
+            .update(
+                sp_io::hashing::blake2_256(&leaf.key).into(),
+                leaf.new_v.into(),
+            )
+            .unwrap();
+    });
+    merkle_tree
+        .merkle_proof(keys.clone())
+        .expect("generate merkle proof failed")
+        .compile(keys)
+        .expect("compile merkle proof failed")
+        .into()
+}
+
 fn run_to_block(n: u32) {
     while System::block_number() < n {
         if System::block_number() > 1 {

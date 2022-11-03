@@ -201,7 +201,3 @@ pub trait Agent<AccountId> {
     /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
     fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult;
 }
-
-pub trait AssetIdResourceIdProvider<TokenId> {
-    fn try_get_asset_id(resource_id: impl AsRef<[u8]>) -> Result<TokenId, DispatchError>;
-}

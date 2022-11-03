@@ -39,8 +39,7 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use fuso_support::{
         constants::*,
-        derive_resource_id,
-        traits::{AssetIdResourceIdProvider, ReservableToken, Token},
+        traits::{ReservableToken, Token},
         XToken,
     };
     use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
@@ -411,8 +410,7 @@ pub mod pallet {
         fn create(mut token_info: XToken<BalanceOf<T>>) -> Result<Self::TokenId, DispatchError> {
             let id = Self::next_token_id();
             match token_info {
-                XToken::NEP141(ref symbol, ref contract, ref mut total, _, decimals)
-                | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
+                XToken::NEP141(ref symbol, ref contract, ref mut total, _, decimals) => {
                     ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
                     let name = AsciiStr::from_ascii(&symbol);
                     ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
@@ -428,7 +426,8 @@ pub mod pallet {
                     *total = Zero::zero();
                     TokenByName::<T>::insert(contract.clone(), id);
                 }
-                XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals) => {
+                XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals)
+                | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
                     ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
                     let name = AsciiStr::from_ascii(&symbol);
                     ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
@@ -437,15 +436,11 @@ pub mod pallet {
                         name.len() >= 2 && name.len() <= 8,
                         Error::<T>::InvalidTokenName
                     );
-
-                    *total = Zero::zero();
-                    let r_id = derive_resource_id(token_info.chain_id(), contract)
-                        .map_err(|_e| Error::<T>::ContractTooLong)?;
                     ensure!(
-                        !TokenByName::<T>::contains_key(&r_id.to_vec()),
+                        !TokenByName::<T>::contains_key(&contract),
                         Error::<T>::InvalidToken
                     );
-                    TokenByName::<T>::insert(r_id.to_vec(), id);
+                    *total = Zero::zero();
                 }
                 XToken::FND10(ref symbol, ref mut total) => {
                     let name = AsciiStr::from_ascii(&symbol);
@@ -713,16 +708,27 @@ pub mod pallet {
             let token_result = Self::get_token_info(asset_id);
             match token_result {
                 Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
-                //for bridge of near<-> substrate, provide nep141 mapping only.
                 _ => Err(()),
             }
         }
     }
 
-    impl<T: Config> AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
-        fn try_get_asset_id(resource_id: impl AsRef<[u8]>) -> Result<T::TokenId, DispatchError> {
-            Self::get_token_by_name(resource_id.as_ref().to_vec())
-                .ok_or(Error::<T>::InvalidToken.into())
+    use fuso_support::chainbridge::*;
+    impl<T: Config> fuso_support::chainbridge::AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
+        type Err = ();
+
+        fn try_get_asset_id(
+            chain_id: ChainId,
+            contract_id: impl AsRef<[u8]>,
+        ) -> Result<T::TokenId, Self::Err> {
+            for (id, token) in Tokens::<T>::iter() {
+                if chain_id_of(&token) == chain_id
+                    && token.contract() == contract_id.as_ref().to_vec()
+                {
+                    return Ok(id);
+                }
+            }
+            Err(())
         }
     }
 }

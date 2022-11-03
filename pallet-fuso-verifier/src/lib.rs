@@ -29,9 +29,10 @@ pub mod tests;
 pub mod pallet {
     use crate::weights::WeightInfo;
     use ascii::AsciiStr;
-    use codec::{Compact, Decode, Encode};
+    use codec::{Compact, Decode, Encode, EncodeLike};
     use frame_support::{
-        weights::constants::RocksDbWeight,
+        dispatch::Dispatchable,
+        weights::{constants::RocksDbWeight, GetDispatchInfo, PostDispatchInfo},
         {pallet_prelude::*, transactional},
     };
     use frame_system::pallet_prelude::*;
@@ -204,9 +205,10 @@ pub mod pallet {
     }
 
     #[derive(Clone, Encode, Decode, RuntimeDebug, Eq, PartialEq, TypeInfo)]
-    pub enum Receipt<TokenId, Balance, BlockNumber> {
+    pub enum Receipt<TokenId, Balance, BlockNumber, Callback> {
         Authorize(TokenId, Balance, BlockNumber),
         Revoke(TokenId, Balance, BlockNumber),
+        RevokeWithCallback(TokenId, Balance, BlockNumber, Callback),
     }
 
     #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -246,8 +248,12 @@ pub mod pallet {
 
         type Rewarding: Rewarding<Self::AccountId, Balance<Self>, Self::BlockNumber>;
 
-        /// Weight information for the extrinsics in this module.
         type WeightInfo: WeightInfo;
+
+        type Callback: Parameter
+            + Dispatchable<Origin = Self::Origin, PostInfo = PostDispatchInfo>
+            + EncodeLike
+            + GetDispatchInfo;
 
         #[pallet::constant]
         type DominatorOnlineThreshold: Get<Balance<Self>>;
@@ -277,7 +283,7 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         T::AccountId,
-        Receipt<TokenId<T>, Balance<T>, T::BlockNumber>,
+        Receipt<TokenId<T>, Balance<T>, T::BlockNumber, T::Callback>,
         OptionQuery,
     >;
 
@@ -399,10 +405,10 @@ pub mod pallet {
     {
         /// save total staking of previous season
         fn on_initialize(now: T::BlockNumber) -> Weight {
-            if now % T::DominatorCheckGracePeriod::get() != Zero::zero() {
-                return Zero::zero();
-            }
             let mut weight: Weight = 0u64 as Weight;
+            if now % T::DominatorCheckGracePeriod::get() != Zero::zero() {
+                return weight;
+            }
             for (id, dominator) in Dominators::<T>::iter() {
                 let start = dominator.start_from;
                 if now == start {
@@ -602,7 +608,6 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[transactional]
         #[pallet::weight(<T as Config>::WeightInfo::authorize())]
         pub fn authorize(
             origin: OriginFor<T>,
@@ -612,6 +617,72 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
             let dex = T::Lookup::lookup(dominator)?;
+            Self::authorize_to(fund_owner, dex, token_id, amount)?;
+            Ok(().into())
+        }
+
+        #[transactional]
+        #[pallet::weight(<T as Config>::WeightInfo::revoke())]
+        pub fn revoke(
+            origin: OriginFor<T>,
+            dominator: <T::Lookup as StaticLookup>::Source,
+            token_id: TokenId<T>,
+            amount: Balance<T>,
+        ) -> DispatchResultWithPostInfo {
+            let fund_owner = ensure_signed(origin)?;
+            let dominator = T::Lookup::lookup(dominator)?;
+            Self::revoke_from(fund_owner, dominator, token_id, amount, None)?;
+            Ok(().into())
+        }
+
+        #[transactional]
+        #[pallet::weight(<T as Config>::WeightInfo::revoke())]
+        pub fn revoke_with_callback(
+            origin: OriginFor<T>,
+            dominator: <T::Lookup as StaticLookup>::Source,
+            token_id: TokenId<T>,
+            amount: Balance<T>,
+            callback: Box<T::Callback>,
+        ) -> DispatchResultWithPostInfo {
+            let fund_owner = ensure_signed(origin)?;
+            let dominator = T::Lookup::lookup(dominator)?;
+            Self::revoke_from(fund_owner, dominator, token_id, amount, Some(*callback))?;
+            Ok(().into())
+        }
+    }
+
+    #[derive(Clone)]
+    struct ClearingResult<T: Config> {
+        pub users_mutation: Vec<TokenMutation<T::AccountId, Balance<T>>>,
+        pub base_fee: Balance<T>,
+        pub quote_fee: Balance<T>,
+    }
+
+    #[derive(Clone)]
+    struct TokenMutation<AccountId, Balance> {
+        pub who: AccountId,
+        pub volume: Balance,
+        pub base_value: Balance,
+        pub quote_value: Balance,
+    }
+
+    impl<T: Config> Pallet<T>
+    where
+        Balance<T>: Copy + From<u128> + Into<u128>,
+        TokenId<T>: Copy + From<u32> + Into<u32>,
+        T::BlockNumber: From<u32> + Into<u32>,
+    {
+        pub fn system_account() -> T::AccountId {
+            PALLET_ID.into_account()
+        }
+
+        #[transactional]
+        pub fn authorize_to(
+            fund_owner: T::AccountId,
+            dex: T::AccountId,
+            token_id: TokenId<T>,
+            amount: Balance<T>,
+        ) -> DispatchResult {
             let dominator =
                 Dominators::<T>::try_get(&dex).map_err(|_| Error::<T>::DominatorNotFound)?;
             ensure!(
@@ -640,24 +711,21 @@ pub mod pallet {
                 Receipt::Authorize(token_id, amount, block_number),
             );
             Self::deposit_event(Event::TokenHosted(fund_owner, dex, token_id, amount));
-            Ok(().into())
+            Ok(())
         }
 
         #[transactional]
-        #[pallet::weight(<T as Config>::WeightInfo::revoke())]
-        pub fn revoke(
-            origin: OriginFor<T>,
-            dominator: <T::Lookup as StaticLookup>::Source,
+        pub fn revoke_from(
+            fund_owner: T::AccountId,
+            dominator_id: T::AccountId,
             token_id: TokenId<T>,
             amount: Balance<T>,
-        ) -> DispatchResultWithPostInfo {
-            let fund_owner = ensure_signed(origin)?;
-            let dominator_id = T::Lookup::lookup(dominator)?;
+            callback: Option<T::Callback>,
+        ) -> DispatchResult {
             ensure!(
                 Self::has_authorized_morethan(fund_owner.clone(), token_id, amount, &dominator_id),
                 Error::<T>::InsufficientBalance
             );
-
             let dominator = Dominators::<T>::try_get(&dominator_id)
                 .map_err(|_| Error::<T>::DominatorNotFound)?;
             ensure!(
@@ -665,7 +733,6 @@ pub mod pallet {
                 Error::<T>::DominatorStatusInvalid
             );
             if dominator.status == DOMINATOR_EVICTED {
-                ensure!(false, Error::<T>::DominatorEvicted);
                 Reserves::<T>::try_mutate_exists(
                     &(RESERVE_FOR_AUTHORIZING_STASH, fund_owner.clone(), token_id),
                     &dominator_id,
@@ -697,11 +764,12 @@ pub mod pallet {
                     Error::<T>::ReceiptAlreadyExists,
                 );
                 let block_number = frame_system::Pallet::<T>::block_number();
-                Receipts::<T>::insert(
-                    dominator_id.clone(),
-                    fund_owner.clone(),
-                    Receipt::Revoke(token_id, amount, block_number),
-                );
+                let receipt = if let Some(callback) = callback {
+                    Receipt::RevokeWithCallback(token_id, amount, block_number, callback)
+                } else {
+                    Receipt::Revoke(token_id, amount, block_number)
+                };
+                Receipts::<T>::insert(dominator_id.clone(), fund_owner.clone(), receipt);
             }
             Self::deposit_event(Event::TokenRevoked(
                 fund_owner,
@@ -709,33 +777,7 @@ pub mod pallet {
                 token_id,
                 amount,
             ));
-            Ok(().into())
-        }
-    }
-
-    #[derive(Clone)]
-    struct ClearingResult<T: Config> {
-        pub users_mutation: Vec<TokenMutation<T::AccountId, Balance<T>>>,
-        pub base_fee: Balance<T>,
-        pub quote_fee: Balance<T>,
-    }
-
-    #[derive(Clone)]
-    struct TokenMutation<AccountId, Balance> {
-        pub who: AccountId,
-        pub volume: Balance,
-        pub base_value: Balance,
-        pub quote_value: Balance,
-    }
-
-    impl<T: Config> Pallet<T>
-    where
-        Balance<T>: Copy + From<u128> + Into<u128>,
-        TokenId<T>: Copy + From<u32> + Into<u32>,
-        T::BlockNumber: From<u32> + Into<u32>,
-    {
-        pub fn system_account() -> T::AccountId {
-            PALLET_ID.into_account()
+            Ok(())
         }
 
         #[transactional]
@@ -871,7 +913,10 @@ pub mod pallet {
                         Receipt::Revoke(id, value, _) => {
                             id.into() == currency && value.into() == amount
                         }
-                        _ => false,
+                        Receipt::RevokeWithCallback(id, value, ..) => {
+                            id.into() == currency && value.into() == amount
+                        }
+                        Receipt::Authorize(..) => false,
                     };
                     ensure!(exists, Error::<T>::ReceiptNotExists);
                     Self::verify_transfer_out(currency, amount, &proof.user_id, &proof.leaves)?;
@@ -883,6 +928,23 @@ pub mod pallet {
                         &dominator_id,
                     )?;
                     Receipts::<T>::remove(dominator_id, &proof.user_id);
+                    match r {
+                        Receipt::RevokeWithCallback(_, _, _, cb) => {
+                            if let Err(e) = cb
+                                .dispatch(
+                                    frame_system::RawOrigin::Signed(proof.user_id.clone()).into(),
+                                )
+                                .map_err(|e| e.error)
+                            {
+                                log::error!(
+                                    "execute callback of {:?} failed: {:?}",
+                                    proof.user_id,
+                                    e
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
                 }
                 Command::TransferIn(currency, amount) => {
                     let (currency, amount) = (currency.into(), amount.into());
@@ -926,7 +988,10 @@ pub mod pallet {
                         Receipt::Revoke(id, value, _) => {
                             currency == id.into() && value.into() == amount
                         }
-                        _ => false,
+                        Receipt::RevokeWithCallback(id, value, ..) => {
+                            currency == id.into() && value.into() == amount
+                        }
+                        Receipt::Authorize(..) => false,
                     };
                     ensure!(exists, Error::<T>::ReceiptNotExists);
                     Self::verify_reject_transfer_out(

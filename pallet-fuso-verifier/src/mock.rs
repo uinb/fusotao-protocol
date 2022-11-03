@@ -63,7 +63,7 @@ impl frame_system::Config for Test {
 }
 
 parameter_types! {
-    pub const ExistentialDeposit: Balance = 1 * DOLLARS;
+    pub const ExistentialDeposit: Balance = 1;
     pub const MaxLocks: u32 = 50;
     pub const MaxReserves: u32 = 50;
 }
@@ -127,6 +127,7 @@ impl fuso_support::traits::Rewarding<AccountId, Balance, BlockNumber> for Phanto
 
 impl pallet_fuso_verifier::Config for Test {
     type Asset = TokenModule;
+    type Callback = Call;
     type DominatorCheckGracePeriod = DominatorCheckGracePeriod;
     type DominatorOnlineThreshold = DominatorOnlineThreshold;
     type Event = Event;

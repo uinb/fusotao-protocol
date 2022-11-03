@@ -1,5 +1,6 @@
 #![cfg(test)]
-use super::{
+use crate::Error::InvalidCallMessage;
+use crate::{
     mock::{
         assert_events, expect_event, new_test_ext, Assets, Balances, Bridge, Call,
         ChainBridgeTransfer, Event, NativeResourceId, Origin, ProposalLifetime, Test,
@@ -7,16 +8,17 @@ use super::{
     },
     *,
 };
-use crate::Error::InvalidCallMessage;
 use crate::{
     mock::{event_exists, AccountId, Balance, DOLLARS},
     Event as ChainBridgeTransferEvent,
 };
+use codec::Encode;
 use frame_support::{
     assert_err, assert_noop, assert_ok, dispatch::DispatchError, traits::fungibles::Inspect,
 };
 use fuso_support::chainbridge::*;
-use fuso_support::{derive_resource_id, traits::Token, XToken};
+use fuso_support::{traits::Token, XToken};
+use pallet_chainbridge as bridge;
 use pallet_fuso_token as assets;
 use sp_core::bytes::from_hex;
 use sp_core::{blake2_256, crypto::AccountId32, H256};
@@ -203,6 +205,7 @@ fn transfer_non_native() {
         );
         let resource_id = derive_resource_id(
             dest_chain,
+            0,
             hex::decode(contract_address).unwrap().as_slice(),
         )
         .unwrap();
@@ -228,7 +231,7 @@ fn transfer_non_native() {
             dest_chain,
             1,
             resource_id,
-            U256::from(amount),
+            sp_core::U256::from(amount),
             recipient,
         ))]);
     })
@@ -268,7 +271,7 @@ fn execute_remark() {
         let proposal = make_remark_proposal(call.encode());
         let prop_id = 1;
         let src_id = 1;
-        let r_id = derive_resource_id(src_id, b"hash").unwrap();
+        let r_id = derive_resource_id(src_id, 0, b"hash").unwrap();
         let resource = b"Example.remark".to_vec();
 
         assert_ok!(Bridge::set_threshold(Origin::root(), TEST_THRESHOLD,));
@@ -329,12 +332,13 @@ fn create_sucessful_transfer_proposal_non_native_token() {
     new_test_ext().execute_with(|| {
         let prop_id = 1;
         let src_id = 5;
-        let r_id = derive_resource_id(src_id, b"transfer").unwrap();
+        let r_id = derive_resource_id(src_id, 0, b"transfer").unwrap();
         let resource = b"ChainBridgeTransfer.transfer".to_vec();
         // let resource_id = NativeTokenId::get();
         let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2";
         let resource_id =
-            derive_resource_id(src_id, hex::decode(contract_address).unwrap().as_slice()).unwrap();
+            derive_resource_id(src_id, 0, hex::decode(contract_address).unwrap().as_slice())
+                .unwrap();
         let proposal = make_transfer_proposal(resource_id, RELAYER_A, 10);
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
 
@@ -426,7 +430,7 @@ fn create_sucessful_transfer_proposal_native_token() {
     new_test_ext().execute_with(|| {
         let prop_id = 1;
         let src_id = 1;
-        let r_id = derive_resource_id(src_id, b"transfer").unwrap();
+        let r_id = derive_resource_id(src_id, 0, b"transfer").unwrap();
         let resource = b"ChainBridgeTransfer.transfer".to_vec();
         let resource_id = NativeResourceId::get();
         let proposal = make_transfer_proposal(resource_id, RELAYER_A, 10);

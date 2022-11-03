@@ -8,15 +8,23 @@ use super::{
 };
 use crate::{mock::new_test_ext_initialized, Event as ChainBridgeEvent};
 use frame_support::{assert_noop, assert_ok};
-use fuso_support::{decode_resource_id, derive_resource_id};
+use fuso_support::chainbridge::{decode_resource_id, derive_resource_id};
 
 #[test]
 fn test_decode_resource_id() {
     let c: [u8; 11] = [20, 10, 12, 22, 55, 33, 55, 77, 2, 99, 96];
-    let resource_id = derive_resource_id(2, c.as_ref()).unwrap();
-    let r = decode_resource_id(resource_id);
-    assert_eq!(r.0, 2);
-    assert_eq!(r.1, c.to_vec());
+    let resource_id = derive_resource_id(2, 0, c.as_ref()).unwrap();
+    let (chain, dex, r) = decode_resource_id(resource_id);
+    assert_eq!(chain, 2);
+    assert_eq!(dex, 0);
+    assert_eq!(r, c.to_vec());
+
+    let c: [u8; 20] = [0xff; 20];
+    let resource_id = derive_resource_id(5, 1, c.as_ref()).unwrap();
+    let (chain, dex, r) = decode_resource_id(resource_id);
+    assert_eq!(chain, 5);
+    assert_eq!(dex, 1);
+    assert_eq!(r, c.to_vec());
 }
 #[test]
 fn complete_proposal_approved() {
@@ -249,7 +257,7 @@ fn make_proposal(r: Vec<u8>) -> Call {
 #[test]
 fn create_sucessful_proposal() {
     let src_id = 1;
-    let r_id = derive_resource_id(src_id, b"remark").unwrap();
+    let r_id = derive_resource_id(src_id, 0, b"remark").unwrap();
 
     new_test_ext_initialized(src_id, r_id, b"System.remark".to_vec()).execute_with(|| {
         let prop_id = 1;
@@ -319,7 +327,7 @@ fn create_sucessful_proposal() {
 #[test]
 fn create_unsucessful_proposal() {
     let src_id = 1;
-    let r_id = derive_resource_id(src_id, b"transfer").unwrap();
+    let r_id = derive_resource_id(src_id, 0, b"transfer").unwrap();
 
     new_test_ext_initialized(src_id, r_id, b"System.remark".to_vec()).execute_with(|| {
         let prop_id = 1;
@@ -394,7 +402,7 @@ fn create_unsucessful_proposal() {
 #[test]
 fn execute_after_threshold_change() {
     let src_id = 1;
-    let r_id = derive_resource_id(src_id, b"transfer").unwrap();
+    let r_id = derive_resource_id(src_id, 0, b"transfer").unwrap();
 
     new_test_ext_initialized(src_id, r_id, b"System.remark".to_vec()).execute_with(|| {
         let prop_id = 1;
@@ -455,7 +463,7 @@ fn execute_after_threshold_change() {
 #[test]
 fn proposal_expires() {
     let src_id = 1;
-    let r_id = derive_resource_id(src_id, b"remark").unwrap();
+    let r_id = derive_resource_id(src_id, 0, b"remark").unwrap();
 
     new_test_ext_initialized(src_id, r_id, b"System.remark".to_vec()).execute_with(|| {
         let prop_id = 1;
