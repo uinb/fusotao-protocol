@@ -32,8 +32,9 @@ pub mod pallet {
     use sp_core::U256;
     use sp_runtime::traits::{Dispatchable, SaturatedConversion, TrailingZeroInput};
     use sp_std::{convert::From, prelude::*};
+	use crate::pallet;
 
-    type Depositer = EthAddress;
+	type Depositer = EthAddress;
 
     type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -54,6 +55,9 @@ pub mod pallet {
         /// Specifies the origin check provided by the bridge for calls that can only be called by
         /// the bridge pallet
         type BridgeOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
+
+		/// Origin used to administer the pallet
+		type AdminOrigin: EnsureOrigin<Self::Origin>;
 
         /// The currency mechanism.
         type Currency: Currency<Self::AccountId>;
@@ -251,6 +255,16 @@ pub mod pallet {
             Ok(())
         }
 
+		#[pallet::weight(195_000_0000)]
+		pub fn associate_dominator(
+			origin: OriginFor<T>,
+			associate_id: u8,
+			dominator_account:  T::AccountId) -> DispatchResult {
+			let _ = Self::ensure_admin(origin)?;
+			AssociatedDominator::<T>::insert(associate_id, dominator_account);
+			Ok(())
+		}
+
         /// This can be called by the bridge to demonstrate an arbitrary call from a proposal.
         #[pallet::weight(195_000_0000)]
         pub fn remark(
@@ -326,7 +340,12 @@ pub mod pallet {
             native == r_id
         }
 
-        pub(crate) fn set_associated_dominator(idx: u8, dominator: T::AccountId) {
+		pub fn ensure_admin(o: T::Origin) -> DispatchResult {
+			<T as pallet::Config>::AdminOrigin::ensure_origin(o)?;
+			Ok(().into())
+		}
+
+		pub(crate) fn set_associated_dominator(idx: u8, dominator: T::AccountId) {
             AssociatedDominator::<T>::insert(idx, dominator);
         }
 

@@ -319,12 +319,15 @@ fn create_sucessful_proposal() {
         assert_events(vec![
             Event::Bridge(ChainBridgeEvent::VoteFor(src_id, prop_id, RELAYER_A)),
             Event::Bridge(ChainBridgeEvent::VoteAgainst(src_id, prop_id, RELAYER_B)),
+			Event::Bridge(ChainBridgeEvent::ProposalVote(src_id, [0u8;32], prop_id)),
             Event::Bridge(ChainBridgeEvent::VoteFor(src_id, prop_id, RELAYER_C)),
             Event::Bridge(ChainBridgeEvent::ProposalApproved(src_id, prop_id)),
             Event::Bridge(ChainBridgeEvent::ProposalSucceeded(src_id, prop_id)),
         ]);
     })
 }
+
+//			Event::Bridge(ChainBridgeEvent::ProposalVote(src_id, [0u8;32], prop_id)),
 
 #[test]
 fn create_unsucessful_proposal() {

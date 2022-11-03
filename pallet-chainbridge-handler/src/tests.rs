@@ -411,6 +411,7 @@ fn create_sucessful_transfer_proposal_non_native_token() {
         assert_events(vec![
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_A)),
             Event::Bridge(bridge::Event::VoteAgainst(src_id, prop_id, RELAYER_B)),
+			Event::Bridge(bridge::Event::ProposalVote(src_id, [0u8;32], prop_id)),
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_C)),
             Event::Bridge(bridge::Event::ProposalApproved(src_id, prop_id)),
             Event::Assets(assets::Event::TokenMinted(1, RELAYER_A, 10)),
@@ -498,6 +499,7 @@ fn create_sucessful_transfer_proposal_native_token() {
         assert_events(vec![
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_A)),
             Event::Bridge(bridge::Event::VoteAgainst(src_id, prop_id, RELAYER_B)),
+			Event::Bridge(bridge::Event::ProposalVote(src_id, [0u8;32], prop_id)),
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_C)),
             Event::Bridge(bridge::Event::ProposalApproved(src_id, prop_id)),
             Event::Balances(pallet_balances::Event::Transfer {
