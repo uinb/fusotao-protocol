@@ -285,6 +285,7 @@ fn execute_remark() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         /* assert_ok!(Bridge::acknowledge_proposal(
@@ -366,6 +367,7 @@ fn create_sucessful_transfer_proposal_non_native_token() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -400,6 +402,7 @@ fn create_sucessful_transfer_proposal_non_native_token() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -448,6 +451,7 @@ fn create_sucessful_transfer_proposal_native_token() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -482,6 +486,7 @@ fn create_sucessful_transfer_proposal_native_token() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();

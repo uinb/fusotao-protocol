@@ -258,7 +258,7 @@ fn make_proposal(r: Vec<u8>) -> Call {
 fn create_sucessful_proposal() {
     let src_id = 1;
     let r_id = derive_resource_id(src_id, 0, b"remark").unwrap();
-
+    let tx_hash = [0u8; 32];
     new_test_ext_initialized(src_id, r_id, b"System.remark".to_vec()).execute_with(|| {
         let prop_id = 1;
         let proposal = make_proposal(vec![10]);
@@ -269,6 +269,7 @@ fn create_sucessful_proposal() {
             prop_id,
             src_id,
             r_id,
+            tx_hash,
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -303,6 +304,7 @@ fn create_sucessful_proposal() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -339,6 +341,7 @@ fn create_unsucessful_proposal() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -403,7 +406,7 @@ fn create_unsucessful_proposal() {
 fn execute_after_threshold_change() {
     let src_id = 1;
     let r_id = derive_resource_id(src_id, 0, b"transfer").unwrap();
-
+    let tx_hash: EvmHash = [0u8; 32];
     new_test_ext_initialized(src_id, r_id, b"System.remark".to_vec()).execute_with(|| {
         let prop_id = 1;
         let proposal = make_proposal(vec![11]);
@@ -414,6 +417,7 @@ fn execute_after_threshold_change() {
             prop_id,
             src_id,
             r_id,
+            tx_hash,
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -464,7 +468,7 @@ fn execute_after_threshold_change() {
 fn proposal_expires() {
     let src_id = 1;
     let r_id = derive_resource_id(src_id, 0, b"remark").unwrap();
-
+    let tx_hash = [0u8; 32];
     new_test_ext_initialized(src_id, r_id, b"System.remark".to_vec()).execute_with(|| {
         let prop_id = 1;
         let proposal = make_proposal(vec![10]);
@@ -475,6 +479,7 @@ fn proposal_expires() {
             prop_id,
             src_id,
             r_id,
+            tx_hash,
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
