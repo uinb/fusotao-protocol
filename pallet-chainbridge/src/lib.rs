@@ -375,6 +375,7 @@ pub mod pallet {
             nonce: DepositNonce,
             src_id: ChainId,
             r_id: ResourceId,
+			tx_hash: EvmHash,
             call: Box<<T as Config>::Proposal>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
