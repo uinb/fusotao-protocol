@@ -23,10 +23,14 @@ pub mod pallet {
         weights::GetDispatchInfo,
     };
     use frame_system::{ensure_signed, pallet_prelude::*};
-    use fuso_support::{chainbridge::*, traits::Agent};
+    use fuso_support::{
+        chainbridge::*,
+        traits::{Agent, Token},
+    };
     use pallet_chainbridge as bridge;
+    use pallet_fuso_verifier as verifier;
     use sp_core::U256;
-    use sp_runtime::traits::{Dispatchable, SaturatedConversion, StaticLookup, TrailingZeroInput};
+    use sp_runtime::traits::{Dispatchable, SaturatedConversion, TrailingZeroInput};
     use sp_std::{convert::From, prelude::*};
 
     type Depositer = EthAddress;
@@ -43,7 +47,7 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     #[pallet::config]
-    pub trait Config: frame_system::Config + bridge::Config {
+    pub trait Config: frame_system::Config + bridge::Config + verifier::Config {
         /// The overarching event type.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
@@ -68,7 +72,10 @@ pub mod pallet {
         type AssetBalance: AssetBalance + From<u128> + Into<u128>;
 
         /// dispatchable call
-        type Call: Parameter + Dispatchable<Origin = Self::Origin> + EncodeLike + GetDispatchInfo;
+        type Redirect: Parameter
+            + Dispatchable<Origin = Self::Origin>
+            + EncodeLike
+            + GetDispatchInfo;
 
         /// Expose customizable associated type of asset transfer, lock and unlock
         type Fungibles: Mutate<
@@ -145,7 +152,18 @@ pub mod pallet {
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
 
     #[pallet::call]
-    impl<T: Config> Pallet<T> {
+    impl<T: Config> Pallet<T>
+    where
+        <<T as pallet_fuso_verifier::Config>::Asset as Token<
+            <T as frame_system::Config>::AccountId,
+        >>::Balance: From<u128> + Into<u128>,
+        <<T as pallet_fuso_verifier::Config>::Asset as Token<
+            <T as frame_system::Config>::AccountId,
+        >>::TokenId: Into<u32>,
+        <T as frame_system::Config>::BlockNumber: Into<u32>,
+        <T as Config>::AssetId: Into<u32>,
+        BalanceOf<T>: Into<u128>,
+    {
         #[pallet::weight(195_000_0000)]
         pub fn native_limit(origin: OriginFor<T>, value: bool) -> DispatchResult {
             ensure_root(origin)?;
@@ -190,29 +208,41 @@ pub mod pallet {
             let source = T::BridgeOrigin::ensure_origin(origin)?;
             match Self::is_native_resource(r_id) {
                 true => {
-                    Self::do_unlock(source, to, amount.into())?;
+                    Self::do_unlock(source, to.clone(), amount)?;
                     let (_, associated, _) = decode_resource_id(r_id);
+                    let amount: u128 = amount.into();
                     match Self::associated_dominator(associated) {
                         Some(dominator) => {
-                            // <verifier::Pallet<T>>::authorize_to(
-                            //     to,
-                            //     dominator,
-                            //     <T as verifier::Config>::Asset::native_token_id(),
-                            //     amount,
-                            // );
+                            if let Err(e) = <verifier::Pallet<T>>::authorize_to(
+                                to.clone(),
+                                dominator,
+                                <T as verifier::Config>::Asset::native_token_id(),
+                                amount.into(),
+                            ) {
+                                log::error!("failed to invoke authorize_to from {:?}, {:?}", to, e);
+                            }
                         }
                         None => {}
                     }
                 }
                 false => {
-                    Self::do_mint_assets(to, amount, r_id)?;
+                    Self::do_mint_assets(to.clone(), amount, r_id)?;
                     let (chain_id, associated, maybe_contract) = decode_resource_id(r_id);
+                    let amount: u128 = amount.into();
                     match Self::associated_dominator(associated) {
                         Some(dominator) => {
                             let token =
                                 T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)
                                     .map_err(|_| Error::<T>::InvalidResourceId)?;
-                            // TODO AUTHORIZE
+                            let token: u32 = token.into();
+                            if let Err(e) = <verifier::Pallet<T>>::authorize_to(
+                                to.clone(),
+                                dominator,
+                                token.into(),
+                                amount.into(),
+                            ) {
+                                log::error!("failed to invoke authorize_to from {:?}, {:?}", to, e);
+                            }
                         }
                         None => {}
                     }
@@ -233,7 +263,7 @@ pub mod pallet {
             let message_length = message.len();
             ensure!(message_length > 4, Error::<T>::InvalidCallMessage);
             let nonce: u32 = Decode::decode(&mut &message[0..4]).unwrap();
-            let c = <T as Config>::Call::decode(&mut &message[4..])
+            let c = <T as Config>::Redirect::decode(&mut &message[4..])
                 .map_err(|_| <Error<T>>::InvalidCallMessage)?;
             let controller = (b"ETH".to_vec(), depositer);
             Self::execute_tx(controller, c)?;
@@ -250,7 +280,7 @@ pub mod pallet {
 
     /// IBC reference
     impl<T: Config> Agent<T::AccountId> for Pallet<T> {
-        type Message = <T as Config>::Call;
+        type Message = T::Redirect;
         type Origin = (Vec<u8>, Depositer);
 
         /// bind the origin to an appchain account without private key
@@ -294,6 +324,10 @@ pub mod pallet {
             let native = T::NativeResourceId::get();
             r_id[30] = 0;
             native == r_id
+        }
+
+        pub(crate) fn set_associated_dominator(idx: u8, dominator: T::AccountId) {
+            AssociatedDominator::<T>::insert(idx, dominator);
         }
 
         pub(crate) fn do_lock(

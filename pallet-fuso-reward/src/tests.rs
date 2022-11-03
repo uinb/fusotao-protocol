@@ -1,5 +1,4 @@
-use frame_support::traits::BalanceStatus;
-use frame_support::{assert_noop, assert_ok};
+use frame_support::assert_ok;
 use fuso_support::traits::Rewarding;
 use sp_keyring::AccountKeyring;
 

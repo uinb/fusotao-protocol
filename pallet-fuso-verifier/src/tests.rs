@@ -137,7 +137,7 @@ pub fn test_stake_unstake_should_work() {
             Balance::usable_balance(&ferdie),
             10000000000000000000 - 10000
         );
-        let alice_dominator: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
+        let _: Dominator<u128, u32> = Verifier::dominators(&alice).unwrap();
         crate::pallet::PendingUnstakings::<Test>::iter().for_each(|s| println!("{:?}", s));
         assert_eq!(Verifier::pending_unstakings(unlock_at1, &ferdie), 4000);
         let reserves = Verifier::reserves(
