@@ -12,15 +12,10 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use crate::pallet;
-    use codec::{Codec, EncodeLike};
+    use codec::EncodeLike;
     use frame_support::{
         pallet_prelude::*,
-        sp_runtime::traits::AtLeast32BitUnsigned,
-        sp_std::fmt::Debug,
-        traits::{
-            fungibles::Mutate, tokens::Balance as AssetBalance, Currency, EnsureOrigin,
-            ExistenceRequirement, ExistenceRequirement::AllowDeath, Get, StorageVersion,
-        },
+        traits::{fungibles::Mutate, tokens::BalanceConversion, EnsureOrigin, Get, StorageVersion},
         weights::GetDispatchInfo,
     };
     use frame_system::{ensure_signed, pallet_prelude::*};
@@ -36,8 +31,11 @@ pub mod pallet {
 
     type Depositer = EthAddress;
 
+    type AssetId<T> =
+        <<T as Config>::Fungibles as Token<<T as frame_system::Config>::AccountId>>::TokenId;
+
     type BalanceOf<T> =
-        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+        <<T as Config>::Fungibles as Token<<T as frame_system::Config>::AccountId>>::Balance;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
@@ -59,21 +57,7 @@ pub mod pallet {
         /// Origin used to administer the pallet
         type AdminOrigin: EnsureOrigin<Self::Origin>;
 
-        /// The currency mechanism.
-        type Currency: Currency<Self::AccountId>;
-
-        /// Identifier for the class of asset.
-        type AssetId: Member
-            + Parameter
-            + AtLeast32BitUnsigned
-            + Codec
-            + Copy
-            + Debug
-            + Default
-            + MaybeSerializeDeserialize;
-
-        /// The units in which we record balances.
-        type AssetBalance: AssetBalance + From<u128> + Into<u128>;
+        type BalanceConversion: BalanceConversion<BalanceOf<Self>, AssetId<Self>, BalanceOf<Self>>;
 
         /// dispatchable call
         type Redirect: Parameter
@@ -82,14 +66,11 @@ pub mod pallet {
             + GetDispatchInfo;
 
         /// Expose customizable associated type of asset transfer, lock and unlock
-        type Fungibles: Mutate<
-            Self::AccountId,
-            AssetId = Self::AssetId,
-            Balance = Self::AssetBalance,
-        >;
+        type Fungibles: Mutate<Self::AccountId, AssetId = AssetId<Self>, Balance = BalanceOf<Self>>
+            + Token<Self::AccountId>;
 
         /// Map of cross-chain asset ID & name
-        type AssetIdByName: AssetIdResourceIdProvider<Self::AssetId>;
+        type AssetIdByName: AssetIdResourceIdProvider<AssetId<Self>>;
 
         /// Max native token value
         type NativeTokenMaxValue: Get<BalanceOf<Self>>;
@@ -158,15 +139,14 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T>
     where
-        <<T as pallet_fuso_verifier::Config>::Asset as Token<
-            <T as frame_system::Config>::AccountId,
-        >>::Balance: From<u128> + Into<u128>,
-        <<T as pallet_fuso_verifier::Config>::Asset as Token<
-            <T as frame_system::Config>::AccountId,
-        >>::TokenId: Into<u32>,
+        <<T as verifier::Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance:
+            From<u128> + Into<u128>,
+        <<T as verifier::Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::TokenId:
+            Into<u32>,
+        <T::Fungibles as Token<<T as frame_system::Config>::AccountId>>::Balance:
+            From<u128> + Into<u128>,
+        <T::Fungibles as Token<<T as frame_system::Config>::AccountId>>::TokenId: Into<u32>,
         <T as frame_system::Config>::BlockNumber: Into<u32>,
-        <T as Config>::AssetId: Into<u32>,
-        BalanceOf<T>: Into<u128>,
     {
         #[pallet::weight(195_000_0000)]
         pub fn native_limit(origin: OriginFor<T>, value: bool) -> DispatchResult {
@@ -214,14 +194,19 @@ pub mod pallet {
                 true => {
                     Self::do_unlock(source, to.clone(), amount)?;
                     let (_, associated, _) = decode_resource_id(r_id);
-                    let amount: u128 = amount.into();
                     match Self::associated_dominator(associated) {
                         Some(dominator) => {
-                            if let Err(e) = <verifier::Pallet<T>>::authorize_to(
+                            let b: u128 = T::BalanceConversion::to_asset_balance(
+                                amount,
+                                T::Fungibles::native_token_id(),
+                            )
+                            .map_err(|_| Error::<T>::InvalidResourceId)?
+                            .into();
+                            if let Err(e) = verifier::Pallet::<T>::authorize_to(
                                 to.clone(),
                                 dominator,
                                 <T as verifier::Config>::Asset::native_token_id(),
-                                amount.into(),
+                                b.into(),
                             ) {
                                 log::error!("failed to invoke authorize_to from {:?}, {:?}", to, e);
                             }
@@ -232,18 +217,20 @@ pub mod pallet {
                 false => {
                     Self::do_mint_assets(to.clone(), amount, r_id)?;
                     let (chain_id, associated, maybe_contract) = decode_resource_id(r_id);
-                    let amount: u128 = amount.into();
                     match Self::associated_dominator(associated) {
                         Some(dominator) => {
                             let token =
                                 T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)
                                     .map_err(|_| Error::<T>::InvalidResourceId)?;
-                            let token: u32 = token.into();
-                            if let Err(e) = <verifier::Pallet<T>>::authorize_to(
+                            let b: u128 = T::BalanceConversion::to_asset_balance(amount, token)
+                                .map_err(|_| Error::<T>::InvalidResourceId)?
+                                .into();
+                            let t: u32 = token.into();
+                            if let Err(e) = verifier::Pallet::<T>::authorize_to(
                                 to.clone(),
                                 dominator,
-                                token.into(),
-                                amount.into(),
+                                t.into(),
+                                b.into(),
                             ) {
                                 log::error!("failed to invoke authorize_to from {:?}, {:?}", to, e);
                             }
@@ -306,11 +293,11 @@ pub mod pallet {
             let host_addr = Decode::decode(&mut TrailingZeroInput::new(hash.as_ref()))
                 .map_err(|_| Error::<T>::RegisterAgentFailed)?;
             if !Agents::<T>::contains_key(&origin.1) {
-                T::Currency::transfer(
+                T::Fungibles::transfer_token(
                     &T::DonorAccount::get(),
-                    &host_addr,
+                    <T::Fungibles as Token<<T as frame_system::Config>::AccountId>>::native_token_id(),
                     T::DonationForAgent::get(),
-                    ExistenceRequirement::KeepAlive,
+                    &host_addr,
                 )?;
                 Agents::<T>::insert(origin.1.clone(), (host_addr.clone(), 0u32));
             }
@@ -358,10 +345,10 @@ pub mod pallet {
             dest_id: ChainId,
         ) -> DispatchResult {
             log::info!("transfer native token");
-            let bridge_id = <bridge::Pallet<T>>::account_id();
-
-            if <NativeCheck<T>>::get() {
-                let free_balance = <T as Config>::Currency::free_balance(&bridge_id);
+            let bridge_id = bridge::Pallet::<T>::account_id();
+            let native_token_id = T::Fungibles::native_token_id();
+            if NativeCheck::<T>::get() {
+                let free_balance = T::Fungibles::free_balance(&native_token_id, &bridge_id);
                 let total_balance = free_balance + amount;
 
                 let right_balance = T::NativeTokenMaxValue::get() / 3u8.into();
@@ -370,10 +357,10 @@ pub mod pallet {
                 }
             }
 
-            <T as Config>::Currency::transfer(&sender, &bridge_id, amount.into(), AllowDeath)?;
+            T::Fungibles::transfer_token(&sender, native_token_id, amount, &bridge_id)?;
 
             log::info!("transfer native token successful");
-            <bridge::Pallet<T>>::transfer_fungible(
+            bridge::Pallet::<T>::transfer_fungible(
                 dest_id,
                 r_id,
                 recipient.clone(),
@@ -388,7 +375,8 @@ pub mod pallet {
             to: T::AccountId,
             amount: BalanceOf<T>,
         ) -> DispatchResult {
-            <T as Config>::Currency::transfer(&sender, &to, amount.into(), AllowDeath)?;
+            let native_token_id = T::Fungibles::native_token_id();
+            T::Fungibles::transfer_token(&sender, native_token_id, amount, &to)?;
             Ok(())
         }
 
@@ -399,12 +387,11 @@ pub mod pallet {
             recipient: Vec<u8>,
             dest_id: ChainId,
         ) -> DispatchResult {
-            let amount = amount.saturated_into::<u128>();
             let (chain_id, _, maybe_contract) = decode_resource_id(r_id);
             let token_id = T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)
                 .map_err(|_| Error::<T>::InvalidResourceId)?;
-            <T::Fungibles as Mutate<T::AccountId>>::burn_from(token_id, &who, amount.into())?;
-            <bridge::Pallet<T>>::transfer_fungible(
+            T::Fungibles::burn_from(token_id, &who, amount)?;
+            bridge::Pallet::<T>::transfer_fungible(
                 dest_id,
                 r_id,
                 recipient.clone(),
@@ -418,11 +405,10 @@ pub mod pallet {
             amount: BalanceOf<T>,
             r_id: ResourceId,
         ) -> DispatchResult {
-            let amount = amount.saturated_into::<u128>();
             let (chain_id, _, maybe_contract) = decode_resource_id(r_id);
             let token_id = T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)
                 .map_err(|_| Error::<T>::InvalidResourceId)?;
-            <T::Fungibles as Mutate<T::AccountId>>::mint_into(token_id, &who, amount.into())?;
+            T::Fungibles::mint_into(token_id, &who, amount)?;
             Ok(())
         }
     }
