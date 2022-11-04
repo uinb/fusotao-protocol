@@ -184,9 +184,9 @@ pub type AssetBalance = u128;
 pub type AssetId = u32;
 
 impl crate::Config for Test {
+    type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type AssetBalance = AssetBalance;
     type AssetId = AssetId;
-	type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type AssetIdByName = Assets;
     type BridgeOrigin = bridge::EnsureBridge<Test>;
     type Currency = Balances;
