@@ -295,7 +295,7 @@ pub mod pallet {
             if !Agents::<T>::contains_key(&origin.1) {
                 T::Fungibles::transfer_token(
                     &T::DonorAccount::get(),
-                    <T::Fungibles as Token<<T as frame_system::Config>::AccountId>>::native_token_id(),
+                    T::Fungibles::native_token_id(),
                     T::DonationForAgent::get(),
                     &host_addr,
                 )?;
