@@ -10,7 +10,7 @@ use fuso_support::chainbridge::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_runtime::{
-    traits::{AccountIdConversion, Dispatchable, TrailingZeroInput},
+    traits::{AccountIdConversion, Dispatchable},
     RuntimeDebug,
 };
 use sp_std::prelude::*;
@@ -24,11 +24,6 @@ mod tests;
 
 const DEFAULT_RELAYER_THRESHOLD: u32 = 1;
 const MODULE_ID: PalletId = PalletId(*b"oc/bridg");
-
-pub fn derive_resource_id(chain: u8, id: &[u8]) -> ResourceId {
-    let hash = (chain, id.to_vec()).using_encoded(sp_io::hashing::blake2_256);
-    Decode::decode(&mut TrailingZeroInput::new(hash.as_ref())).unwrap()
-}
 
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub enum ProposalStatus {
@@ -214,6 +209,7 @@ pub mod pallet {
         ProposalSucceeded(ChainId, DepositNonce),
         /// Execution of call failed \[bridge_chain_id, nonce\]
         ProposalFailed(ChainId, DepositNonce),
+		ProposalVote(ChainId, EvmHash, DepositNonce),
     }
 
     // Errors inform users that something went wrong.
@@ -352,6 +348,7 @@ pub mod pallet {
             nonce: DepositNonce,
             src_id: ChainId,
             r_id: ResourceId,
+            evm_hash: EvmHash,
             call: Box<<T as Config>::Proposal>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -364,7 +361,7 @@ pub mod pallet {
                 Self::resource_exists(r_id),
                 Error::<T>::ResourceDoesNotExist
             );
-
+			Self::deposit_event(Event::ProposalVote(src_id,evm_hash, nonce));
             Self::vote_for(who, nonce, src_id, call)
         }
 

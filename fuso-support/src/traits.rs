@@ -48,6 +48,13 @@ pub trait Token<AccountId> {
 
     fn total_issuance(token: &Self::TokenId) -> Self::Balance;
 
+    fn transfer_token(
+        who: &AccountId,
+        token: Self::TokenId,
+        amount: Self::Balance,
+        receiver: &AccountId,
+    ) -> Result<Self::Balance, DispatchError>;
+
     fn try_mutate_account<R>(
         token: &Self::TokenId,
         who: &AccountId,
@@ -200,8 +207,4 @@ pub trait Agent<AccountId> {
 
     /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
     fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult;
-}
-
-pub trait AssetIdResourceIdProvider<TokenId> {
-    fn try_get_asset_id(resource_id: impl AsRef<[u8]>) -> Result<TokenId, DispatchError>;
 }

@@ -31,15 +31,18 @@ pub mod pallet {
     use frame_support::{
         pallet_prelude::*,
         traits::{
-            tokens::{fungibles, DepositConsequence, WithdrawConsequence},
-            BalanceStatus, ReservableCurrency,
+            tokens::{
+                fungibles, BalanceConversion, DepositConsequence, ExistenceRequirement,
+                WithdrawConsequence,
+            },
+            BalanceStatus, Currency, ReservableCurrency,
         },
         transactional,
     };
     use frame_system::pallet_prelude::*;
     use fuso_support::{
         constants::*,
-        traits::{AssetIdResourceIdProvider, ReservableToken, Token},
+        traits::{ReservableToken, Token},
         XToken,
     };
     use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
@@ -94,6 +97,7 @@ pub mod pallet {
         Overflow,
         TooManyReserves,
         InvalidDecimals,
+        ContractTooLong,
     }
 
     #[pallet::storage]
@@ -179,37 +183,10 @@ pub mod pallet {
             target: <T::Lookup as StaticLookup>::Source,
             amount: BalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
-            let origin = ensure_signed(origin)?;
-            ensure!(!amount.is_zero(), Error::<T>::AmountZero);
+            let who = ensure_signed(origin)?;
+            ensure!(!amount.is_zero(), Error::<T>::BalanceZero);
             let target = T::Lookup::lookup(target)?;
-            Balances::<T>::try_mutate_exists((&token, &origin), |from| -> DispatchResult {
-                ensure!(from.is_some(), Error::<T>::BalanceZero);
-                let mut account = from.take().unwrap();
-                account.free = account
-                    .free
-                    .checked_sub(&amount)
-                    .ok_or(Error::<T>::InsufficientBalance)?;
-                match account.free == Zero::zero() && account.reserved == Zero::zero() {
-                    true => {}
-                    false => {
-                        from.replace(account);
-                    }
-                }
-                Balances::<T>::try_mutate_exists((&token, &target), |to| -> DispatchResult {
-                    let mut account = to.take().unwrap_or(TokenAccountData {
-                        free: Zero::zero(),
-                        reserved: Zero::zero(),
-                    });
-                    account.free = account
-                        .free
-                        .checked_add(&amount)
-                        .ok_or(Error::<T>::Overflow)?;
-                    to.replace(account);
-                    Ok(())
-                })?;
-                Ok(())
-            })?;
-            Self::deposit_event(Event::TokenTransfered(token, origin, target, amount));
+            Self::transfer_token(&who, token, amount, &target)?;
             Ok(().into())
         }
     }
@@ -218,7 +195,7 @@ pub mod pallet {
     where
         BalanceOf<T>: From<u128> + Into<u128>,
     {
-        fn unify_decimals(amount: BalanceOf<T>, decimals: u8) -> BalanceOf<T> {
+        pub fn unify_decimals(amount: BalanceOf<T>, decimals: u8) -> BalanceOf<T> {
             let mut amount: u128 = amount.into();
             if decimals > STANDARD_DECIMALS {
                 let diff = decimals - STANDARD_DECIMALS;
@@ -409,9 +386,7 @@ pub mod pallet {
         fn create(mut token_info: XToken<BalanceOf<T>>) -> Result<Self::TokenId, DispatchError> {
             let id = Self::next_token_id();
             match token_info {
-                XToken::NEP141(ref symbol, ref contract, ref mut total, _, decimals)
-                | XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals)
-                | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
+                XToken::NEP141(ref symbol, ref contract, ref mut total, _, decimals) => {
                     ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
                     let name = AsciiStr::from_ascii(&symbol);
                     ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
@@ -427,6 +402,22 @@ pub mod pallet {
                     *total = Zero::zero();
                     TokenByName::<T>::insert(contract.clone(), id);
                 }
+                XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals)
+                | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
+                    ensure!(decimals <= MAX_DECIMALS, Error::<T>::InvalidDecimals);
+                    let name = AsciiStr::from_ascii(&symbol);
+                    ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
+                    let name = name.unwrap();
+                    ensure!(
+                        name.len() >= 2 && name.len() <= 8,
+                        Error::<T>::InvalidTokenName
+                    );
+                    ensure!(
+                        !TokenByName::<T>::contains_key(&contract),
+                        Error::<T>::InvalidToken
+                    );
+                    *total = Zero::zero();
+                }
                 XToken::FND10(ref symbol, ref mut total) => {
                     let name = AsciiStr::from_ascii(&symbol);
                     ensure!(name.is_ok(), Error::<T>::InvalidTokenName);
@@ -441,6 +432,61 @@ pub mod pallet {
             NextTokenId::<T>::mutate(|id| *id += One::one());
             Tokens::<T>::insert(id, token_info);
             Ok(id)
+        }
+
+        #[transactional]
+        fn transfer_token(
+            origin: &T::AccountId,
+            token: Self::TokenId,
+            amount: Self::Balance,
+            target: &T::AccountId,
+        ) -> Result<Self::Balance, DispatchError> {
+            if amount.is_zero() {
+                return Ok(amount);
+            }
+            if token == Self::native_token_id() {
+                return <pallet_balances::Pallet<T> as Currency<T::AccountId>>::transfer(
+                    origin,
+                    target,
+                    amount,
+                    ExistenceRequirement::KeepAlive,
+                )
+                .map(|_| amount);
+            }
+            Balances::<T>::try_mutate_exists((&token, &origin), |from| -> DispatchResult {
+                ensure!(from.is_some(), Error::<T>::BalanceZero);
+                let mut account = from.take().unwrap();
+                account.free = account
+                    .free
+                    .checked_sub(&amount)
+                    .ok_or(Error::<T>::InsufficientBalance)?;
+                match account.free == Zero::zero() && account.reserved == Zero::zero() {
+                    true => {}
+                    false => {
+                        from.replace(account);
+                    }
+                }
+                Balances::<T>::try_mutate_exists((&token, &target), |to| -> DispatchResult {
+                    let mut account = to.take().unwrap_or(TokenAccountData {
+                        free: Zero::zero(),
+                        reserved: Zero::zero(),
+                    });
+                    account.free = account
+                        .free
+                        .checked_add(&amount)
+                        .ok_or(Error::<T>::Overflow)?;
+                    to.replace(account);
+                    Ok(())
+                })?;
+                Ok(())
+            })?;
+            Self::deposit_event(Event::TokenTransfered(
+                token,
+                origin.clone(),
+                target.clone(),
+                amount,
+            ));
+            Ok(amount)
         }
 
         fn try_mutate_account<R>(
@@ -693,16 +739,53 @@ pub mod pallet {
             let token_result = Self::get_token_info(asset_id);
             match token_result {
                 Some(XToken::NEP141(_, name, _, _, _)) => Ok(name),
-                //for bridge of near<-> substrate, provide nep141 mapping only.
                 _ => Err(()),
             }
         }
     }
 
-    impl<T: Config> AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
-        fn try_get_asset_id(resource_id: impl AsRef<[u8]>) -> Result<T::TokenId, DispatchError> {
-            Self::get_token_by_name(resource_id.as_ref().to_vec())
-                .ok_or(Error::<T>::InvalidToken.into())
+    impl<T: Config> BalanceConversion<BalanceOf<T>, T::TokenId, BalanceOf<T>> for Pallet<T>
+    where
+        BalanceOf<T>: From<u128> + Into<u128>,
+    {
+        type Error = DispatchError;
+
+        fn to_asset_balance(
+            balance: BalanceOf<T>,
+            asset_id: T::TokenId,
+        ) -> Result<BalanceOf<T>, Self::Error> {
+            if asset_id == Self::native_token_id() {
+                return Ok(balance);
+            }
+            Tokens::<T>::try_get(&asset_id)
+                .map(|info| match info {
+                    XToken::NEP141(_, _, _, _, decimals)
+                    | XToken::ERC20(_, _, _, _, decimals)
+                    | XToken::BEP20(_, _, _, _, decimals) => {
+                        Self::unify_decimals(balance, decimals)
+                    }
+                    XToken::FND10(..) => balance,
+                })
+                .map_err(|_| Error::<T>::InvalidToken.into())
+        }
+    }
+
+    use fuso_support::chainbridge::*;
+    impl<T: Config> fuso_support::chainbridge::AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
+        type Err = ();
+
+        fn try_get_asset_id(
+            chain_id: ChainId,
+            contract_id: impl AsRef<[u8]>,
+        ) -> Result<T::TokenId, Self::Err> {
+            for (id, token) in Tokens::<T>::iter() {
+                if chain_id_of(&token) == chain_id
+                    && token.contract() == contract_id.as_ref().to_vec()
+                {
+                    return Ok(id);
+                }
+            }
+            Err(())
         }
     }
 }

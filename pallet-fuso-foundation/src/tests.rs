@@ -1,13 +1,9 @@
-use frame_support::{assert_noop, assert_ok, traits::OnInitialize};
-use sp_keyring::AccountKeyring;
-use sp_runtime::traits::Zero;
-use sp_runtime::MultiAddress;
-
 use crate::mock::*;
-use crate::Error;
 use crate::FoundationData;
 use crate::Pallet;
+use frame_support::traits::OnInitialize;
 use frame_system::AccountInfo;
+use sp_keyring::AccountKeyring;
 
 type Foundation = Pallet<Test>;
 
@@ -15,7 +11,6 @@ type Foundation = Pallet<Test>;
 fn test_foundation() {
     new_test_ext().execute_with(|| {
         let alice: AccountId = AccountKeyring::Alice.into();
-        let charlie: AccountId = AccountKeyring::Charlie.into();
         frame_system::Pallet::<Test>::set_block_number(30);
         let alice_balance: AccountInfo<u64, pallet_balances::AccountData<u128>> =
             frame_system::Pallet::<Test>::account(&alice);

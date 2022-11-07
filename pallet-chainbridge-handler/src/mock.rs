@@ -1,6 +1,7 @@
-use super::*;
 use crate as pallet_chainbridge_transfer;
+use fuso_support::chainbridge::*;
 use pallet_chainbridge as bridge;
+use sp_keyring::AccountKeyring;
 use sp_runtime::{
     generic,
     traits::{AccountIdLookup, BlakeTwo256, IdentifyAccount, Verify},
@@ -18,8 +19,6 @@ pub use frame_support::{
     weights::{IdentityFee, Weight},
     PalletId, StorageValue,
 };
-use frame_system::EnsureRoot;
-use sp_core::blake2_128;
 use sp_runtime::{traits::AccountIdConversion, AccountId32};
 
 pub(crate) type BlockNumber = u32;
@@ -37,6 +36,7 @@ parameter_types! {
     pub const BlockHashCount: BlockNumber = 2400;
     pub const SS58Prefix: u16 = 42;
 }
+
 impl frame_system::Config for Test {
     type AccountData = pallet_balances::AccountData<Balance>;
     type AccountId = AccountId;
@@ -66,22 +66,24 @@ impl frame_system::Config for Test {
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+
 construct_runtime!(
     pub enum Test where
         Block = Block,
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
+        System: frame_system,
         Assets: pallet_fuso_token,
-        Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
-        Bridge: pallet_chainbridge::{Pallet, Call, Storage, Event<T>},
-        ChainBridgeTransfer: pallet_chainbridge_transfer::{Pallet, Call, Storage, Event<T>},
+        Balances: pallet_balances,
+        Bridge: pallet_chainbridge,
+        Verifier: pallet_fuso_verifier,
+        ChainBridgeTransfer: pallet_chainbridge_transfer,
     }
 );
 
 parameter_types! {
-    pub const TestChainId: u8 = 5;
+    pub const TestChainId: u8 = 42;
     pub const ProposalLifetime: u32 = 50;
 }
 
@@ -111,31 +113,6 @@ impl pallet_balances::Config for Test {
     type WeightInfo = ();
 }
 
-// parameter_types! {
-//     pub const AssetDeposit: Balance = 100 * DOLLARS;
-//     pub const ApprovalDeposit: Balance = 1 * DOLLARS;
-//     pub const StringLimit: u32 = 50;
-//     pub const MetadataDepositBase: Balance = 10 * DOLLARS;
-//     pub const MetadataDepositPerByte: Balance = 1 * DOLLARS;
-// }
-
-// impl pallet_assets::Config<pallet_assets::Instance1> for Test {
-//     type ApprovalDeposit = ApprovalDeposit;
-//     type AssetAccountDeposit = ConstU128<DOLLARS>;
-//     type AssetDeposit = AssetDeposit;
-//     type AssetId = AssetId;
-//     type Balance = AssetBalance;
-//     type Currency = Balances;
-//     type Event = Event;
-//     type Extra = ();
-//     type ForceOrigin = EnsureRoot<AccountId>;
-//     type Freezer = ();
-//     type MetadataDepositBase = MetadataDepositBase;
-//     type MetadataDepositPerByte = MetadataDepositPerByte;
-//     type StringLimit = StringLimit;
-//     type WeightInfo = pallet_assets::weights::SubstrateWeight<Test>;
-// }
-
 parameter_types! {
     pub const NativeTokenId: u32 = 0;
 }
@@ -148,34 +125,76 @@ impl pallet_fuso_token::Config for Test {
 }
 
 parameter_types! {
-    pub NativeResourceId: ResourceId = bridge::derive_resource_id(0, &blake2_128(b"TAO")); // native token id
-    // pub Erc721Id: bridge::ResourceId = bridge::derive_resource_id(1, &blake2_128(b"NFT"));
+    pub NativeResourceId: ResourceId = derive_resource_id(42, 0, b"TAO").unwrap(); // native token id
     pub NativeTokenMaxValue : Balance = 1000_000_000_000_000_0000u128; // need to set correct value
     pub DonorAccount: AccountId32 = AccountId32::new([0u8; 32]);
-    pub DonationForAgent : Balance = 1000_000_000_000_000_0000u128; // need to set correct value
+    pub DonationForAgent : Balance = 100_000_000_000_000_000u128; // need to set correct value
 }
 
-// impl pallet_chainbridge_erc721::Config for Test {
-//     type Event = Event;
-//     type Identifier = Erc721Id;
-// }
+pub struct PhantomData;
+
+impl fuso_support::traits::Rewarding<AccountId, Balance, BlockNumber> for PhantomData {
+    type Balance = Balance;
+
+    fn era_duration() -> BlockNumber {
+        1
+    }
+
+    fn total_volume(_at: BlockNumber) -> Balance {
+        100 * DOLLARS
+    }
+
+    fn acked_reward(_who: &AccountId) -> Self::Balance {
+        0
+    }
+
+    fn save_trading(
+        _trader: &AccountId,
+        _amount: Balance,
+        _at: BlockNumber,
+    ) -> frame_support::pallet_prelude::DispatchResult {
+        Ok(())
+    }
+}
+
+parameter_types! {
+    pub const DominatorOnlineThreshold: Balance = 1_000_000;
+    pub const SeasonDuration: BlockNumber = 1440;
+    pub const MinimalStakingAmount: Balance = 100;
+    pub const DominatorCheckGracePeriod: BlockNumber = 1;
+    pub const MaxMakerFee: u32 = 10000;
+    pub const MaxTakerFee: u32 = 10000;
+}
+
+impl pallet_fuso_verifier::Config for Test {
+    type Asset = Assets;
+    type Callback = Call;
+    type DominatorCheckGracePeriod = DominatorCheckGracePeriod;
+    type DominatorOnlineThreshold = DominatorOnlineThreshold;
+    type Event = Event;
+    type MaxMakerFee = MaxMakerFee;
+    type MaxTakerFee = MaxTakerFee;
+    type MinimalStakingAmount = MinimalStakingAmount;
+    type Rewarding = PhantomData;
+    type SeasonDuration = SeasonDuration;
+    type WeightInfo = ();
+}
 
 pub type AssetBalance = u128;
 pub type AssetId = u32;
 
-impl Config for Test {
-    type AssetBalance = AssetBalance;
-    type AssetId = AssetId;
+impl crate::Config for Test {
+    type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type AssetIdByName = Assets;
+    type BalanceConversion = Assets;
     type BridgeOrigin = bridge::EnsureBridge<Test>;
-    type Call = Call;
-    type Currency = Balances;
     type DonationForAgent = DonationForAgent;
     type DonorAccount = DonorAccount;
     type Event = Event;
     type Fungibles = Assets;
     type NativeResourceId = NativeResourceId;
     type NativeTokenMaxValue = NativeTokenMaxValue;
+    type Redirect = Call;
 }
 
 pub const RELAYER_A: AccountId32 = AccountId32::new([2u8; 32]);
@@ -188,18 +207,16 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     let mut storage = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
+    let alice: AccountId32 = AccountKeyring::Alice.into();
     pallet_balances::GenesisConfig::<Test> {
-        balances: vec![(bridge_id, ENDOWED_BALANCE), (RELAYER_A, ENDOWED_BALANCE)],
+        balances: vec![
+            (bridge_id, ENDOWED_BALANCE),
+            (RELAYER_A, ENDOWED_BALANCE),
+            (alice, ENDOWED_BALANCE),
+        ],
     }
     .assimilate_storage(&mut storage)
     .unwrap();
-
-    // let r_id = bridge::derive_resource_id(0, b"BAR");
-    // pallet_chainbridge_transfer::GenesisConfig::<Test> {
-    //     asset_id_by_resource_id: vec![(r_id, 999, "BAR".to_string())],
-    // }
-    // .assimilate_storage(&mut storage)
-    // .unwrap();
 
     let mut ext = sp_io::TestExternalities::new(storage);
     ext.execute_with(|| System::set_block_number(1));

@@ -3,12 +3,10 @@ use crate as pallet_fuso_token;
 use frame_support::parameter_types;
 use frame_support::traits::ConstU32;
 use frame_system as system;
-use sp_core::H256;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::{
-    generic, impl_opaque_keys,
-    testing::Header,
-    traits::{AccountIdLookup, BlakeTwo256, IdentityLookup},
+    generic,
+    traits::{AccountIdLookup, BlakeTwo256},
     MultiSignature,
 };
 

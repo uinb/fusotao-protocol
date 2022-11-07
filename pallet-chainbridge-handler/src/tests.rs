@@ -1,42 +1,38 @@
 #![cfg(test)]
-use super::{
+use crate::mock::{AccountId, Balance, DOLLARS};
+use crate::{
     mock::{
-        assert_events, expect_event, new_test_ext, Assets, Balances, Bridge, Call,
-        ChainBridgeTransfer, Event, NativeResourceId, Origin, ProposalLifetime, Test,
-        ENDOWED_BALANCE, RELAYER_A, RELAYER_B, RELAYER_C,
+        assert_events, expect_event, new_test_ext, Assets, Balances, Bridge, ChainBridgeTransfer,
+        Event, NativeResourceId, Origin, ProposalLifetime, Test, Verifier, ENDOWED_BALANCE,
+        RELAYER_A, RELAYER_B, RELAYER_C,
     },
     *,
 };
-use crate::Error::InvalidCallMessage;
-use crate::{
-    mock::{event_exists, AccountId, Balance, DOLLARS},
-    Event as ChainBridgeTransferEvent,
-};
-use frame_support::{
-    assert_err, assert_noop, assert_ok, dispatch::DispatchError, traits::fungibles::Inspect,
-};
+use codec::Encode;
+use frame_support::{assert_noop, assert_ok, dispatch::DispatchError, traits::fungibles::Inspect};
+use frame_system::RawOrigin;
 use fuso_support::chainbridge::*;
 use fuso_support::{traits::Token, XToken};
+use pallet_chainbridge as bridge;
 use pallet_fuso_token as assets;
-use sp_core::bytes::from_hex;
 use sp_core::{blake2_256, crypto::AccountId32, H256};
 use sp_keyring::AccountKeyring;
 use sp_runtime::traits::Zero;
-use sp_runtime::ModuleError;
+use sp_runtime::MultiAddress;
 
 const TEST_THRESHOLD: u32 = 2;
 
-fn make_remark_proposal(call: Vec<u8>) -> Call {
+fn make_remark_proposal(call: Vec<u8>) -> mock::Call {
     let depositer = [0u8; 20];
-    Call::ChainBridgeTransfer(crate::Call::remark {
+    mock::Call::ChainBridgeTransfer(crate::Call::remark {
         message: call,
         depositer,
         r_id: Default::default(),
     })
 }
 
-fn make_transfer_proposal(resource_id: ResourceId, to: AccountId32, amount: u64) -> Call {
-    Call::ChainBridgeTransfer(crate::Call::transfer_in {
+fn make_transfer_proposal(resource_id: ResourceId, to: AccountId32, amount: u64) -> mock::Call {
+    mock::Call::ChainBridgeTransfer(crate::Call::transfer_in {
         to,
         amount: amount.into(),
         r_id: resource_id,
@@ -173,9 +169,8 @@ fn transfer_native() {
 #[test]
 fn transfer_non_native() {
     new_test_ext().execute_with(|| {
-        let dest_chain = 0;
+        let dest_chain = 5;
         // get resource id
-        let resource_id = bridge::derive_resource_id(dest_chain, b"DENOM");
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
         let recipient = vec![99];
         // set token_id
@@ -194,21 +189,26 @@ fn transfer_non_native() {
         //     true,
         //     1
         // ));
+        let contract_address = "304203995023530303420592059205902501";
         let denom = XToken::ERC20(
             br#"DENOM"#.to_vec(),
-            resource_id.to_vec(),
+            hex::decode(contract_address).unwrap(),
             Zero::zero(),
             true,
             18,
         );
+        let resource_id = derive_resource_id(
+            dest_chain,
+            0,
+            hex::decode(contract_address).unwrap().as_slice(),
+        )
+        .unwrap();
         assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom,));
-
         let amount: Balance = 1 * DOLLARS;
         assert_ok!(Assets::do_mint(1, &ferdie, amount, None));
 
         // make sure have some  amount after mint
         assert_eq!(Assets::free_balance(&1, &ferdie), amount);
-
         assert_ok!(Bridge::whitelist_chain(Origin::root(), dest_chain.clone()));
         assert_ok!(ChainBridgeTransfer::transfer_out(
             Origin::signed(ferdie.clone()),
@@ -222,10 +222,10 @@ fn transfer_non_native() {
         assert_eq!(Assets::balance(0, &ferdie), 0);
 
         assert_events(vec![Event::Bridge(bridge::Event::FungibleTransfer(
-            0,
+            dest_chain,
             1,
             resource_id,
-            U256::from(amount),
+            sp_core::U256::from(amount),
             recipient,
         ))]);
     })
@@ -265,7 +265,7 @@ fn execute_remark() {
         let proposal = make_remark_proposal(call.encode());
         let prop_id = 1;
         let src_id = 1;
-        let r_id = bridge::derive_resource_id(src_id, b"hash");
+        let r_id = derive_resource_id(src_id, 0, b"hash").unwrap();
         let resource = b"Example.remark".to_vec();
 
         assert_ok!(Bridge::set_threshold(Origin::root(), TEST_THRESHOLD,));
@@ -279,6 +279,7 @@ fn execute_remark() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         /* assert_ok!(Bridge::acknowledge_proposal(
@@ -325,27 +326,24 @@ fn execute_remark_bad_origin() {
 fn create_sucessful_transfer_proposal_non_native_token() {
     new_test_ext().execute_with(|| {
         let prop_id = 1;
-        let src_id = 1;
-        let r_id = bridge::derive_resource_id(src_id, b"transfer");
+        let src_id = 5;
+        let r_id = derive_resource_id(src_id, 0, b"transfer").unwrap();
         let resource = b"ChainBridgeTransfer.transfer".to_vec();
         // let resource_id = NativeTokenId::get();
-        let resource_id = bridge::derive_resource_id(
-            src_id,
-            &hex_literal::hex!("3c56dd5ed61af7e7b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2"),
-        );
+        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2";
+        let resource_id =
+            derive_resource_id(src_id, 0, hex::decode(contract_address).unwrap().as_slice())
+                .unwrap();
         let proposal = make_transfer_proposal(resource_id, RELAYER_A, 10);
-        let ferdie: AccountId = AccountKeyring::Ferdie.into();
 
         let denom = XToken::ERC20(
             br#"DENOM"#.to_vec(),
-            resource_id.to_vec(),
+            hex::decode(contract_address).unwrap(),
             Zero::zero(),
             true,
             18,
         );
         assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom,));
-
-        let amount: Balance = 1 * DOLLARS;
 
         assert_ok!(Bridge::set_threshold(Origin::root(), TEST_THRESHOLD,));
         assert_ok!(Bridge::add_relayer(Origin::root(), RELAYER_A));
@@ -360,6 +358,7 @@ fn create_sucessful_transfer_proposal_non_native_token() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -394,6 +393,7 @@ fn create_sucessful_transfer_proposal_non_native_token() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -411,6 +411,7 @@ fn create_sucessful_transfer_proposal_non_native_token() {
         assert_events(vec![
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_A)),
             Event::Bridge(bridge::Event::VoteAgainst(src_id, prop_id, RELAYER_B)),
+            Event::Bridge(bridge::Event::ProposalVote(src_id, [0u8; 32], prop_id)),
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_C)),
             Event::Bridge(bridge::Event::ProposalApproved(src_id, prop_id)),
             Event::Assets(assets::Event::TokenMinted(1, RELAYER_A, 10)),
@@ -424,7 +425,7 @@ fn create_sucessful_transfer_proposal_native_token() {
     new_test_ext().execute_with(|| {
         let prop_id = 1;
         let src_id = 1;
-        let r_id = bridge::derive_resource_id(src_id, b"transfer");
+        let r_id = derive_resource_id(src_id, 0, b"transfer").unwrap();
         let resource = b"ChainBridgeTransfer.transfer".to_vec();
         let resource_id = NativeResourceId::get();
         let proposal = make_transfer_proposal(resource_id, RELAYER_A, 10);
@@ -442,6 +443,7 @@ fn create_sucessful_transfer_proposal_native_token() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -476,6 +478,7 @@ fn create_sucessful_transfer_proposal_native_token() {
             prop_id,
             src_id,
             r_id,
+            [0u8; 32],
             Box::new(proposal.clone())
         ));
         let prop = Bridge::votes(src_id, (prop_id.clone(), proposal.clone())).unwrap();
@@ -496,6 +499,7 @@ fn create_sucessful_transfer_proposal_native_token() {
         assert_events(vec![
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_A)),
             Event::Bridge(bridge::Event::VoteAgainst(src_id, prop_id, RELAYER_B)),
+            Event::Bridge(bridge::Event::ProposalVote(src_id, [0u8; 32], prop_id)),
             Event::Bridge(bridge::Event::VoteFor(src_id, prop_id, RELAYER_C)),
             Event::Bridge(bridge::Event::ProposalApproved(src_id, prop_id)),
             Event::Balances(pallet_balances::Event::Transfer {
@@ -505,5 +509,115 @@ fn create_sucessful_transfer_proposal_native_token() {
             }),
             Event::Bridge(bridge::Event::ProposalSucceeded(src_id, prop_id)),
         ]);
+    })
+}
+
+#[test]
+fn authorize_and_revoke_in_remote() {
+    new_test_ext().execute_with(|| {
+        let prop_id = 1;
+        let src_id = 5;
+        let r_id = derive_resource_id(src_id, 0, b"transfer").unwrap();
+        let resource = b"ChainBridgeTransfer.transfer".to_vec();
+        // let resource_id = NativeTokenId::get();
+        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2";
+        let resource_id =
+            derive_resource_id(src_id, 0, hex::decode(contract_address).unwrap().as_slice())
+                .unwrap();
+        let ferdie: AccountId = AccountKeyring::Ferdie.into();
+        let alice: AccountId = AccountKeyring::Alice.into();
+        let bob: AccountId = AccountKeyring::Bob.into();
+
+        let denom = XToken::ERC20(
+            br#"DENOM"#.to_vec(),
+            hex::decode(contract_address).unwrap(),
+            Zero::zero(),
+            true,
+            18,
+        );
+        assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom,));
+        assert_ok!(Verifier::register(
+            Origin::signed(bob.clone()),
+            b"cool".to_vec()
+        ));
+        assert_ok!(Verifier::launch(
+            RawOrigin::Root.into(),
+            MultiAddress::Id(bob.clone())
+        ));
+        assert_ok!(Verifier::stake(
+            Origin::signed(alice.clone()),
+            MultiAddress::Id(bob.clone()),
+            800000000000
+        ));
+        ChainBridgeTransfer::set_associated_dominator(1, bob.clone());
+        let dominator_specified =
+            derive_resource_id(src_id, 1, hex::decode(contract_address).unwrap().as_slice())
+                .unwrap();
+
+        let amount: Balance = 1 * DOLLARS;
+        assert_ok!(Bridge::set_threshold(Origin::root(), TEST_THRESHOLD,));
+        assert_ok!(Bridge::add_relayer(Origin::root(), RELAYER_A));
+        assert_ok!(Bridge::add_relayer(Origin::root(), RELAYER_B));
+        assert_ok!(Bridge::add_relayer(Origin::root(), RELAYER_C));
+        assert_ok!(Bridge::whitelist_chain(Origin::root(), src_id));
+        assert_ok!(Bridge::set_resource(Origin::root(), r_id, resource));
+
+        let proposal = mock::Call::ChainBridgeTransfer(crate::Call::transfer_in {
+            to: alice.clone(),
+            amount: amount.into(),
+            r_id: dominator_specified,
+        });
+
+        // Create proposal (& vote)
+        assert_ok!(Bridge::acknowledge_proposal(
+            Origin::signed(RELAYER_A),
+            prop_id,
+            src_id,
+            r_id,
+            [0u8; 32],
+            Box::new(proposal.clone())
+        ));
+        assert_ok!(Bridge::acknowledge_proposal(
+            Origin::signed(RELAYER_B),
+            prop_id,
+            src_id,
+            r_id,
+            [0u8; 32],
+            Box::new(proposal.clone())
+        ));
+        assert_eq!(
+            Verifier::receipts(bob.clone(), alice.clone()),
+            Some(pallet_fuso_verifier::Receipt::Authorize(
+                1,
+                1000000000000000,
+                1
+            ))
+        );
+
+        // create a transfer_in call without dominator specified
+        let proposal = mock::Call::ChainBridgeTransfer(crate::Call::transfer_in {
+            to: ferdie.clone(),
+            amount: amount.into(),
+            r_id: resource_id,
+        });
+
+        // Create proposal (& vote)
+        assert_ok!(Bridge::acknowledge_proposal(
+            Origin::signed(RELAYER_A),
+            prop_id,
+            src_id,
+            r_id,
+            [0u8; 32],
+            Box::new(proposal.clone())
+        ));
+        assert_ok!(Bridge::acknowledge_proposal(
+            Origin::signed(RELAYER_B),
+            prop_id,
+            src_id,
+            r_id,
+            [0u8; 32],
+            Box::new(proposal.clone())
+        ));
+        assert_eq!(Verifier::receipts(ferdie.clone(), alice.clone()), None);
     })
 }

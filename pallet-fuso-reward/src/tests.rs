@@ -1,5 +1,4 @@
-use frame_support::traits::BalanceStatus;
-use frame_support::{assert_noop, assert_ok};
+use frame_support::assert_ok;
 use fuso_support::traits::Rewarding;
 use sp_keyring::AccountKeyring;
 
@@ -47,6 +46,7 @@ fn test_reward_should_work() {
             }
         );
 
+        assert_ok!(RewardModule::save_trading(&ferdie, 5000, 200));
         let ferdie_reward = RewardModule::rewards(&ferdie);
         assert_eq!(
             ferdie_reward,
@@ -57,6 +57,6 @@ fn test_reward_should_work() {
             }
         );
         let vol = RewardModule::volumes(200);
-        assert_eq!(vol, 15000);
+        assert_eq!(vol, 20000);
     });
 }
