@@ -254,6 +254,21 @@ fn make_proposal(r: Vec<u8>) -> Call {
     Call::System(frame_system::Call::remark { remark: r })
 }
 
+fn derive(chain: ChainId, dex: u8, id: &[u8]) -> Result<ResourceId, ()> {
+    let mut r_id: ResourceId = [0; 32];
+    let id_len = id.len();
+    if id_len > 28 {
+        return Err(());
+    }
+    r_id[30..].copy_from_slice(&chain.to_le_bytes()[..]);
+    r_id[29] = dex;
+    println!("{:?}", id);
+    println!("{:?}", r_id);
+    r_id[29 - id_len..].copy_from_slice(&id[..]);
+    r_id[0] = id_len as u8;
+    Ok(r_id)
+}
+
 #[test]
 fn create_sucessful_proposal() {
     let src_id = 1;
@@ -319,7 +334,7 @@ fn create_sucessful_proposal() {
         assert_events(vec![
             Event::Bridge(ChainBridgeEvent::VoteFor(src_id, prop_id, RELAYER_A)),
             Event::Bridge(ChainBridgeEvent::VoteAgainst(src_id, prop_id, RELAYER_B)),
-			Event::Bridge(ChainBridgeEvent::ProposalVote(src_id, [0u8;32], prop_id)),
+            Event::Bridge(ChainBridgeEvent::ProposalVote(src_id, [0u8; 32], prop_id)),
             Event::Bridge(ChainBridgeEvent::VoteFor(src_id, prop_id, RELAYER_C)),
             Event::Bridge(ChainBridgeEvent::ProposalApproved(src_id, prop_id)),
             Event::Bridge(ChainBridgeEvent::ProposalSucceeded(src_id, prop_id)),

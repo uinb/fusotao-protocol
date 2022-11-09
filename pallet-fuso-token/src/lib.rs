@@ -43,7 +43,7 @@ pub mod pallet {
     use fuso_support::{
         constants::*,
         traits::{ReservableToken, Token},
-        XToken,
+        ChainId, XToken,
     };
     use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
     use scale_info::TypeInfo;

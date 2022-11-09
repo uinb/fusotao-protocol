@@ -22,6 +22,7 @@ pub mod pallet {
     use fuso_support::{
         chainbridge::*,
         traits::{Agent, Token},
+        ChainId,
     };
     use pallet_chainbridge as bridge;
     use pallet_fuso_verifier as verifier;

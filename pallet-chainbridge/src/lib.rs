@@ -6,7 +6,7 @@ use frame_support::{
     traits::{EnsureOrigin, Get, StorageVersion},
     PalletId,
 };
-use fuso_support::chainbridge::*;
+use fuso_support::{chainbridge::*, ChainId};
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_runtime::{
@@ -209,7 +209,7 @@ pub mod pallet {
         ProposalSucceeded(ChainId, DepositNonce),
         /// Execution of call failed \[bridge_chain_id, nonce\]
         ProposalFailed(ChainId, DepositNonce),
-		ProposalVote(ChainId, EvmHash, DepositNonce),
+        ProposalVote(ChainId, EvmHash, DepositNonce),
     }
 
     // Errors inform users that something went wrong.
@@ -361,7 +361,7 @@ pub mod pallet {
                 Self::resource_exists(r_id),
                 Error::<T>::ResourceDoesNotExist
             );
-			Self::deposit_event(Event::ProposalVote(src_id,evm_hash, nonce));
+            Self::deposit_event(Event::ProposalVote(src_id, evm_hash, nonce));
             Self::vote_for(who, nonce, src_id, call)
         }
 
