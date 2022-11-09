@@ -112,9 +112,8 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         .build_storage::<Test>()
         .unwrap();
     let alice: AccountId = AccountKeyring::Alice.into();
-    let charlie: AccountId = AccountKeyring::Charlie.into();
     pallet_balances::GenesisConfig::<Test> {
-        balances: vec![(alice, 10000000000000000000)],
+        balances: vec![(alice, 1000 * DOLLARS)],
     }
     .assimilate_storage(&mut t)
     .unwrap();

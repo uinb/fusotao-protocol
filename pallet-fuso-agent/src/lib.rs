@@ -16,10 +16,10 @@
 pub use pallet::*;
 #[cfg(test)]
 pub mod mock;
-// #[cfg(test)]
-// pub mod tests;
+#[cfg(test)]
+pub mod tests;
 
-use codec::{Decode, Encode};
+use codec::{Codec, Decode, Encode};
 use frame_support::RuntimeDebug;
 use fuso_support::ExternalSignWrapper;
 use scale_info::TypeInfo;
@@ -31,15 +31,17 @@ pub struct EthInstance;
 pub struct EthPersonalSignWrapper;
 
 impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper {
-    fn extend_payload(nonce: T::Index, tx: &impl Dispatchable<Origin = T::Origin>) -> Vec<u8> {
-        Vec::new()
-        // [
-        //     &[0x19u8][..],
-        //     &format!("Ethereum Signed Message:\n{}", msg.as_ref().len()).as_bytes()[..],
-        //     msg.as_ref(),
-        // ]
-        // .concat()
-        // .to_vec()
+    fn extend_payload<W: Dispatchable<Origin = T::Origin> + Codec>(
+        nonce: T::Index,
+        tx: Box<W>,
+    ) -> Vec<u8> {
+        let encoded_payload = (nonce, tx).using_encoded(|v| v.to_vec());
+        [
+            &[0x19u8][..],
+            &format!("Ethereum Signed Message:\n{}", encoded_payload.len()).as_bytes()[..],
+            &encoded_payload[..],
+        ]
+        .concat()
     }
 }
 
@@ -69,12 +71,12 @@ pub mod pallet {
     pub enum ExternalVerifiable<Index, Call> {
         Ed25519 {
             public: ed25519::Public,
-            tx: Call,
+            tx: Box<Call>,
             nonce: Index,
             signature: ed25519::Signature,
         },
         Ecdsa {
-            tx: Call,
+            tx: Box<Call>,
             nonce: Index,
             signature: ecdsa::Signature,
         },
@@ -121,17 +123,16 @@ pub mod pallet {
             tx: ExternalVerifiable<T::Index, T::Transaction>,
         ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
-            Ok(().into())
-            // let msg = T::ExternalSignWrapper::extend_payload(&(nonce, tx.clone()).encode());
-            // let addr = signature
-            //     .address(&msg)
-            //     .ok_or(Error::<T, I>::InvalidSignature)?;
-            // let account = T::ExternalAccount::imply(T::ExternalChainId::get(), &addr);
+            let account = Pallet::<T, I>::extract(&tx)?;
             // // TODO move this to pre_dispatch
-            // frame_system::Pallet::<T>::inc_account_nonce(account.clone());
-            // tx.dispatch(frame_system::RawOrigin::Signed(account).into())
-            //     .map(|_| ().into())
-            //     .map_err(|e| e.error.into())
+            frame_system::Pallet::<T>::inc_account_nonce(account.clone());
+            match tx {
+                ExternalVerifiable::Ed25519 { .. } => Err(Error::<T, I>::InvalidSignature.into()),
+                ExternalVerifiable::Ecdsa { tx, .. } => tx
+                    .dispatch(frame_system::RawOrigin::Signed(account).into())
+                    .map(|_| ().into())
+                    .map_err(|e| e.error.into()),
+            }
         }
     }
 
@@ -141,24 +142,20 @@ pub mod pallet {
         ) -> Result<T::AccountId, DispatchError> {
             match sig {
                 ExternalVerifiable::Ed25519 { public, .. } => {
-                    // let h = (b"-*-#fusotao#-*-", T::ChainId::get(), public.0.to_vec())
-                    //     .using_encoded(sp_io::hashing::blake2_256);
-                    // let account = Decode::decode(&mut TrailingZeroInput::new(h.as_ref()))
-                    //     .map_err(|_| Error::<T>::InvalidSignature)?;
                     Err(Error::<T, I>::InvalidSignature.into())
                 }
                 ExternalVerifiable::Ecdsa {
-                    tx,
-                    nonce,
+                    ref tx,
+                    ref nonce,
                     signature,
                 } => {
-                    let msg = T::ExternalSignWrapper::extend_payload(*nonce, tx);
+                    let msg = T::ExternalSignWrapper::extend_payload(*nonce, tx.clone());
                     let pubkey = signature
                         .recover(&msg)
                         .map(|v| v.0.to_vec())
                         .ok_or(Error::<T, I>::InvalidSignature)?;
-                    // TODO pubkey to address
-                    let h = (b"-*-#fusotao#-*-", T::ExternalChainId::get(), pubkey)
+                    let address = sp_io::hashing::keccak_256(&pubkey)[12..].to_vec();
+                    let h = (b"-*-#fusotao#-*-", T::ExternalChainId::get(), address)
                         .using_encoded(sp_io::hashing::blake2_256);
                     Decode::decode(&mut TrailingZeroInput::new(h.as_ref()))
                         .map_err(|_| Error::<T, I>::InvalidSignature.into())
