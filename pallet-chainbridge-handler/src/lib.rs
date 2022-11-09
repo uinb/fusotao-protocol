@@ -182,6 +182,7 @@ pub mod pallet {
         /// Executes a simple currency transfer using the bridge account as the source
         /// Triggered by a initial transfer on source chain, executed by relayer when proposal was
         /// resolved. this function by bridge triggered transfer
+        /// TODO add callback function
         #[pallet::weight(195_000_0000)]
         pub fn transfer_in(
             origin: OriginFor<T>,

@@ -1,4 +1,4 @@
-// Copyright 2021 UINB Technologies Pte. Ltd.
+// Copyright 2021-2022 UINB Technologies Pte. Ltd.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use codec::{Decode, Encode};
+use codec::{Codec, Decode, Encode};
+use core::fmt::Debug;
 use scale_info::TypeInfo;
-use sp_std::vec::Vec;
+use sp_core::{
+    crypto::{self, Public},
+    ecdsa, ed25519,
+    hash::{H256, H512},
+    sr25519,
+};
+use sp_runtime::traits::{Dispatchable, TrailingZeroInput};
+use sp_runtime::RuntimeDebug;
+use sp_std::{convert::TryFrom, prelude::*, vec::Vec};
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
 pub enum XToken<Balance> {
@@ -55,12 +64,17 @@ impl<Balance> XToken<Balance> {
     }
 }
 
+pub type ChainId = u16;
+
+pub trait ExternalSignWrapper<T: frame_system::Config> {
+    fn extend_payload(nonce: T::Index, tx: &impl Dispatchable<Origin = T::Origin>) -> Vec<u8>;
+}
+
 pub mod chainbridge {
-    use crate::XToken;
+    use crate::{ChainId, XToken};
     use alloc::string::ToString;
     use sp_std::vec::Vec;
 
-    pub type ChainId = u8;
     pub type DepositNonce = u64;
     pub type ResourceId = [u8; 32];
     pub type EvmHash = [u8; 32];
@@ -97,10 +111,10 @@ pub mod chainbridge {
 
     pub fn chain_id_of<B>(token_info: &XToken<B>) -> u8 {
         match token_info {
-            XToken::NEP141(_, _, _, _, _) => 1u8,
-            XToken::ERC20(_, _, _, _, _) => 5u8,
-            XToken::BEP20(_, _, _, _, _) => 6u8,
-            XToken::FND10(_, _) => 42u8,
+            XToken::NEP141(_, _, _, _, _) => 255,
+            XToken::ERC20(_, _, _, _, _) => 1,
+            XToken::BEP20(_, _, _, _, _) => 15,
+            XToken::FND10(_, _) => 42,
         }
     }
 
