@@ -324,10 +324,10 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        fn is_native_resource(mut r_id: ResourceId) -> bool {
-            let native = T::NativeResourceId::get();
-            r_id[30] = 0;
-            native == r_id
+        fn is_native_resource(r_id: ResourceId) -> bool {
+            let (origin, _, p) = decode_resource_id(r_id);
+            let (native, _, p0) = decode_resource_id(T::NativeResourceId::get());
+            native == origin && p == p0
         }
 
         pub fn ensure_admin(o: T::Origin) -> DispatchResult {
