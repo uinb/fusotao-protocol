@@ -19,9 +19,12 @@ pub mod mock;
 #[cfg(test)]
 pub mod tests;
 
+extern crate alloc;
+
 use codec::{Codec, Encode};
 use fuso_support::ExternalSignWrapper;
 use sp_runtime::traits::Dispatchable;
+use sp_std::boxed::Box;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct EthInstance;
@@ -36,7 +39,7 @@ impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper 
         let encoded_payload = (nonce, tx).using_encoded(|v| v.to_vec());
         [
             &[0x19u8][..],
-            &format!("Ethereum Signed Message:\n{}", encoded_payload.len()).as_bytes()[..],
+            &alloc::format!("Ethereum Signed Message:\n{}", encoded_payload.len()).as_bytes()[..],
             &encoded_payload[..],
         ]
         .concat()
@@ -56,6 +59,7 @@ pub mod pallet {
     pub use fuso_support::external_chain::{ChainId, ExternalSignWrapper};
     use sp_core::{ecdsa, ed25519};
     use sp_runtime::traits::{Saturating, TrailingZeroInput, Zero};
+    use sp_std::boxed::Box;
 
     pub type BalanceOf<T, I = ()> =
         <<T as Config<I>>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;

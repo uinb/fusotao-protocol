@@ -39,7 +39,8 @@ std = [
     'frame-system/std',
     'frame-benchmarking/std',
     'pallet-transaction-payment/std',
-    'sp-std/std'
+    'sp-std/std',
+    'pallet-balances/std',
 ]
 runtime-benchmarks = [
     'frame-benchmarking',
