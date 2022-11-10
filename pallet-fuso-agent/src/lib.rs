@@ -24,7 +24,7 @@ extern crate alloc;
 use codec::{Codec, Encode};
 use fuso_support::ExternalSignWrapper;
 use sp_runtime::traits::Dispatchable;
-use sp_std::boxed::Box;
+use sp_std::{boxed::Box, vec::Vec};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct EthInstance;
