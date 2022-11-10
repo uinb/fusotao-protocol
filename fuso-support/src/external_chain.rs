@@ -15,15 +15,8 @@
 use codec::{Codec, Decode, Encode};
 use core::fmt::Debug;
 use scale_info::TypeInfo;
-use sp_core::{
-    crypto::{self, Public},
-    ecdsa, ed25519,
-    hash::{H256, H512},
-    sr25519,
-};
-use sp_runtime::traits::{Dispatchable, TrailingZeroInput};
-use sp_runtime::RuntimeDebug;
-use sp_std::{convert::TryFrom, prelude::*, vec::Vec};
+use sp_runtime::traits::Dispatchable;
+use sp_std::{prelude::*, vec::Vec};
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
 pub enum XToken<Balance> {

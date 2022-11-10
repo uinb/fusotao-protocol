@@ -1,5 +1,5 @@
 use frame_support::parameter_types;
-use frame_support::traits::ConstU32;
+use frame_support::{traits::ConstU32, weights::IdentityFee};
 use frame_system as system;
 use sp_keyring::AccountKeyring;
 use sp_runtime::traits::{IdentifyAccount, Verify};
@@ -91,6 +91,7 @@ impl crate::Config<crate::EthInstance> for Test {
     type ExternalSignWrapper = crate::EthPersonalSignWrapper;
     type Transaction = Call;
     type TransactionByteFee = TransactionByteFee;
+    type WeightToFee = IdentityFee<Balance>;
 }
 
 // Configure a mock runtime to test the pallet.

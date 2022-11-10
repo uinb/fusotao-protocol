@@ -19,10 +19,8 @@ pub mod mock;
 #[cfg(test)]
 pub mod tests;
 
-use codec::{Codec, Decode, Encode};
-use frame_support::RuntimeDebug;
+use codec::{Codec, Encode};
 use fuso_support::ExternalSignWrapper;
-use scale_info::TypeInfo;
 use sp_runtime::traits::Dispatchable;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -52,17 +50,12 @@ pub mod pallet {
         dispatch::Dispatchable,
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, Get, WithdrawReasons},
-        weights::{DispatchInfo, GetDispatchInfo, Weight},
+        weights::{GetDispatchInfo, Weight, WeightToFeePolynomial},
     };
     use frame_system::pallet_prelude::*;
     pub use fuso_support::external_chain::{ChainId, ExternalSignWrapper};
-    use sp_core::{
-        crypto::{self, Public},
-        ecdsa, ed25519,
-        hash::{H256, H512},
-        sr25519,
-    };
-    use sp_runtime::traits::{DispatchInfoOf, TrailingZeroInput, Zero};
+    use sp_core::{ecdsa, ed25519};
+    use sp_runtime::traits::{Saturating, TrailingZeroInput, Zero};
 
     pub type BalanceOf<T, I = ()> =
         <<T as Config<I>>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -91,6 +84,8 @@ pub mod pallet {
             + EncodeLike
             + GetDispatchInfo;
 
+        type WeightToFee: WeightToFeePolynomial<Balance = BalanceOf<Self, I>>;
+
         type TransactionByteFee: Get<BalanceOf<Self, I>>;
 
         type Currency: Currency<Self::AccountId>;
@@ -102,7 +97,9 @@ pub mod pallet {
 
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
-    pub enum Event<T: Config<I>, I: 'static = ()> {}
+    pub enum Event<T: Config<I>, I: 'static = ()> {
+        ExternalTransactionExecuted(T::AccountId),
+    }
 
     #[pallet::error]
     pub enum Error<T, I = ()> {
@@ -124,13 +121,14 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
             let account = Pallet::<T, I>::extract(&tx)?;
-            // // TODO move this to pre_dispatch
-            frame_system::Pallet::<T>::inc_account_nonce(account.clone());
             match tx {
                 ExternalVerifiable::Ed25519 { .. } => Err(Error::<T, I>::InvalidSignature.into()),
                 ExternalVerifiable::Ecdsa { tx, .. } => tx
-                    .dispatch(frame_system::RawOrigin::Signed(account).into())
-                    .map(|_| ().into())
+                    .dispatch(frame_system::RawOrigin::Signed(account.clone()).into())
+                    .map(|_| {
+                        Self::deposit_event(Event::<T, I>::ExternalTransactionExecuted(account));
+                        ().into()
+                    })
                     .map_err(|e| e.error.into()),
             }
         }
@@ -141,9 +139,7 @@ pub mod pallet {
             sig: &ExternalVerifiable<T::Index, T::Transaction>,
         ) -> Result<T::AccountId, DispatchError> {
             match sig {
-                ExternalVerifiable::Ed25519 { public, .. } => {
-                    Err(Error::<T, I>::InvalidSignature.into())
-                }
+                ExternalVerifiable::Ed25519 { .. } => Err(Error::<T, I>::InvalidSignature.into()),
                 ExternalVerifiable::Ecdsa {
                     ref tx,
                     ref nonce,
@@ -163,16 +159,13 @@ pub mod pallet {
             }
         }
 
-        pub fn withdraw_fee(
+        fn withdraw_fee(
             who: &T::AccountId,
-            _call: &T::Transaction,
-            _info: &DispatchInfo,
             fee: BalanceOf<T, I>,
         ) -> Result<(), TransactionValidityError> {
             if fee.is_zero() {
                 return Ok(());
             }
-            // TODO
             match T::Currency::withdraw(
                 who,
                 fee,
@@ -182,6 +175,20 @@ pub mod pallet {
                 Ok(_) => Ok(()),
                 Err(_) => Err(InvalidTransaction::Payment.into()),
             }
+        }
+
+        fn compute_fee(len: u32, weight: Weight, class: DispatchClass) -> BalanceOf<T, I> {
+            let len = <BalanceOf<T, I>>::from(len);
+            let per_byte = T::TransactionByteFee::get();
+            let len_fee = per_byte.saturating_mul(len);
+            let weight_fee = Self::weight_to_fee(weight);
+            let base_fee = Self::weight_to_fee(T::BlockWeights::get().get(class).base_extrinsic);
+            base_fee.saturating_add(len_fee).saturating_add(weight_fee)
+        }
+
+        fn weight_to_fee(weight: Weight) -> BalanceOf<T, I> {
+            let capped_weight = weight.min(T::BlockWeights::get().max_block);
+            T::WeightToFee::calc(&capped_weight)
         }
     }
 
@@ -193,27 +200,39 @@ pub mod pallet {
         /// TODO make it compatiable with Ed25519 signature
         fn validate_unsigned(_: TransactionSource, call: &Self::Call) -> TransactionValidity {
             if let Call::submit_external_tx { ref tx } = call {
-                // TODO check weight and length
                 let account =
                     Pallet::<T, I>::extract(tx).map_err(|_| InvalidTransaction::BadProof)?;
+                frame_system::Pallet::<T>::inc_account_nonce(account.clone());
                 let index = frame_system::Pallet::<T>::account_nonce(&account);
                 let (nonce, call) = match tx {
                     ExternalVerifiable::Ed25519 {
-                        public,
+                        public: _,
                         tx,
                         nonce,
-                        signature,
+                        signature: _,
                     } => (*nonce, tx),
                     ExternalVerifiable::Ecdsa {
                         tx,
                         nonce,
-                        signature,
+                        signature: _,
                     } => (*nonce, tx),
                 };
                 ensure!(index == nonce, InvalidTransaction::BadProof);
                 let info = call.get_dispatch_info();
-                // TODO
-                let _ = Pallet::<T, I>::withdraw_fee(&account, call, &info, Zero::zero())?;
+                let len = tx
+                    .encoded_size()
+                    .try_into()
+                    .map_err(|_| InvalidTransaction::ExhaustsResources)?;
+                ensure!(
+                    len < *T::BlockLength::get().max.get(DispatchClass::Normal),
+                    InvalidTransaction::ExhaustsResources
+                );
+                ensure!(
+                    info.weight < T::BlockWeights::get().max_block.saturating_div(5),
+                    InvalidTransaction::ExhaustsResources
+                );
+                let fee = Pallet::<T, I>::compute_fee(len, info.weight, info.class);
+                let _ = Pallet::<T, I>::withdraw_fee(&account, fee)?;
                 ValidTransaction::with_tag_prefix("FusoAgent")
                     // .priority(call.get_dispatch_info().weight)
                     .and_provides(account)
