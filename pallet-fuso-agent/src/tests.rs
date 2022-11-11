@@ -46,6 +46,8 @@ fn basic_sign_should_work() {
             signature: r.0,
         };
         let account = imply_account(someone.public());
+        println!("{:?}", account);
+        println!("{}", hex::encode(r));
         assert_eq!(account, Agent::extract(&unchecked).unwrap());
         assert_ok!(Balances::transfer(
             RawOrigin::Signed(alice.clone()).into(),

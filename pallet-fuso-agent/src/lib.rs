@@ -22,8 +22,8 @@ pub mod tests;
 extern crate alloc;
 
 use codec::{Codec, Encode};
+use frame_support::traits::UnfilteredDispatchable;
 use fuso_support::ExternalSignWrapper;
-use sp_runtime::traits::Dispatchable;
 use sp_std::{boxed::Box, vec::Vec};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,7 @@ pub struct EthInstance;
 pub struct EthPersonalSignWrapper;
 
 impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper {
-    fn extend_payload<W: Dispatchable<Origin = T::Origin> + Codec>(
+    fn extend_payload<W: UnfilteredDispatchable<Origin = T::Origin> + Codec>(
         nonce: T::Index,
         tx: Box<W>,
     ) -> Vec<u8> {
@@ -50,7 +50,7 @@ impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper 
 pub mod pallet {
     use codec::EncodeLike;
     use frame_support::{
-        dispatch::Dispatchable,
+        dispatch::{Dispatchable, UnfilteredDispatchable},
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, Get, WithdrawReasons},
         weights::{GetDispatchInfo, Weight, WeightToFeePolynomial},
@@ -83,8 +83,7 @@ pub mod pallet {
         type Event: From<Event<Self, I>> + IsType<<Self as frame_system::Config>::Event>;
 
         type Transaction: Parameter
-            + Dispatchable<Origin = Self::Origin>
-            + EncodeLike
+            + UnfilteredDispatchable<Origin = Self::Origin>
             + GetDispatchInfo;
 
         type WeightToFee: WeightToFeePolynomial<Balance = BalanceOf<Self, I>>;
@@ -101,7 +100,7 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config<I>, I: 'static = ()> {
-        ExternalTransactionExecuted(T::AccountId),
+        ExternalTransactionExecuted(T::AccountId, DispatchResult),
     }
 
     #[pallet::error]
@@ -117,7 +116,8 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config<I>, I: 'static> Pallet<T, I> {
         // no need to set weight here, we would charge gas fee in `pre_dispatch`
-        #[pallet::weight(0)]
+        // TODO
+        #[pallet::weight((0, Pays::No))]
         pub fn submit_external_tx(
             origin: OriginFor<T>,
             tx: ExternalVerifiable<T::Index, T::Transaction>,
@@ -126,13 +126,16 @@ pub mod pallet {
             let account = Pallet::<T, I>::extract(&tx)?;
             match tx {
                 ExternalVerifiable::Ed25519 { .. } => Err(Error::<T, I>::InvalidSignature.into()),
-                ExternalVerifiable::Ecdsa { tx, .. } => tx
-                    .dispatch(frame_system::RawOrigin::Signed(account.clone()).into())
-                    .map(|_| {
-                        Self::deposit_event(Event::<T, I>::ExternalTransactionExecuted(account));
-                        ().into()
-                    })
-                    .map_err(|e| e.error.into()),
+                ExternalVerifiable::Ecdsa { tx, .. } => {
+                    let r = tx
+                        .dispatch_bypass_filter(
+                            frame_system::RawOrigin::Signed(account.clone()).into(),
+                        )
+                        .map(|_| ().into())
+                        .map_err(|e| e.error);
+                    Self::deposit_event(Event::<T, I>::ExternalTransactionExecuted(account, r));
+                    Ok(().into())
+                }
             }
         }
     }
