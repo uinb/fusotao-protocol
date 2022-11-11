@@ -57,7 +57,6 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     pub use fuso_support::external_chain::{ChainId, ExternalSignWrapper};
-    use sp_core::{ecdsa, ed25519};
     use sp_runtime::traits::{Saturating, TrailingZeroInput, Zero};
     use sp_std::boxed::Box;
 
@@ -67,15 +66,15 @@ pub mod pallet {
     #[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo, Debug)]
     pub enum ExternalVerifiable<Index, Call> {
         Ed25519 {
-            public: ed25519::Public,
+            public: [u8; 32],
             tx: Box<Call>,
             nonce: Index,
-            signature: ed25519::Signature,
+            signature: [u8; 64],
         },
         Ecdsa {
             tx: Box<Call>,
             nonce: Index,
-            signature: ecdsa::Signature,
+            signature: [u8; 65],
         },
     }
 
@@ -150,10 +149,10 @@ pub mod pallet {
                     signature,
                 } => {
                     let msg = T::ExternalSignWrapper::extend_payload(*nonce, tx.clone());
-                    let pubkey = signature
-                        .recover(&msg)
-                        .map(|v| v.0.to_vec())
-                        .ok_or(Error::<T, I>::InvalidSignature)?;
+                    let digest = sp_io::hashing::keccak_256(&msg);
+                    let pubkey =
+                        sp_io::crypto::secp256k1_ecdsa_recover_compressed(signature, &digest)
+                            .map_err(|_| Error::<T, I>::InvalidSignature)?;
                     let address = sp_io::hashing::keccak_256(&pubkey)[12..].to_vec();
                     let h = (b"-*-#fusotao#-*-", T::ExternalChainId::get(), address)
                         .using_encoded(sp_io::hashing::blake2_256);

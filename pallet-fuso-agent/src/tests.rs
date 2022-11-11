@@ -38,11 +38,12 @@ fn basic_sign_should_work() {
         let mut payload = (0u64, tx.clone()).encode();
         let mut prefix = b"\x19Ethereum Signed Message:\n51".to_vec();
         prefix.append(&mut payload);
-        let r = someone.sign(&prefix);
+        let digest = sp_io::hashing::keccak_256(&prefix);
+        let r = someone.sign_prehashed(&digest);
         let unchecked = crate::ExternalVerifiable::Ecdsa {
             tx: Box::new(tx),
             nonce: 0u64,
-            signature: r,
+            signature: r.0,
         };
         let account = imply_account(someone.public());
         assert_eq!(account, Agent::extract(&unchecked).unwrap());
