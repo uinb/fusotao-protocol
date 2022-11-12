@@ -550,7 +550,7 @@ pub mod pallet {
                     proof,
                 )?;
             }
-            Ok(Some(0).into())
+            Ok(().into())
         }
 
         #[transactional]
