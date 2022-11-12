@@ -17,7 +17,7 @@ pub(crate) type BlockNumber = u32;
 pub type Signature = MultiSignature;
 pub type Balance = u128;
 pub type Moment = u64;
-pub type Index = u64;
+pub type Index = u32;
 pub type Hash = sp_core::H256;
 
 pub const MILLICENTS: Balance = 10_000_000_000;

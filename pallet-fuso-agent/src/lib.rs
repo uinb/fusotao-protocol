@@ -206,8 +206,8 @@ pub mod pallet {
         /// TODO make it compatiable with Ed25519 signature
         fn validate_unsigned(_: TransactionSource, call: &Self::Call) -> TransactionValidity {
             if let Call::submit_external_tx { ref tx } = call {
-                let account =
-                    Pallet::<T, I>::extract(tx).map_err(|_| InvalidTransaction::BadProof)?;
+                let account = Pallet::<T, I>::extract(tx)
+                    .map_err(|_| InvalidTransaction::AncientBirthBlock)?;
                 frame_system::Pallet::<T>::inc_account_nonce(account.clone());
                 let index = frame_system::Pallet::<T>::account_nonce(&account);
                 let (nonce, call) = match tx {
