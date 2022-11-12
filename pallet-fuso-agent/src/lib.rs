@@ -179,7 +179,10 @@ pub mod pallet {
                 ExistenceRequirement::KeepAlive,
             ) {
                 Ok(_) => Ok(()),
-                Err(_) => Err(InvalidTransaction::Payment.into()),
+                Err(e) => {
+                    log::error!("unable to charge fee {:?} from {:?}, {:?}", fee, who, e);
+                    Err(InvalidTransaction::Payment.into())
+                }
             }
         }
 
@@ -206,9 +209,9 @@ pub mod pallet {
         /// TODO make it compatiable with Ed25519 signature
         fn validate_unsigned(_: TransactionSource, call: &Self::Call) -> TransactionValidity {
             if let Call::submit_external_tx { ref tx } = call {
+                log::info!("+++++ {:?}", tx);
                 let account =
                     Pallet::<T, I>::extract(tx).map_err(|_| InvalidTransaction::BadProof)?;
-                frame_system::Pallet::<T>::inc_account_nonce(account.clone());
                 let index = frame_system::Pallet::<T>::account_nonce(&account);
                 let (nonce, call) = match tx {
                     ExternalVerifiable::Ed25519 {
@@ -224,6 +227,7 @@ pub mod pallet {
                     } => (*nonce, tx),
                 };
                 ensure!(index == nonce, InvalidTransaction::BadProof);
+                frame_system::Pallet::<T>::inc_account_nonce(account.clone());
                 let info = call.get_dispatch_info();
                 let len = tx
                     .encoded_size()
@@ -238,11 +242,12 @@ pub mod pallet {
                     InvalidTransaction::ExhaustsResources
                 );
                 let fee = Pallet::<T, I>::compute_fee(len, info.weight, info.class);
+                log::info!(">>>> charge fee: {:?}", fee);
                 let _ = Pallet::<T, I>::withdraw_fee(&account, fee)?;
                 ValidTransaction::with_tag_prefix("FusoAgent")
                     // .priority(call.get_dispatch_info().weight)
                     .and_provides(account)
-                    .longevity(10)
+                    .longevity(1)
                     .propagate(true)
                     .build()
             } else {

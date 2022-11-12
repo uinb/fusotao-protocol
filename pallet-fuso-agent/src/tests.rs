@@ -36,7 +36,7 @@ fn basic_sign_should_work() {
         });
         let someone = generate_pair();
         let mut payload = (0u32, tx.clone()).encode();
-        let mut prefix = b"\x19Ethereum Signed Message:\n47".to_vec();
+        let mut prefix = b"\x19Ethereum Signed Message:\n48".to_vec();
         prefix.append(&mut payload);
         let digest = sp_io::hashing::keccak_256(&prefix);
         let r = someone.sign_prehashed(&digest);
@@ -46,12 +46,6 @@ fn basic_sign_should_work() {
             signature: r.0,
         };
         let account = imply_account(someone.public());
-        use sp_core::crypto::Ss58Codec;
-        println!(
-            "{}",
-            sp_runtime::AccountId32::from(account.clone()).to_ss58check()
-        );
-        println!("{}", hex::encode(r));
         assert_eq!(account, Agent::extract(&unchecked).unwrap());
         assert_ok!(Balances::transfer(
             RawOrigin::Signed(alice.clone()).into(),
@@ -60,5 +54,12 @@ fn basic_sign_should_work() {
         ));
         assert_ok!(Agent::submit_external_tx(Origin::none(), unchecked));
         assert_eq!(Balances::free_balance(&account), 90 * DOLLARS);
+        use sp_core::crypto::Ss58Codec;
+        println!(
+            "{}",
+            sp_runtime::AccountId32::from(account.clone()).to_ss58check()
+        );
+        println!("{}", hex::encode(r.0));
+        println!("{}", hex::encode(account.clone()));
     });
 }
