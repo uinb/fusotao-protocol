@@ -1,7 +1,7 @@
 use crate::mock::*;
-use crate::{Error, Pallet};
+use crate::Pallet;
 use codec::{Decode, Encode};
-use frame_support::{assert_noop, assert_ok};
+use frame_support::assert_ok;
 use frame_system::RawOrigin;
 use sp_core::{ecdsa, Pair};
 use sp_keyring::AccountKeyring;
@@ -59,7 +59,11 @@ fn basic_sign_should_work() {
             "{}",
             sp_runtime::AccountId32::from(account.clone()).to_ss58check()
         );
+        let mut to_be_sign = hex_literal::hex!("00000000050000d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d130000e8890423c78a");
+        let mut prefix = b"\x19Ethereum Signed Message:\n48".to_vec();
+        prefix.extend_from_slice(&mut to_be_sign);
+        let digest = sp_io::hashing::keccak_256(&prefix);
+        let r = someone.sign_prehashed(&digest);
         println!("{}", hex::encode(r.0));
-        println!("{}", hex::encode(account.clone()));
     });
 }

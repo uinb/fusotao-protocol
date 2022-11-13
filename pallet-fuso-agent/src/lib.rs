@@ -22,7 +22,7 @@ pub mod tests;
 extern crate alloc;
 
 use codec::{Codec, Encode};
-use frame_support::traits::UnfilteredDispatchable;
+use frame_support::dispatch::Dispatchable;
 use fuso_support::ExternalSignWrapper;
 use sp_std::{boxed::Box, vec::Vec};
 
@@ -32,7 +32,7 @@ pub struct EthInstance;
 pub struct EthPersonalSignWrapper;
 
 impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper {
-    fn extend_payload<W: UnfilteredDispatchable<Origin = T::Origin> + Codec>(
+    fn extend_payload<W: Dispatchable<Origin = T::Origin> + Codec>(
         nonce: T::Index,
         tx: Box<W>,
     ) -> Vec<u8> {
@@ -48,12 +48,11 @@ impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper 
 
 #[frame_support::pallet]
 pub mod pallet {
-    use codec::EncodeLike;
     use frame_support::{
-        dispatch::{Dispatchable, UnfilteredDispatchable},
+        dispatch::Dispatchable,
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, Get, WithdrawReasons},
-        weights::{GetDispatchInfo, Weight, WeightToFeePolynomial},
+        weights::{DispatchInfo, GetDispatchInfo, Weight, WeightToFeePolynomial},
     };
     use frame_system::pallet_prelude::*;
     pub use fuso_support::external_chain::{ChainId, ExternalSignWrapper};
@@ -78,13 +77,22 @@ pub mod pallet {
         },
     }
 
+    fn dispatch_info_of<T: Config<I>, I: 'static>(
+        verifiable: &ExternalVerifiable<T::Index, T::Transaction>,
+    ) -> DispatchInfo {
+        match verifiable {
+            ExternalVerifiable::Ed25519 {
+                public: _p, ref tx, ..
+            } => tx.get_dispatch_info(),
+            ExternalVerifiable::Ecdsa { ref tx, .. } => tx.get_dispatch_info(),
+        }
+    }
+
     #[pallet::config]
     pub trait Config<I: 'static = ()>: frame_system::Config {
         type Event: From<Event<Self, I>> + IsType<<Self as frame_system::Config>::Event>;
 
-        type Transaction: Parameter
-            + UnfilteredDispatchable<Origin = Self::Origin>
-            + GetDispatchInfo;
+        type Transaction: Parameter + Dispatchable<Origin = Self::Origin> + GetDispatchInfo;
 
         type WeightToFee: WeightToFeePolynomial<Balance = BalanceOf<Self, I>>;
 
@@ -116,8 +124,7 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config<I>, I: 'static> Pallet<T, I> {
         // no need to set weight here, we would charge gas fee in `pre_dispatch`
-        // TODO
-        #[pallet::weight((0, Pays::No))]
+        #[pallet::weight((0, dispatch_info_of::<T, I>(tx).class, Pays::No))]
         pub fn submit_external_tx(
             origin: OriginFor<T>,
             tx: ExternalVerifiable<T::Index, T::Transaction>,
@@ -128,12 +135,12 @@ pub mod pallet {
                 ExternalVerifiable::Ed25519 { .. } => Err(Error::<T, I>::InvalidSignature.into()),
                 ExternalVerifiable::Ecdsa { tx, .. } => {
                     let r = tx
-                        .dispatch_bypass_filter(
-                            frame_system::RawOrigin::Signed(account.clone()).into(),
-                        )
-                        .map(|_| ().into())
-                        .map_err(|e| e.error);
-                    Self::deposit_event(Event::<T, I>::ExternalTransactionExecuted(account, r));
+                        .dispatch(frame_system::RawOrigin::Signed(account.clone()).into())
+                        .map(|_| ().into());
+                    Self::deposit_event(Event::<T, I>::ExternalTransactionExecuted(
+                        account,
+                        r.map_err(|e| e.error),
+                    ));
                     Ok(().into())
                 }
             }
@@ -179,10 +186,7 @@ pub mod pallet {
                 ExistenceRequirement::KeepAlive,
             ) {
                 Ok(_) => Ok(()),
-                Err(e) => {
-                    log::error!("unable to charge fee {:?} from {:?}, {:?}", fee, who, e);
-                    Err(InvalidTransaction::Payment.into())
-                }
+                Err(_) => Err(InvalidTransaction::Payment.into()),
             }
         }
 
@@ -209,7 +213,6 @@ pub mod pallet {
         /// TODO make it compatiable with Ed25519 signature
         fn validate_unsigned(_: TransactionSource, call: &Self::Call) -> TransactionValidity {
             if let Call::submit_external_tx { ref tx } = call {
-                log::info!("+++++ {:?}", tx);
                 let account =
                     Pallet::<T, I>::extract(tx).map_err(|_| InvalidTransaction::BadProof)?;
                 let index = frame_system::Pallet::<T>::account_nonce(&account);
@@ -242,9 +245,9 @@ pub mod pallet {
                     InvalidTransaction::ExhaustsResources
                 );
                 let fee = Pallet::<T, I>::compute_fee(len, info.weight, info.class);
-                log::info!(">>>> charge fee: {:?}", fee);
                 let _ = Pallet::<T, I>::withdraw_fee(&account, fee)?;
                 ValidTransaction::with_tag_prefix("FusoAgent")
+                    // TODO
                     // .priority(call.get_dispatch_info().weight)
                     .and_provides(account)
                     .longevity(1)

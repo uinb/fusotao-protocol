@@ -14,7 +14,7 @@
 
 use codec::{Codec, Decode, Encode};
 use core::fmt::Debug;
-use frame_support::traits::UnfilteredDispatchable;
+use frame_support::dispatch::Dispatchable;
 use scale_info::TypeInfo;
 use sp_std::{prelude::*, vec::Vec};
 
@@ -60,7 +60,7 @@ impl<Balance> XToken<Balance> {
 pub type ChainId = u16;
 
 pub trait ExternalSignWrapper<T: frame_system::Config> {
-    fn extend_payload<W: UnfilteredDispatchable<Origin = T::Origin> + Codec>(
+    fn extend_payload<W: Dispatchable<Origin = T::Origin> + Codec>(
         nonce: T::Index,
         tx: Box<W>,
     ) -> Vec<u8>;
