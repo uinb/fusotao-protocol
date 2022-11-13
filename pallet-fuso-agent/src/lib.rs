@@ -247,10 +247,9 @@ pub mod pallet {
                 let fee = Pallet::<T, I>::compute_fee(len, info.weight, info.class);
                 let _ = Pallet::<T, I>::withdraw_fee(&account, fee)?;
                 ValidTransaction::with_tag_prefix("FusoAgent")
-                    // TODO
-                    // .priority(call.get_dispatch_info().weight)
+                    .priority(info.weight)
                     .and_provides(account)
-                    .longevity(1)
+                    .longevity(5)
                     .propagate(true)
                     .build()
             } else {
