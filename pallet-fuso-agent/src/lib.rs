@@ -160,9 +160,8 @@ pub mod pallet {
                 } => {
                     let msg = T::ExternalSignWrapper::extend_payload(*nonce, tx.clone());
                     let digest = sp_io::hashing::keccak_256(&msg);
-                    let pubkey =
-                        sp_io::crypto::secp256k1_ecdsa_recover_compressed(signature, &digest)
-                            .map_err(|_| Error::<T, I>::InvalidSignature)?;
+                    let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(signature, &digest)
+                        .map_err(|_| Error::<T, I>::InvalidSignature)?;
                     let address = sp_io::hashing::keccak_256(&pubkey)[12..].to_vec();
                     let h = (b"-*-#fusotao#-*-", T::ExternalChainId::get(), address)
                         .using_encoded(sp_io::hashing::blake2_256);
