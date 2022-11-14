@@ -43,9 +43,7 @@ runtime-benchmarks = [
     'frame-system/runtime-benchmarks',
     'pallet-fuso-token/runtime-benchmarks',
     'pallet-balances/runtime-benchmarks',
-    'hex',
 ]
-
 default = ["std"]
 std = [
     "codec/std",

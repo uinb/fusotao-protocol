@@ -86,7 +86,7 @@ impl pallet_balances::Config for Test {
 }
 
 parameter_types! {
-    pub const TestChainId: u8 = 5;
+    pub const TestChainId: ChainId = 5;
     pub const ProposalLifetime: u32 = 50;
 }
 

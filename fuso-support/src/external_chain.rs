@@ -1,4 +1,4 @@
-// Copyright 2021 UINB Technologies Pte. Ltd.
+// Copyright 2021-2022 UINB Technologies Pte. Ltd.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use codec::{Decode, Encode};
+use codec::{Codec, Decode, Encode};
+use core::fmt::Debug;
+use frame_support::dispatch::Dispatchable;
 use scale_info::TypeInfo;
-use sp_std::vec::Vec;
+use sp_std::{prelude::*, vec::Vec};
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
 pub enum XToken<Balance> {
@@ -55,52 +57,57 @@ impl<Balance> XToken<Balance> {
     }
 }
 
+pub type ChainId = u16;
+
+pub trait ExternalSignWrapper<T: frame_system::Config> {
+    fn extend_payload<W: Dispatchable<Origin = T::Origin> + Codec>(
+        nonce: T::Index,
+        tx: Box<W>,
+    ) -> Vec<u8>;
+}
+
 pub mod chainbridge {
-    use crate::XToken;
+    use crate::{ChainId, XToken};
     use alloc::string::ToString;
     use sp_std::vec::Vec;
 
-    pub type ChainId = u8;
     pub type DepositNonce = u64;
     pub type ResourceId = [u8; 32];
     pub type EvmHash = [u8; 32];
     pub type EthAddress = [u8; 20];
 
-    /// [len, ..., dex, chain]
+    /// [len, ..., 01, 01, 00]
     pub fn derive_resource_id(
-        chain: u8,
+        chain: ChainId,
         dex: u8,
         id: &[u8],
     ) -> Result<ResourceId, alloc::string::String> {
         let mut r_id: ResourceId = [0; 32];
         let id_len = id.len();
-        r_id[31] = chain; // last byte is chain id
-        r_id[30] = dex;
-        if id_len >= 29 {
+        if id_len > 28 {
             return Err("id is too long".to_string());
         }
-        for i in 0..id_len {
-            r_id[29 - i] = id[id_len - 1 - i]; // Ensure left padding for eth compatibilit
-        }
+        r_id[30..].copy_from_slice(&chain.to_le_bytes()[..]);
+        r_id[29] = dex;
+        r_id[29 - id_len..29].copy_from_slice(&id[..]);
         r_id[0] = id_len as u8;
         Ok(r_id)
     }
 
-    pub fn decode_resource_id(r_id: ResourceId) -> (u8, u8, Vec<u8>) {
-        let chainid = r_id[31];
-        let dex = r_id[30];
+    pub fn decode_resource_id(r_id: ResourceId) -> (ChainId, u8, Vec<u8>) {
+        let chainid = ChainId::from_le_bytes(r_id[30..].try_into().unwrap());
+        let dex = r_id[29];
         let id_len = r_id[0];
-        let start = (30 - id_len) as usize;
-        let v: &[u8] = &r_id[start..30];
+        let v: &[u8] = &r_id[29 - id_len as usize..29];
         (chainid, dex, v.to_vec())
     }
 
-    pub fn chain_id_of<B>(token_info: &XToken<B>) -> u8 {
+    pub fn chain_id_of<B>(token_info: &XToken<B>) -> ChainId {
         match token_info {
-            XToken::NEP141(_, _, _, _, _) => 1u8,
-            XToken::ERC20(_, _, _, _, _) => 5u8,
-            XToken::BEP20(_, _, _, _, _) => 6u8,
-            XToken::FND10(_, _) => 42u8,
+            XToken::NEP141(_, _, _, _, _) => 255,
+            XToken::ERC20(_, _, _, _, _) => 1,
+            XToken::BEP20(_, _, _, _, _) => 15,
+            XToken::FND10(_, _) => 42,
         }
     }
 

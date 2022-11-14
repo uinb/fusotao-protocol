@@ -529,7 +529,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(<T as Config>::WeightInfo::verify())]
+        #[pallet::weight((<T as Config>::WeightInfo::verify(), DispatchClass::Normal, Pays::No))]
         pub fn verify(
             origin: OriginFor<T>,
             proofs: Vec<Proof<T::AccountId>>,
@@ -550,7 +550,7 @@ pub mod pallet {
                     proof,
                 )?;
             }
-            Ok(Some(0).into())
+            Ok(().into())
         }
 
         #[transactional]

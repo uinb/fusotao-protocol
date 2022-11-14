@@ -19,14 +19,11 @@ pub mod pallet {
         weights::GetDispatchInfo,
     };
     use frame_system::{ensure_signed, pallet_prelude::*};
-    use fuso_support::{
-        chainbridge::*,
-        traits::{Agent, Token},
-    };
+    use fuso_support::{chainbridge::*, traits::Token, ChainId};
     use pallet_chainbridge as bridge;
     use pallet_fuso_verifier as verifier;
     use sp_core::U256;
-    use sp_runtime::traits::{Dispatchable, SaturatedConversion, TrailingZeroInput};
+    use sp_runtime::traits::{Dispatchable, SaturatedConversion, Zero};
     use sp_std::{convert::From, prelude::*};
 
     type Depositer = EthAddress;
@@ -87,17 +84,9 @@ pub mod pallet {
     pub type NativeCheck<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn assets_stored)]
-    pub type AssetsStored<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, bool>;
-
-    #[pallet::storage]
     #[pallet::getter(fn associated_dominator)]
     pub type AssociatedDominator<T: Config> =
         StorageMap<_, Blake2_128Concat, u8, T::AccountId, OptionQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn agents)]
-    pub type Agents<T: Config> = StorageMap<_, Blake2_128Concat, Depositer, (T::AccountId, u32)>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
@@ -182,6 +171,7 @@ pub mod pallet {
         /// Executes a simple currency transfer using the bridge account as the source
         /// Triggered by a initial transfer on source chain, executed by relayer when proposal was
         /// resolved. this function by bridge triggered transfer
+        /// TODO add callback function
         #[pallet::weight(195_000_0000)]
         pub fn transfer_in(
             origin: OriginFor<T>,
@@ -239,6 +229,14 @@ pub mod pallet {
                     }
                 }
             }
+            if frame_system::Pallet::<T>::account_nonce(&to) == Zero::zero() {
+                let _ = T::Fungibles::transfer_token(
+                    &T::DonorAccount::get(),
+                    T::Fungibles::native_token_id(),
+                    T::DonationForAgent::get(),
+                    &to,
+                );
+            }
             Ok(())
         }
 
@@ -257,75 +255,34 @@ pub mod pallet {
         #[pallet::weight(195_000_0000)]
         pub fn remark(
             origin: OriginFor<T>,
-            message: Vec<u8>,
-            depositer: Depositer,
+            _message: Vec<u8>,
+            _depositer: Depositer,
             _r_id: ResourceId,
         ) -> DispatchResult {
             T::BridgeOrigin::ensure_origin(origin)?;
-            let message_length = message.len();
-            ensure!(message_length > 4, Error::<T>::InvalidCallMessage);
-            let nonce: u32 = Decode::decode(&mut &message[0..4]).unwrap();
-            let c = <T as Config>::Redirect::decode(&mut &message[4..])
-                .map_err(|_| <Error<T>>::InvalidCallMessage)?;
-            let controller = (b"ETH".to_vec(), depositer);
-            Self::execute_tx(controller, c)?;
-            Agents::<T>::try_mutate_exists(depositer, |v| -> Result<(), DispatchError> {
-                ensure!(v.is_some(), Error::<T>::DepositerNotFound);
-                let mut map = v.take().unwrap();
-                map.1 = nonce;
-                v.replace(map);
-                Ok(())
-            })?;
+            // let message_length = message.len();
+            // ensure!(message_length > 4, Error::<T>::InvalidCallMessage);
+            // let nonce: u32 = Decode::decode(&mut &message[0..4]).unwrap();
+            // let c = <T as Config>::Redirect::decode(&mut &message[4..])
+            //     .map_err(|_| <Error<T>>::InvalidCallMessage)?;
+            // let controller = (b"ETH".to_vec(), depositer);
+            // Self::execute_tx(controller, c)?;
+            // Agents::<T>::try_mutate_exists(depositer, |v| -> Result<(), DispatchError> {
+            //     ensure!(v.is_some(), Error::<T>::DepositerNotFound);
+            //     let mut map = v.take().unwrap();
+            //     map.1 = nonce;
+            //     v.replace(map);
+            //     Ok(())
+            // })?;
             Ok(())
-        }
-    }
-
-    /// IBC reference
-    impl<T: Config> Agent<T::AccountId> for Pallet<T> {
-        type Message = T::Redirect;
-        type Origin = (Vec<u8>, Depositer);
-
-        /// bind the origin to an appchain account without private key
-        /// function RegisterInterchainAccount(counterpartyPortId: Identifier, connectionID: Identifier) returns (nil)
-        fn register_agent(origin: Self::Origin) -> Result<T::AccountId, DispatchError> {
-            let hash =
-                (b"-*-#fusotao#-*-", origin.clone()).using_encoded(sp_io::hashing::blake2_256);
-            let host_addr = Decode::decode(&mut TrailingZeroInput::new(hash.as_ref()))
-                .map_err(|_| Error::<T>::RegisterAgentFailed)?;
-            if !Agents::<T>::contains_key(&origin.1) {
-                T::Fungibles::transfer_token(
-                    &T::DonorAccount::get(),
-                    T::Fungibles::native_token_id(),
-                    T::DonationForAgent::get(),
-                    &host_addr,
-                )?;
-                Agents::<T>::insert(origin.1.clone(), (host_addr.clone(), 0u32));
-            }
-            Ok(host_addr)
-        }
-
-        /// function AuthenticateTx(msgs []Any, connectionId string, portId string) returns (error)
-        fn authenticate_tx(
-            _origin: Self::Origin,
-            _msg: Self::Message,
-        ) -> Result<(), DispatchError> {
-            Ok(())
-        }
-
-        /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
-        fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult {
-            let agent = Self::register_agent(origin)?;
-            msg.dispatch(frame_system::RawOrigin::Signed(agent).into())
-                .map(|_| ().into())
-                .map_err(|e| e.error)
         }
     }
 
     impl<T: Config> Pallet<T> {
-        fn is_native_resource(mut r_id: ResourceId) -> bool {
-            let native = T::NativeResourceId::get();
-            r_id[30] = 0;
-            native == r_id
+        fn is_native_resource(r_id: ResourceId) -> bool {
+            let (origin, _, p) = decode_resource_id(r_id);
+            let (native, _, p0) = decode_resource_id(T::NativeResourceId::get());
+            native == origin && p == p0
         }
 
         pub fn ensure_admin(o: T::Origin) -> DispatchResult {
