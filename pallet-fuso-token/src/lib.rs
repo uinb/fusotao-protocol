@@ -75,6 +75,19 @@ pub mod pallet {
             + Codec
             + MaybeSerializeDeserialize;
 
+        // TODO
+        #[pallet::constant]
+        type NearChainId: Get<ChainId>;
+
+        #[pallet::constant]
+        type EthChainId: Get<ChainId>;
+
+        #[pallet::constant]
+        type BnbChainId: Get<ChainId>;
+
+        #[pallet::constant]
+        type NativeChainId: Get<ChainId>;
+
         #[pallet::constant]
         type NativeTokenId: Get<Self::TokenId>;
 
@@ -770,7 +783,15 @@ pub mod pallet {
         }
     }
 
-    use fuso_support::chainbridge::*;
+    pub fn chain_id_of<T: Config>(token_info: &XToken<BalanceOf<T>>) -> ChainId {
+        match token_info {
+            XToken::NEP141(..) => T::NearChainId::get(),
+            XToken::ERC20(..) => T::EthChainId::get(),
+            XToken::BEP20(..) => T::BnbChainId::get(),
+            XToken::FND10(..) => T::NativeChainId::get(),
+        }
+    }
+
     impl<T: Config> fuso_support::chainbridge::AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
         type Err = ();
 
@@ -779,7 +800,7 @@ pub mod pallet {
             contract_id: impl AsRef<[u8]>,
         ) -> Result<T::TokenId, Self::Err> {
             for (id, token) in Tokens::<T>::iter() {
-                if chain_id_of(&token) == chain_id
+                if chain_id_of::<T>(&token) == chain_id
                     && token.contract() == contract_id.as_ref().to_vec()
                 {
                     return Ok(id);

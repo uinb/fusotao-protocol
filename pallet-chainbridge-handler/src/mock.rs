@@ -1,5 +1,5 @@
 use crate as pallet_chainbridge_transfer;
-use fuso_support::chainbridge::*;
+use fuso_support::{chainbridge::*, ChainId};
 use pallet_chainbridge as bridge;
 use sp_keyring::AccountKeyring;
 use sp_runtime::{
@@ -115,13 +115,21 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const NativeTokenId: u32 = 0;
+    pub const NearChainId: ChainId = 255;
+    pub const EthChainId: ChainId = 1;
+    pub const BnbChainId: ChainId = 2;
+    pub const NativeChainId: ChainId = 42;
 }
 
 impl pallet_fuso_token::Config for Test {
+    type BnbChainId = BnbChainId;
+    type EthChainId = EthChainId;
     type Event = Event;
+    type NativeChainId = NativeChainId;
     type NativeTokenId = NativeTokenId;
+    type NearChainId = NearChainId;
     type TokenId = u32;
-    type Weight = pallet_fuso_token::weights::SubstrateWeight<Test>;
+    type Weight = ();
 }
 
 parameter_types! {

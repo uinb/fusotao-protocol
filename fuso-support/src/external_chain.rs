@@ -67,7 +67,7 @@ pub trait ExternalSignWrapper<T: frame_system::Config> {
 }
 
 pub mod chainbridge {
-    use crate::{ChainId, XToken};
+    use crate::ChainId;
     use alloc::string::ToString;
     use sp_std::vec::Vec;
 
@@ -100,15 +100,6 @@ pub mod chainbridge {
         let id_len = r_id[0];
         let v: &[u8] = &r_id[29 - id_len as usize..29];
         (chainid, dex, v.to_vec())
-    }
-
-    pub fn chain_id_of<B>(token_info: &XToken<B>) -> ChainId {
-        match token_info {
-            XToken::NEP141(_, _, _, _, _) => 255,
-            XToken::ERC20(_, _, _, _, _) => 1,
-            XToken::BEP20(_, _, _, _, _) => 15,
-            XToken::FND10(_, _) => 42,
-        }
     }
 
     pub trait AssetIdResourceIdProvider<TokenId> {
