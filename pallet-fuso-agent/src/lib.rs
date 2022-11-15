@@ -185,7 +185,10 @@ pub mod pallet {
                 ExistenceRequirement::KeepAlive,
             ) {
                 Ok(_) => Ok(()),
-                Err(_) => Err(InvalidTransaction::Payment.into()),
+                Err(e) => {
+                    log::error!("withdraw original error: {:?}", e);
+                    Err(InvalidTransaction::Payment.into())
+                }
             }
         }
 
@@ -244,6 +247,8 @@ pub mod pallet {
                     InvalidTransaction::ExhaustsResources
                 );
                 let fee = Pallet::<T, I>::compute_fee(len, info.weight, info.class);
+                log::info!("withdraw fee who: {:?}", &account);
+                log::info!("withdraw fee amount: {:?}", fee);
                 let _ = Pallet::<T, I>::withdraw_fee(&account, fee)?;
                 ValidTransaction::with_tag_prefix("FusoAgent")
                     .priority(info.weight)

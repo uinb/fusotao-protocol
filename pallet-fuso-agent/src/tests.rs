@@ -18,6 +18,23 @@ fn imply_account(pubkey: PublicKey) -> AccountId {
 }
 
 #[test]
+fn test_derive_address() {
+    new_test_ext().execute_with(|| {
+        let addr = hex::decode("847Dc5Ea89c407f1416f23D87B40CE317798E133").unwrap();
+        let h = (b"-*-#fusotao#-*-", 1u16, addr).using_encoded(|e| {
+            println!("{}", hex::encode(&e));
+            sp_io::hashing::blake2_256(e)
+        });
+
+        use sp_core::crypto::Ss58Codec;
+        println!(
+            "{}",
+            sp_runtime::AccountId32::from(h.clone()).to_ss58check()
+        );
+    });
+}
+
+#[test]
 fn basic_sign_should_work() {
     new_test_ext().execute_with(|| {
         let alice: AccountId = AccountKeyring::Alice.into();
