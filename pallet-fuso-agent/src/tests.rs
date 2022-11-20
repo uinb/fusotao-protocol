@@ -50,9 +50,18 @@ fn basic_sign_should_work() {
         let someone = sp_core::ecdsa::Pair::from_seed(&[0xcd; 32]);
         assert_eq!(someone.public().0, public_key.serialize());
 
+
         let mut payload = (0u32, tx.clone()).encode();
-        let mut prefix = b"\x19Ethereum Signed Message:\n48".to_vec();
-        prefix.append(&mut payload);
+		let mut prefix = [
+			&[0x19u8][..],
+			&alloc::format!(
+				"Ethereum Signed Message:\n{}{}",
+				payload.len() * 2,
+				hex::encode(payload)
+			)
+				.as_bytes()[..],
+		]
+			.concat();
         let digest = sp_io::hashing::keccak_256(&prefix);
         // sign by substrate
         let sf = someone.sign_prehashed(&digest);

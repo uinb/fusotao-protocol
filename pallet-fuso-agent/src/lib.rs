@@ -39,8 +39,12 @@ impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper 
         let encoded_payload = (nonce, tx).using_encoded(|v| v.to_vec());
         [
             &[0x19u8][..],
-            &alloc::format!("Ethereum Signed Message:\n{}", encoded_payload.len()).as_bytes()[..],
-            &encoded_payload[..],
+            &alloc::format!(
+                "Ethereum Signed Message:\n{}{}",
+                encoded_payload.len() * 2,
+                hex::encode(encoded_payload)
+            )
+            .as_bytes()[..],
         ]
         .concat()
     }
