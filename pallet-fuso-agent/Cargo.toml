@@ -26,7 +26,7 @@ sp-runtime = { default-features = false, git = "https://github.com/paritytech/su
 pallet-balances = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18" }
 fuso-support = { path = "../fuso-support", default-features = false }
 log = { version = "0.4.14", default-features = false }
-hex = { version = "0.4.3", features = ["alloc"]}
+hex = { version = "0.4.3", default-features = false }
 
 [dev-dependencies]
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18" }
@@ -46,6 +46,7 @@ std = [
     'sp-std/std',
     'pallet-balances/std',
     'log/std',
+	'hex/std',
 ]
 runtime-benchmarks = [
     'frame-benchmarking',
