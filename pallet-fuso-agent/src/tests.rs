@@ -49,8 +49,6 @@ fn basic_sign_should_work() {
         use sp_core::Pair;
         let someone = sp_core::ecdsa::Pair::from_seed(&[0xcd; 32]);
         assert_eq!(someone.public().0, public_key.serialize());
-
-
         let mut payload = (0u32, tx.clone()).encode();
 		let mut prefix = [
 			&[0x19u8][..],
@@ -58,10 +56,8 @@ fn basic_sign_should_work() {
 				"Ethereum Signed Message:\n{}{}",
 				payload.len() * 2,
 				hex::encode(payload)
-			)
-				.as_bytes()[..],
-		]
-			.concat();
+			).as_bytes()[..],
+		].concat();
         let digest = sp_io::hashing::keccak_256(&prefix);
         // sign by substrate
         let sf = someone.sign_prehashed(&digest);
@@ -94,11 +90,6 @@ fn basic_sign_should_work() {
         ));
         assert_ok!(Agent::submit_external_tx(Origin::none(), unchecked));
         assert_eq!(Balances::free_balance(&account), 90 * DOLLARS);
-        // use sp_core::crypto::Ss58Codec;
-        // println!(
-        //     "{}",
-        //     sp_runtime::AccountId32::from(account.clone()).to_ss58check()
-        // );
         let mut to_be_sign = hex_literal::hex!("00000000050000d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d130000e8890423c78a");
         let mut prefix = b"\x19Ethereum Signed Message:\n48".to_vec();
         prefix.extend_from_slice(&mut to_be_sign);
@@ -108,7 +99,6 @@ fn basic_sign_should_work() {
         let mut sig = [0u8; 65];
         sig[0..64].copy_from_slice(&r64[..]);
         sig[64] = r.to_i32().try_into().unwrap();
-
         let prefix = b"\x19Ethereum Signed Message:\n8Ofg4NGHw";
         let digest = sp_io::hashing::keccak_256(&prefix[..]);
         let signature: [u8; 65] = hex_literal::hex!("aecf9f42ffd739ba2057adea3f035e286c4a40d16875da3b63f116227489831a33b5a3e58ce58bb9ad3bafe81bb7582fc57de2cd23fd90cf3ab58d7a390996b51b");
