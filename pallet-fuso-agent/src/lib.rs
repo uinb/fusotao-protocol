@@ -39,8 +39,12 @@ impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper 
         let encoded_payload = (nonce, tx).using_encoded(|v| v.to_vec());
         [
             &[0x19u8][..],
-            &alloc::format!("Ethereum Signed Message:\n{}", encoded_payload.len()).as_bytes()[..],
-            &encoded_payload[..],
+            &alloc::format!(
+                "Ethereum Signed Message:\n{}{}",
+                encoded_payload.len() * 2,
+                hex::encode(encoded_payload)
+            )
+            .as_bytes()[..],
         ]
         .concat()
     }
@@ -185,7 +189,10 @@ pub mod pallet {
                 ExistenceRequirement::KeepAlive,
             ) {
                 Ok(_) => Ok(()),
-                Err(_) => Err(InvalidTransaction::Payment.into()),
+                Err(e) => {
+                    log::error!("withdraw original error: {:?}", e);
+                    Err(InvalidTransaction::Payment.into())
+                }
             }
         }
 
@@ -244,6 +251,8 @@ pub mod pallet {
                     InvalidTransaction::ExhaustsResources
                 );
                 let fee = Pallet::<T, I>::compute_fee(len, info.weight, info.class);
+                log::info!("withdraw fee who: {:?}", &account);
+                log::info!("withdraw fee amount: {:?}", fee);
                 let _ = Pallet::<T, I>::withdraw_fee(&account, fee)?;
                 ValidTransaction::with_tag_prefix("FusoAgent")
                     .priority(info.weight)

@@ -18,6 +18,23 @@ fn imply_account(pubkey: PublicKey) -> AccountId {
 }
 
 #[test]
+fn test_derive_address() {
+    new_test_ext().execute_with(|| {
+        let addr = hex::decode("847Dc5Ea89c407f1416f23D87B40CE317798E133").unwrap();
+        let h = (b"-*-#fusotao#-*-", 1u16, addr).using_encoded(|e| {
+            println!("{}", hex::encode(&e));
+            sp_io::hashing::blake2_256(e)
+        });
+
+        use sp_core::crypto::Ss58Codec;
+        println!(
+            "{}",
+            sp_runtime::AccountId32::from(h.clone()).to_ss58check()
+        );
+    });
+}
+
+#[test]
 fn basic_sign_should_work() {
     new_test_ext().execute_with(|| {
         let alice: AccountId = AccountKeyring::Alice.into();
@@ -32,10 +49,15 @@ fn basic_sign_should_work() {
         use sp_core::Pair;
         let someone = sp_core::ecdsa::Pair::from_seed(&[0xcd; 32]);
         assert_eq!(someone.public().0, public_key.serialize());
-
         let mut payload = (0u32, tx.clone()).encode();
-        let mut prefix = b"\x19Ethereum Signed Message:\n48".to_vec();
-        prefix.append(&mut payload);
+		let mut prefix = [
+			&[0x19u8][..],
+			&alloc::format!(
+				"Ethereum Signed Message:\n{}{}",
+				payload.len() * 2,
+				hex::encode(payload)
+			).as_bytes()[..],
+		].concat();
         let digest = sp_io::hashing::keccak_256(&prefix);
         // sign by substrate
         let sf = someone.sign_prehashed(&digest);
@@ -68,11 +90,6 @@ fn basic_sign_should_work() {
         ));
         assert_ok!(Agent::submit_external_tx(Origin::none(), unchecked));
         assert_eq!(Balances::free_balance(&account), 90 * DOLLARS);
-        // use sp_core::crypto::Ss58Codec;
-        // println!(
-        //     "{}",
-        //     sp_runtime::AccountId32::from(account.clone()).to_ss58check()
-        // );
         let mut to_be_sign = hex_literal::hex!("00000000050000d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d130000e8890423c78a");
         let mut prefix = b"\x19Ethereum Signed Message:\n48".to_vec();
         prefix.extend_from_slice(&mut to_be_sign);
@@ -82,12 +99,17 @@ fn basic_sign_should_work() {
         let mut sig = [0u8; 65];
         sig[0..64].copy_from_slice(&r64[..]);
         sig[64] = r.to_i32().try_into().unwrap();
-
         let prefix = b"\x19Ethereum Signed Message:\n8Ofg4NGHw";
         let digest = sp_io::hashing::keccak_256(&prefix[..]);
         let signature: [u8; 65] = hex_literal::hex!("aecf9f42ffd739ba2057adea3f035e286c4a40d16875da3b63f116227489831a33b5a3e58ce58bb9ad3bafe81bb7582fc57de2cd23fd90cf3ab58d7a390996b51b");
         let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(&signature, &digest).map_err(|_|()).unwrap();
         let addr = &sp_io::hashing::keccak_256(&pubkey[..])[12..];
         assert_eq!(addr.to_vec(), hex_literal::hex!("544f52f459a42e098775118e0a1880f1fa3eb9a9"));
+		let prefix = b"\x19Ethereum Signed Message:\n264000000001b0900d8366bd6c6bd841069543b219c46fda846981bdf19fae11cc88d2d9924a0f2630c0000000000f4448291634500000000000000001801404b4c000000000000000000000000001400000000000000006d816a5c38acefabede80a56b1f8bc27fa6ec24201050050847dc5ea89c407f1416f23d87b40ce317798e1330500";
+		let digest = sp_io::hashing::keccak_256(&prefix[..]);
+		let signature: [u8; 65] = hex_literal::hex!("bf2d50b1ccbb04621dbd87e4f3ff75e96526d2fbfeaf5ddff93a9cd28130f8603581067cfc14717a66af8b27efb895a549dfc5487074bfb960a7812177e3ea141c");
+		let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(&signature, &digest).map_err(|_|()).unwrap();
+		let addr = &sp_io::hashing::keccak_256(&pubkey[..])[12..];
+		assert_eq!(addr.to_vec(), hex_literal::hex!("847dc5ea89c407f1416f23d87b40ce317798e133"));
     });
 }
