@@ -121,4 +121,9 @@ impl<T: Config> frame_support::pallet_prelude::EnsureOrigin<T::Origin> for Ensur
             r => Err(T::Origin::from(r)),
         })
     }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn successful_origin() -> T::Origin {
+        T::Origin::from(frame_system::RawOrigin::Signed(<Pallet<T>>::account_id()))
+    }
 }
