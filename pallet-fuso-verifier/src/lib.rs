@@ -39,7 +39,7 @@ pub mod pallet {
     use fuso_support::constants::RESERVE_FOR_AUTHORIZING_STASH;
     use fuso_support::{
         constants::*,
-        traits::{ReservableToken, Rewarding, Token},
+        traits::{ReservableToken, Rewarding, Smuggler, Token},
     };
     use scale_info::TypeInfo;
     use sp_io::hashing::blake2_256 as hashing;
@@ -254,6 +254,8 @@ pub mod pallet {
             + Dispatchable<Origin = Self::Origin, PostInfo = PostDispatchInfo>
             + EncodeLike
             + GetDispatchInfo;
+
+        type Smuggler: Smuggler<Self::AccountId>;
 
         #[pallet::constant]
         type DominatorOnlineThreshold: Get<Balance<Self>>;
@@ -617,6 +619,9 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
             let dex = T::Lookup::lookup(dominator)?;
+            if T::Smuggler::repatriate_if_wanted(&fund_owner) {
+                return Ok(().into());
+            }
             Self::authorize_to(fund_owner, dex, token_id, amount)?;
             Ok(().into())
         }
