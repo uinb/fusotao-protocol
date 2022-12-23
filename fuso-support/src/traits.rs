@@ -208,3 +208,19 @@ pub trait Agent<AccountId> {
     /// function ExecuteTx(sourcePort: Identifier, channel Channel, msgs []Any) returns (resultString, error)
     fn execute_tx(origin: Self::Origin, msg: Self::Message) -> DispatchResult;
 }
+
+pub trait Smuggler<AccountId> {
+    fn is_wanted(t: &AccountId) -> bool;
+
+    fn repatriate_if_wanted(t: &AccountId) -> bool;
+}
+
+impl<T> Smuggler<T> for () {
+    fn is_wanted(_: &T) -> bool {
+        false
+    }
+
+    fn repatriate_if_wanted(_: &T) -> bool {
+        false
+    }
+}

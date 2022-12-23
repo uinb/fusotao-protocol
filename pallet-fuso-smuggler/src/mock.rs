@@ -1,13 +1,11 @@
-use super::*;
-use crate as pallet_fuso_token;
-use frame_support::parameter_types;
-use frame_support::traits::ConstU32;
+use frame_support::{
+    parameter_types,
+    traits::{ConstU32, Everything},
+};
 use frame_system as system;
-use fuso_support::ChainId;
-use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::{
     generic,
-    traits::{AccountIdLookup, BlakeTwo256},
+    traits::{AccountIdLookup, BlakeTwo256, IdentifyAccount, Verify},
     MultiSignature,
 };
 
@@ -19,17 +17,18 @@ pub(crate) type BlockNumber = u32;
 pub type Signature = MultiSignature;
 pub type Balance = u128;
 pub type Moment = u64;
-pub type Index = u64;
+pub type Index = u32;
 pub type Hash = sp_core::H256;
 
-pub const MILLICENTS: Balance = 10_000_000_000;
-pub const CENTS: Balance = 1_000 * MILLICENTS;
+pub const MILLICENTS: Balance = 1_000_000_000_000;
+pub const CENTS: Balance = 10_000 * MILLICENTS;
 pub const DOLLARS: Balance = 100 * CENTS;
 pub const MILLISECS_PER_BLOCK: Moment = 3000;
 pub const SECS_PER_BLOCK: Moment = MILLISECS_PER_BLOCK / 1000;
 pub const SLOT_DURATION: Moment = MILLISECS_PER_BLOCK;
 pub const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 1 * MINUTES;
 pub const MINUTES: BlockNumber = 60 / (SECS_PER_BLOCK as BlockNumber);
+pub const HOURS: BlockNumber = 60 * MINUTES;
 
 parameter_types! {
     pub const BlockHashCount: BlockNumber = 250;
@@ -39,7 +38,7 @@ parameter_types! {
 impl frame_system::Config for Test {
     type AccountData = pallet_balances::AccountData<Balance>;
     type AccountId = AccountId;
-    type BaseCallFilter = frame_support::traits::Everything;
+    type BaseCallFilter = Everything;
     type BlockHashCount = BlockHashCount;
     type BlockLength = ();
     type BlockNumber = BlockNumber;
@@ -64,10 +63,11 @@ impl frame_system::Config for Test {
 }
 
 parameter_types! {
-    pub const ExistentialDeposit: Balance = 1;
+    pub const ExistentialDeposit: Balance = 1 * DOLLARS;
     pub const MaxLocks: u32 = 50;
     pub const MaxReserves: u32 = 50;
 }
+
 impl pallet_balances::Config for Test {
     type AccountStore = System;
     type Balance = Balance;
@@ -81,26 +81,18 @@ impl pallet_balances::Config for Test {
 }
 
 parameter_types! {
-    pub const NativeTokenId: u32 = 0;
-    pub const NearChainId: ChainId = 255;
-    pub const EthChainId: ChainId = 1;
-    pub const BnbChainId: ChainId = 2;
-    pub const NativeChainId: ChainId = 42;
+    pub const EventLifetime: BlockNumber = HOURS;
+    pub const EventMaximumLength: u32 = 32;
+    pub Admin: AccountId = hex_literal::hex!["160436f350dceb4e01e3cf383f3b4ac6adbb5b53ee0631ecd5162ac12bd1323c"].into();
 }
 
-impl pallet_fuso_token::Config for Test {
-    type BnbChainId = BnbChainId;
-    type EthChainId = EthChainId;
+impl crate::Config for Test {
+    type Admin = Admin;
+    type Currency = Balances;
+    type EnsureAdmin = crate::EnsureAdmin<Test>;
     type Event = Event;
-    type NativeChainId = NativeChainId;
-    type NativeTokenId = NativeTokenId;
-    type NearChainId = NearChainId;
-    type Smuggler = ();
-    type TokenId = u32;
-    type Weight = ();
 }
 
-// Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
     pub enum Test where
         Block = Block,
@@ -109,14 +101,19 @@ frame_support::construct_runtime!(
     {
         System: frame_system,
         Balances: pallet_balances,
-        TokenModule: pallet_fuso_token
+        EventFeed: crate,
     }
 );
 
-// Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    system::GenesisConfig::default()
+    let mut t = system::GenesisConfig::default()
         .build_storage::<Test>()
-        .unwrap()
-        .into()
+        .unwrap();
+    let alice: AccountId = sp_keyring::AccountKeyring::Alice.into();
+    pallet_balances::GenesisConfig::<Test> {
+        balances: vec![(alice, 1000 * DOLLARS)],
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+    sp_io::TestExternalities::new(t)
 }

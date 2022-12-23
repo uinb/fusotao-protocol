@@ -49,15 +49,15 @@ fn basic_sign_should_work() {
         use sp_core::Pair;
         let someone = sp_core::ecdsa::Pair::from_seed(&[0xcd; 32]);
         assert_eq!(someone.public().0, public_key.serialize());
-        let mut payload = (0u32, tx.clone()).encode();
-		let mut prefix = [
-			&[0x19u8][..],
-			&alloc::format!(
-				"Ethereum Signed Message:\n{}{}",
-				payload.len() * 2,
-				hex::encode(payload)
-			).as_bytes()[..],
-		].concat();
+        let payload = (0u32, tx.clone()).encode();
+        let prefix = [
+            &[0x19u8][..],
+            &alloc::format!(
+                "Ethereum Signed Message:\n{}{}",
+                payload.len() * 2,
+                hex::encode(payload)
+            ).as_bytes()[..],
+        ].concat();
         let digest = sp_io::hashing::keccak_256(&prefix);
         // sign by substrate
         let sf = someone.sign_prehashed(&digest);
@@ -105,11 +105,11 @@ fn basic_sign_should_work() {
         let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(&signature, &digest).map_err(|_|()).unwrap();
         let addr = &sp_io::hashing::keccak_256(&pubkey[..])[12..];
         assert_eq!(addr.to_vec(), hex_literal::hex!("544f52f459a42e098775118e0a1880f1fa3eb9a9"));
-		let prefix = b"\x19Ethereum Signed Message:\n264000000001b0900d8366bd6c6bd841069543b219c46fda846981bdf19fae11cc88d2d9924a0f2630c0000000000f4448291634500000000000000001801404b4c000000000000000000000000001400000000000000006d816a5c38acefabede80a56b1f8bc27fa6ec24201050050847dc5ea89c407f1416f23d87b40ce317798e1330500";
-		let digest = sp_io::hashing::keccak_256(&prefix[..]);
-		let signature: [u8; 65] = hex_literal::hex!("bf2d50b1ccbb04621dbd87e4f3ff75e96526d2fbfeaf5ddff93a9cd28130f8603581067cfc14717a66af8b27efb895a549dfc5487074bfb960a7812177e3ea141c");
-		let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(&signature, &digest).map_err(|_|()).unwrap();
-		let addr = &sp_io::hashing::keccak_256(&pubkey[..])[12..];
-		assert_eq!(addr.to_vec(), hex_literal::hex!("847dc5ea89c407f1416f23d87b40ce317798e133"));
+        let prefix = b"\x19Ethereum Signed Message:\n264000000001b0900d8366bd6c6bd841069543b219c46fda846981bdf19fae11cc88d2d9924a0f2630c0000000000f4448291634500000000000000001801404b4c000000000000000000000000001400000000000000006d816a5c38acefabede80a56b1f8bc27fa6ec24201050050847dc5ea89c407f1416f23d87b40ce317798e1330500";
+        let digest = sp_io::hashing::keccak_256(&prefix[..]);
+        let signature: [u8; 65] = hex_literal::hex!("bf2d50b1ccbb04621dbd87e4f3ff75e96526d2fbfeaf5ddff93a9cd28130f8603581067cfc14717a66af8b27efb895a549dfc5487074bfb960a7812177e3ea141c");
+        let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(&signature, &digest).map_err(|_|()).unwrap();
+        let addr = &sp_io::hashing::keccak_256(&pubkey[..])[12..];
+        assert_eq!(addr.to_vec(), hex_literal::hex!("847dc5ea89c407f1416f23d87b40ce317798e133"));
     });
 }
