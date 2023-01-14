@@ -32,7 +32,7 @@ pub struct EthInstance;
 pub struct EthPersonalSignWrapper;
 
 impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper {
-    fn extend_payload<W: Dispatchable<Origin = T::Origin> + Codec>(
+    fn extend_payload<W: Dispatchable<RuntimeOrigin = T::RuntimeOrigin> + Codec>(
         nonce: T::Index,
         tx: Box<W>,
     ) -> Vec<u8> {
@@ -53,10 +53,10 @@ impl<T: frame_system::Config> ExternalSignWrapper<T> for EthPersonalSignWrapper 
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
-        dispatch::Dispatchable,
+        dispatch::{DispatchInfo, Dispatchable, GetDispatchInfo},
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, Get, WithdrawReasons},
-        weights::{DispatchInfo, GetDispatchInfo, Weight, WeightToFeePolynomial},
+        weights::{Weight, WeightToFee},
     };
     use frame_system::pallet_prelude::*;
     pub use fuso_support::external_chain::{ChainId, ExternalSignWrapper};
@@ -94,11 +94,14 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config<I: 'static = ()>: frame_system::Config {
-        type Event: From<Event<Self, I>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self, I>>
+            + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-        type Transaction: Parameter + Dispatchable<Origin = Self::Origin> + GetDispatchInfo;
+        type Transaction: Parameter
+            + Dispatchable<RuntimeOrigin = Self::RuntimeOrigin>
+            + GetDispatchInfo;
 
-        type WeightToFee: WeightToFeePolynomial<Balance = BalanceOf<Self, I>>;
+        type WeightToFee: WeightToFee<Balance = BalanceOf<Self, I>>;
 
         type TransactionByteFee: Get<BalanceOf<Self, I>>;
 
@@ -207,7 +210,8 @@ pub mod pallet {
 
         fn weight_to_fee(weight: Weight) -> BalanceOf<T, I> {
             let capped_weight = weight.min(T::BlockWeights::get().max_block);
-            T::WeightToFee::calc(&capped_weight)
+            T::WeightToFee::weight_to_fee(&capped_weight)
+            //  <BalanceOf<T, I>>::from(8u8)
         }
     }
 
@@ -247,7 +251,8 @@ pub mod pallet {
                     InvalidTransaction::ExhaustsResources
                 );
                 ensure!(
-                    info.weight < T::BlockWeights::get().max_block.saturating_div(5),
+                    info.weight
+                        .any_lt(T::BlockWeights::get().max_block.saturating_div(5)),
                     InvalidTransaction::ExhaustsResources
                 );
                 let fee = Pallet::<T, I>::compute_fee(len, info.weight, info.class);
@@ -255,7 +260,7 @@ pub mod pallet {
                 log::info!("withdraw fee amount: {:?}", fee);
                 let _ = Pallet::<T, I>::withdraw_fee(&account, fee)?;
                 ValidTransaction::with_tag_prefix("FusoAgent")
-                    .priority(info.weight)
+                    .priority(info.weight.ref_time())
                     .and_provides(account)
                     .longevity(5)
                     .propagate(true)

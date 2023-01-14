@@ -48,9 +48,7 @@ impl frame_system::Config for Test {
     type BlockLength = ();
     type BlockNumber = BlockNumber;
     type BlockWeights = ();
-    type Call = Call;
     type DbWeight = ();
-    type Event = Event;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
     type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -60,8 +58,10 @@ impl frame_system::Config for Test {
     type OnKilledAccount = ();
     type OnNewAccount = ();
     type OnSetCode = ();
-    type Origin = Origin;
     type PalletInfo = PalletInfo;
+    type RuntimeCall = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeOrigin = RuntimeOrigin;
     type SS58Prefix = SS58Prefix;
     type SystemWeightInfo = ();
     type Version = ();
@@ -77,11 +77,11 @@ impl pallet_balances::Config for Test {
     type AccountStore = System;
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
     type ExistentialDeposit = ExistentialDeposit;
     type MaxLocks = MaxLocks;
     type MaxReserves = MaxReserves;
     type ReserveIdentifier = [u8; 8];
+    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
 }
 
@@ -93,9 +93,9 @@ parameter_types! {
 impl Config for Test {
     type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type ChainId = TestChainId;
-    type Event = Event;
-    type Proposal = Call;
+    type Proposal = RuntimeCall;
     type ProposalLifetime = ProposalLifetime;
+    type RuntimeEvent = RuntimeEvent;
 }
 
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -120,7 +120,7 @@ pub const ENDOWED_BALANCE: Balance = 100 * DOLLARS;
 pub const TEST_THRESHOLD: u32 = 2;
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let bridge_id = PalletId(*b"oc/bridg").into_account();
+    let bridge_id = PalletId(*b"oc/bridg").try_into_account().unwrap();
     let mut t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
@@ -142,16 +142,16 @@ pub fn new_test_ext_initialized(
     let mut t = new_test_ext();
     t.execute_with(|| {
         // Set and check threshold
-        assert_ok!(Bridge::set_threshold(Origin::root(), TEST_THRESHOLD));
+        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD));
         assert_eq!(Bridge::relayer_threshold(), TEST_THRESHOLD);
         // Add relayers
-        assert_ok!(Bridge::add_relayer(Origin::root(), RELAYER_A));
-        assert_ok!(Bridge::add_relayer(Origin::root(), RELAYER_B));
-        assert_ok!(Bridge::add_relayer(Origin::root(), RELAYER_C));
+        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_A));
+        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_B));
+        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_C));
         // Whitelist chain
-        assert_ok!(Bridge::whitelist_chain(Origin::root(), src_id));
+        assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::root(), src_id));
         // Set and check resource ID mapped to some junk data
-        assert_ok!(Bridge::set_resource(Origin::root(), r_id, resource));
+        assert_ok!(Bridge::set_resource(RuntimeOrigin::root(), r_id, resource));
         assert_eq!(Bridge::resource_exists(r_id), true);
     });
     t
@@ -159,8 +159,8 @@ pub fn new_test_ext_initialized(
 
 // Checks events against the latest. A contiguous set of events must be provided. They must
 // include the most recent event, but do not have to include every past event.
-pub fn assert_events(mut expected: Vec<Event>) {
-    let mut actual: Vec<Event> = system::Pallet::<Test>::events()
+pub fn assert_events(mut expected: Vec<RuntimeEvent>) {
+    let mut actual: Vec<RuntimeEvent> = system::Pallet::<Test>::events()
         .iter()
         .map(|e| e.event.clone())
         .collect();

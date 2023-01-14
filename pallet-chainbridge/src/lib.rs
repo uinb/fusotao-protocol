@@ -9,10 +9,8 @@ use frame_support::{
 use fuso_support::{chainbridge::*, ChainId};
 use scale_info::TypeInfo;
 use sp_core::U256;
-use sp_runtime::{
-    traits::{AccountIdConversion, Dispatchable},
-    RuntimeDebug,
-};
+use sp_runtime::traits::AccountIdConversion;
+use sp_runtime::{traits::Dispatchable, RuntimeDebug};
 use sp_std::prelude::*;
 
 pub use pallet::*;
@@ -99,22 +97,21 @@ const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 pub mod pallet {
     use super::*;
     use codec::EncodeLike;
-    use frame_support::{pallet_prelude::*, weights::GetDispatchInfo, Blake2_128Concat};
+    use frame_support::{dispatch::GetDispatchInfo, pallet_prelude::*, Blake2_128Concat};
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::AccountIdConversion;
 
     /// Configure the pallet by specifying the parameters and types on which it depends.
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// The overarching event type.
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// Origin used to administer the pallet
-        type AdminOrigin: EnsureOrigin<Self::Origin>;
+        type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
         /// Proposed dispatchable call
         type Proposal: Parameter
-            + Dispatchable<Origin = Self::Origin>
+            + Dispatchable<RuntimeOrigin = Self::RuntimeOrigin>
             + EncodeLike
             + GetDispatchInfo;
 
@@ -341,7 +338,7 @@ pub mod pallet {
         /// # </weight>
         #[pallet::weight({
             let dispatch_info = call.get_dispatch_info();
-            (dispatch_info.weight + 195_000_000, dispatch_info.class, Pays::Yes)
+            (dispatch_info.weight.saturating_add(Weight::from_ref_time(195_000_000u64)), dispatch_info.class, Pays::Yes)
         })]
         pub fn acknowledge_proposal(
             origin: OriginFor<T>,
@@ -402,7 +399,7 @@ pub mod pallet {
         /// # </weight>
         #[pallet::weight({
             let dispatch_info = prop.get_dispatch_info();
-            (dispatch_info.weight + 195_000_000, dispatch_info.class, Pays::Yes)
+            (dispatch_info.weight.saturating_add(Weight::from_ref_time(195_000_000u64)), dispatch_info.class, Pays::Yes)
         })]
         pub fn eval_vote_state(
             origin: OriginFor<T>,
@@ -419,7 +416,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         // *** Utility methods ***
 
-        pub fn ensure_admin(o: T::Origin) -> DispatchResult {
+        pub fn ensure_admin(o: T::RuntimeOrigin) -> DispatchResult {
             T::AdminOrigin::ensure_origin(o)?;
             Ok(().into())
         }
@@ -432,7 +429,7 @@ pub mod pallet {
         /// Provides an AccountId for the pallet.
         /// This is used both as an origin check and deposit/withdrawal account.
         pub fn account_id() -> T::AccountId {
-            MODULE_ID.into_account()
+            MODULE_ID.try_into_account().unwrap()
         }
 
         /// Asserts if a resource is registered
@@ -694,14 +691,14 @@ pub mod pallet {
 /// Simple ensure origin for the bridge account
 pub struct EnsureBridge<T>(sp_std::marker::PhantomData<T>);
 
-impl<T: Config> EnsureOrigin<T::Origin> for EnsureBridge<T> {
+impl<T: Config> EnsureOrigin<T::RuntimeOrigin> for EnsureBridge<T> {
     type Success = T::AccountId;
 
-    fn try_origin(o: T::Origin) -> Result<Self::Success, T::Origin> {
-        let bridge_id = MODULE_ID.into_account();
+    fn try_origin(o: T::RuntimeOrigin) -> Result<Self::Success, T::RuntimeOrigin> {
+        let bridge_id = MODULE_ID.try_into_account().unwrap();
         o.into().and_then(|o| match o {
             frame_system::RawOrigin::Signed(who) if who == bridge_id => Ok(bridge_id),
-            r => Err(T::Origin::from(r)),
+            r => Err(T::RuntimeOrigin::from(r)),
         })
     }
 

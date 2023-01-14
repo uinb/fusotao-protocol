@@ -43,9 +43,7 @@ impl frame_system::Config for Test {
     type BlockLength = ();
     type BlockNumber = BlockNumber;
     type BlockWeights = ();
-    type Call = Call;
     type DbWeight = ();
-    type Event = Event;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
     type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -55,8 +53,10 @@ impl frame_system::Config for Test {
     type OnKilledAccount = ();
     type OnNewAccount = ();
     type OnSetCode = ();
-    type Origin = Origin;
     type PalletInfo = PalletInfo;
+    type RuntimeCall = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeOrigin = RuntimeOrigin;
     type SS58Prefix = SS58Prefix;
     type SystemWeightInfo = ();
     type Version = ();
@@ -72,11 +72,11 @@ impl pallet_balances::Config for Test {
     type AccountStore = System;
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
     type ExistentialDeposit = ExistentialDeposit;
     type MaxLocks = MaxLocks;
     type MaxReserves = MaxReserves;
     type ReserveIdentifier = [u8; 8];
+    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
 }
 
@@ -90,7 +90,7 @@ impl crate::Config for Test {
     type Admin = Admin;
     type Currency = Balances;
     type EnsureAdmin = crate::EnsureAdmin<Test>;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
 }
 
 frame_support::construct_runtime!(

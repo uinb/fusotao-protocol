@@ -1,6 +1,7 @@
 use crate::mock::*;
 use crate::FoundationData;
 use crate::Pallet;
+use frame_support::dispatch::Weight;
 use frame_support::traits::OnInitialize;
 use frame_system::AccountInfo;
 use sp_keyring::AccountKeyring;
@@ -31,9 +32,9 @@ fn test_foundation() {
         );
 
         let weight = Foundation::on_initialize(5);
-        assert!(weight == 0);
+        assert!(weight.eq(&Weight::from_ref_time(0u64)));
         let weight = Foundation::on_initialize(15);
-        assert!(weight == 0);
+        assert!(weight.eq(&Weight::from_ref_time(0u64)));
         Foundation::on_initialize(20);
         let alice_foundation = Foundation::foundation(&alice);
         assert_eq!(
@@ -78,7 +79,7 @@ fn test_foundation() {
         assert_eq!(alice_balance.data.reserved, 0);
 
         let weight = Foundation::on_initialize(101);
-        assert!(weight == 0);
+        assert!(weight.eq(&Weight::from_ref_time(0u64)));
         let alice_foundation_data = Foundation::foundation(&alice);
         assert!(alice_foundation_data.is_none());
         let alice_balance: AccountInfo<u64, pallet_balances::AccountData<u128>> =

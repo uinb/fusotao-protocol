@@ -14,9 +14,9 @@ pub mod pallet {
     use crate::pallet;
     use codec::EncodeLike;
     use frame_support::{
+        dispatch::GetDispatchInfo,
         pallet_prelude::*,
         traits::{fungibles::Mutate, tokens::BalanceConversion, EnsureOrigin, Get, StorageVersion},
-        weights::GetDispatchInfo,
     };
     use frame_system::{ensure_signed, pallet_prelude::*};
     use fuso_support::{chainbridge::*, traits::Token, ChainId};
@@ -45,20 +45,20 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config + bridge::Config + verifier::Config {
         /// The overarching event type.
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// Specifies the origin check provided by the bridge for calls that can only be called by
         /// the bridge pallet
-        type BridgeOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
+        type BridgeOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Self::AccountId>;
 
         /// Origin used to administer the pallet
-        type AdminOrigin: EnsureOrigin<Self::Origin>;
+        type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
         type BalanceConversion: BalanceConversion<BalanceOf<Self>, AssetId<Self>, BalanceOf<Self>>;
 
         /// dispatchable call
         type Redirect: Parameter
-            + Dispatchable<Origin = Self::Origin>
+            + Dispatchable<RuntimeOrigin = Self::RuntimeOrigin>
             + EncodeLike
             + GetDispatchInfo;
 
@@ -285,7 +285,7 @@ pub mod pallet {
             native == origin && p == p0
         }
 
-        pub fn ensure_admin(o: T::Origin) -> DispatchResult {
+        pub fn ensure_admin(o: T::RuntimeOrigin) -> DispatchResult {
             <T as pallet::Config>::AdminOrigin::ensure_origin(o)?;
             Ok(().into())
         }

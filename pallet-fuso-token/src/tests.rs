@@ -49,7 +49,7 @@ fn issuing_token_and_transfer_should_work() {
         );
 
         assert_ok!(Token::transfer(
-            Origin::signed(ferdie.clone()),
+            RuntimeOrigin::signed(ferdie.clone()),
             id.clone(),
             MultiAddress::Id(alice.clone()),
             1000000000000000000
@@ -101,7 +101,7 @@ fn reservable_token_should_work() {
         );
         assert_noop!(
             Token::transfer(
-                Origin::signed(ferdie.clone()),
+                RuntimeOrigin::signed(ferdie.clone()),
                 id,
                 MultiAddress::Id(alice.clone()),
                 ONE,
@@ -132,7 +132,7 @@ fn reservable_token_should_work() {
             }
         );
         assert_ok!(Token::transfer(
-            Origin::signed(ferdie.clone()),
+            RuntimeOrigin::signed(ferdie.clone()),
             id.clone(),
             MultiAddress::Id(alice.clone()),
             1

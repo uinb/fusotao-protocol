@@ -64,7 +64,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_balances::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         type TokenId: Member
             + Parameter
@@ -73,7 +73,8 @@ pub mod pallet {
             + PartialEq
             + Copy
             + Codec
-            + MaybeSerializeDeserialize;
+            + MaybeSerializeDeserialize
+            + MaxEncodedLen;
 
         type Smuggler: Smuggler<Self::AccountId>;
 
@@ -353,6 +354,7 @@ pub mod pallet {
             _asset: Self::AssetId,
             _who: &T::AccountId,
             _amount: Self::Balance,
+            _mint: bool,
         ) -> DepositConsequence {
             DepositConsequence::Success
         }

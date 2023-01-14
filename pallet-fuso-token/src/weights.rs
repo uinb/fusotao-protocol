@@ -14,19 +14,19 @@ pub trait WeightInfo {
 pub struct SubstrateWeight<T>(PhantomData<T>);
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// r:1, w2;
-	fn transfer() -> u64 {
-		(71_780_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
+	fn transfer() -> Weight {
+		Weight::from_ref_time(71_780_000u64)
+			.saturating_add(RocksDbWeight::get().reads(2u64))
+			.saturating_add(RocksDbWeight::get().writes(2u64))
 	}
 }
 
 impl WeightInfo for () {
 	// r:1, w2;
-	fn transfer() -> u64 {
-		(71_780_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
+	fn transfer() -> Weight {
+		Weight::from_ref_time(71_780_000u64)
+			.saturating_add(RocksDbWeight::get().reads(2u64))
+			.saturating_add(RocksDbWeight::get().writes(2u64))
 	}
 
 }

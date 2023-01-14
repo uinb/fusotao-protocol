@@ -60,7 +60,7 @@ impl<Balance> XToken<Balance> {
 pub type ChainId = u16;
 
 pub trait ExternalSignWrapper<T: frame_system::Config> {
-    fn extend_payload<W: Dispatchable<Origin = T::Origin> + Codec>(
+    fn extend_payload<W: Dispatchable<RuntimeOrigin = T::RuntimeOrigin> + Codec>(
         nonce: T::Index,
         tx: Box<W>,
     ) -> Vec<u8>;

@@ -45,9 +45,7 @@ impl frame_system::Config for Test {
     type BlockLength = ();
     type BlockNumber = BlockNumber;
     type BlockWeights = ();
-    type Call = Call;
     type DbWeight = ();
-    type Event = Event;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
     type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -57,8 +55,10 @@ impl frame_system::Config for Test {
     type OnKilledAccount = ();
     type OnNewAccount = ();
     type OnSetCode = ();
-    type Origin = Origin;
     type PalletInfo = PalletInfo;
+    type RuntimeCall = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeOrigin = RuntimeOrigin;
     type SS58Prefix = SS58Prefix;
     type SystemWeightInfo = ();
     type Version = ();
@@ -90,9 +90,9 @@ parameter_types! {
 impl bridge::Config for Test {
     type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type ChainId = TestChainId;
-    type Event = Event;
-    type Proposal = Call;
+    type Proposal = RuntimeCall;
     type ProposalLifetime = ProposalLifetime;
+    type RuntimeEvent = RuntimeEvent;
 }
 
 parameter_types! {
@@ -105,11 +105,11 @@ impl pallet_balances::Config for Test {
     type AccountStore = System;
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
     type ExistentialDeposit = ExistentialDeposit;
     type MaxLocks = MaxLocks;
     type MaxReserves = MaxReserves;
     type ReserveIdentifier = [u8; 8];
+    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
 }
 
@@ -124,10 +124,10 @@ parameter_types! {
 impl pallet_fuso_token::Config for Test {
     type BnbChainId = BnbChainId;
     type EthChainId = EthChainId;
-    type Event = Event;
     type NativeChainId = NativeChainId;
     type NativeTokenId = NativeTokenId;
     type NearChainId = NearChainId;
+    type RuntimeEvent = RuntimeEvent;
     type Smuggler = ();
     type TokenId = u32;
     type Weight = ();
@@ -177,14 +177,14 @@ parameter_types! {
 
 impl pallet_fuso_verifier::Config for Test {
     type Asset = Assets;
-    type Callback = Call;
+    type Callback = RuntimeCall;
     type DominatorCheckGracePeriod = DominatorCheckGracePeriod;
     type DominatorOnlineThreshold = DominatorOnlineThreshold;
-    type Event = Event;
     type MaxMakerFee = MaxMakerFee;
     type MaxTakerFee = MaxTakerFee;
     type MinimalStakingAmount = MinimalStakingAmount;
     type Rewarding = PhantomData;
+    type RuntimeEvent = RuntimeEvent;
     type SeasonDuration = SeasonDuration;
     type Smuggler = ();
     type WeightInfo = ();
@@ -200,11 +200,11 @@ impl crate::Config for Test {
     type BridgeOrigin = bridge::EnsureBridge<Test>;
     type DonationForAgent = DonationForAgent;
     type DonorAccount = DonorAccount;
-    type Event = Event;
     type Fungibles = Assets;
     type NativeResourceId = NativeResourceId;
     type NativeTokenMaxValue = NativeTokenMaxValue;
-    type Redirect = Call;
+    type Redirect = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
 }
 
 pub const RELAYER_A: AccountId32 = AccountId32::new([2u8; 32]);
@@ -213,7 +213,7 @@ pub const RELAYER_C: AccountId32 = AccountId32::new([4u8; 32]);
 pub const ENDOWED_BALANCE: Balance = 100 * DOLLARS;
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let bridge_id = PalletId(*b"oc/bridg").into_account();
+    let bridge_id = PalletId(*b"oc/bridg").try_into_account().unwrap();
     let mut storage = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
@@ -233,24 +233,24 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     ext
 }
 
-fn last_event() -> Event {
+fn last_event() -> RuntimeEvent {
     frame_system::Pallet::<Test>::events()
         .pop()
         .map(|e| e.event)
         .expect("Event expected")
 }
 
-pub fn expect_event<E: Into<Event>>(e: E) {
+pub fn expect_event<E: Into<RuntimeEvent>>(e: E) {
     assert_eq!(last_event(), e.into());
 }
 
 // Asserts that the event was emitted at some point.
-pub fn event_exists<E: Into<Event>>(e: E) {
-    let actual: Vec<Event> = frame_system::Pallet::<Test>::events()
+pub fn event_exists<E: Into<RuntimeEvent>>(e: E) {
+    let actual: Vec<RuntimeEvent> = frame_system::Pallet::<Test>::events()
         .iter()
         .map(|e| e.event.clone())
         .collect();
-    let e: Event = e.into();
+    let e: RuntimeEvent = e.into();
     let mut exists = false;
     for evt in actual {
         if evt == e {
@@ -263,8 +263,8 @@ pub fn event_exists<E: Into<Event>>(e: E) {
 
 // Checks events against the latest. A contiguous set of events must be provided. They must
 // include the most recent event, but do not have to include every past event.
-pub fn assert_events(mut expected: Vec<Event>) {
-    let mut actual: Vec<Event> = frame_system::Pallet::<Test>::events()
+pub fn assert_events(mut expected: Vec<RuntimeEvent>) {
+    let mut actual: Vec<RuntimeEvent> = frame_system::Pallet::<Test>::events()
         .iter()
         .map(|e| e.event.clone())
         .collect();

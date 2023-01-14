@@ -48,63 +48,63 @@ pub struct FusoWeight<T>(PhantomData<T>);
 impl<T: frame_system::Config> WeightInfo for FusoWeight<T> {
 	// Storage: Verifier Dominators (r:2 w:1)
 	fn register() -> Weight {
-		(17_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(2 as Weight))
-			.saturating_add(T::DbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(17_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(2u64))
+			.saturating_add(T::DbWeight::get().writes(1u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:1)
 	fn evict() -> Weight {
-		(14_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(1 as Weight))
-			.saturating_add(T::DbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(14_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(1u64))
+			.saturating_add(T::DbWeight::get().writes(1u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:1)
 	fn launch() -> Weight {
-		(15_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(1 as Weight))
-			.saturating_add(T::DbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(15_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(1u64))
+			.saturating_add(T::DbWeight::get().writes(1u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:1)
 	// Storage: Verifier Stakings (r:1 w:1)
 	// Storage: Verifier Reserves (r:1 w:1)
 	// Storage: System Account (r:1 w:1)
 	fn stake() -> Weight {
-		(38_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(4 as Weight))
-			.saturating_add(T::DbWeight::get().writes(4 as Weight))
+		Weight::from_ref_time(38_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(4u64))
+			.saturating_add(T::DbWeight::get().writes(4u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:1)
 	// Storage: Verifier Stakings (r:1 w:1)
 	// Storage: Verifier Reserves (r:1 w:1)
 	// Storage: System Account (r:1 w:1)
 	fn unstake() -> Weight {
-		(43_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(4 as Weight))
-			.saturating_add(T::DbWeight::get().writes(4 as Weight))
+		Weight::from_ref_time(43_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(4u64))
+			.saturating_add(T::DbWeight::get().writes(4u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:0)
 	// Storage: Verifier Stakings (r:1 w:1)
 	fn claim_shares() -> Weight {
-		(14_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(2 as Weight))
-			.saturating_add(T::DbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(14_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(2u64))
+			.saturating_add(T::DbWeight::get().writes(1u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:0)
 	// Storage: Verifier Receipts (r:1 w:1)
 	// Storage: Token Balances (r:1 w:1)
 	// Storage: Verifier Reserves (r:1 w:1)
 	fn authorize() -> Weight {
-		(34_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(4 as Weight))
-			.saturating_add(T::DbWeight::get().writes(3 as Weight))
+		Weight::from_ref_time(34_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(4u64))
+			.saturating_add(T::DbWeight::get().writes(3u64))
 	}
 	// Storage: Verifier Reserves (r:1 w:0)
 	// Storage: Verifier Dominators (r:1 w:0)
 	// Storage: Verifier Receipts (r:1 w:1)
 	fn revoke() -> Weight {
-		(25_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(3 as Weight))
-			.saturating_add(T::DbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(25_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(3u64))
+			.saturating_add(T::DbWeight::get().writes(1u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:1)
 	// Storage: Verifier Receipts (r:2 w:2)
@@ -115,9 +115,9 @@ impl<T: frame_system::Config> WeightInfo for FusoWeight<T> {
 	// Storage: Reward Volumes (r:1 w:1)
 	// Storage: Reward Rewards (r:2 w:2)
 	fn verify() -> Weight {
-		(6_669_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(15 as Weight))
-			.saturating_add(T::DbWeight::get().writes(16 as Weight))
+		Weight::from_ref_time(6_669_000_000u64)
+			.saturating_add(T::DbWeight::get().reads(15u64))
+			.saturating_add(T::DbWeight::get().writes(16u64))
 	}
 }
 
@@ -125,22 +125,22 @@ impl WeightInfo for () {
 
 	// Storage: Verifier Dominators (r:2 w:1)
 	fn register() -> Weight {
-		(17_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(17_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(2u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:1)
 	fn evict() -> Weight {
-		(14_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(1 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(14_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(1u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
 	}
 
 	// Storage: Verifier Dominators (r:1 w:1)
 	fn launch() -> Weight {
-		(15_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(1 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(15_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(1u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
 	}
 
 	// Storage: Verifier Dominators (r:1 w:1)
@@ -148,42 +148,42 @@ impl WeightInfo for () {
 	// Storage: Verifier Reserves (r:1 w:1)
 	// Storage: System Account (r:1 w:1)
 	fn stake() -> Weight {
-		(38_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(4 as Weight))
+		Weight::from_ref_time(38_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(4u64))
+			.saturating_add(RocksDbWeight::get().writes(4u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:1)
 	// Storage: Verifier Stakings (r:1 w:1)
 	// Storage: Verifier Reserves (r:1 w:1)
 	// Storage: System Account (r:1 w:1)
 	fn unstake() -> Weight {
-		(43_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(4 as Weight))
+		Weight::from_ref_time(43_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(4u64))
+			.saturating_add(RocksDbWeight::get().writes(4u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:0)
 	// Storage: Verifier Stakings (r:1 w:1)
 	fn claim_shares() -> Weight {
-		(14_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(14_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(2u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:0)
 	// Storage: Verifier Receipts (r:1 w:1)
 	// Storage: Token Balances (r:1 w:1)
 	// Storage: Verifier Reserves (r:1 w:1)
 	fn authorize() -> Weight {
-		(34_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(3 as Weight))
+		Weight::from_ref_time(34_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(4u64))
+			.saturating_add(RocksDbWeight::get().writes(3u64))
 	}
 	// Storage: Verifier Reserves (r:1 w:0)
 	// Storage: Verifier Dominators (r:1 w:0)
 	// Storage: Verifier Receipts (r:1 w:1)
 	fn revoke() -> Weight {
-		(25_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(3 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+		Weight::from_ref_time(25_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(3u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
 	}
 	// Storage: Verifier Dominators (r:1 w:1)
 	// Storage: Verifier Receipts (r:2 w:2)
@@ -194,8 +194,8 @@ impl WeightInfo for () {
 	// Storage: Reward Volumes (r:1 w:1)
 	// Storage: Reward Rewards (r:2 w:2)
 	fn verify() -> Weight {
-		(6_669_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(15 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(16 as Weight))
+		Weight::from_ref_time(6_669_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(15u64))
+			.saturating_add(RocksDbWeight::get().writes(16u64))
 	}
 }
