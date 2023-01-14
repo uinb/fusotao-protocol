@@ -36,7 +36,7 @@ fn test_derive_address() {
 
 #[test]
 fn basic_sign_should_work() {
-    /* new_test_ext().execute_with(|| {
+    new_test_ext().execute_with(|| {
         let alice: AccountId = AccountKeyring::Alice.into();
         let tx = RuntimeCall::Balances(pallet_balances::Call::transfer::<Test> {
             dest: MultiAddress::Id(alice.clone()),
@@ -111,5 +111,5 @@ fn basic_sign_should_work() {
         let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(&signature, &digest).map_err(|_|()).unwrap();
         let addr = &sp_io::hashing::keccak_256(&pubkey[..])[12..];
         assert_eq!(addr.to_vec(), hex_literal::hex!("847dc5ea89c407f1416f23d87b40ce317798e133"));
-    });*/
+    });
 }

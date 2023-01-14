@@ -31,9 +31,9 @@ hex = { version = "0.4.3", default-features = false }
 [dev-dependencies]
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
 pallet-balances = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
-secp256k1 = "0.23.1"
 hex-literal = "0.3.4"
 hex = "0.4.3"
+secp256k1 = "0.24.3"
 
 [features]
 default = ['std']
