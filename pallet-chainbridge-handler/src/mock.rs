@@ -128,7 +128,6 @@ impl pallet_fuso_token::Config for Test {
     type NativeTokenId = NativeTokenId;
     type NearChainId = NearChainId;
     type RuntimeEvent = RuntimeEvent;
-    type Smuggler = ();
     type TokenId = u32;
     type Weight = ();
 }
@@ -186,7 +185,6 @@ impl pallet_fuso_verifier::Config for Test {
     type Rewarding = PhantomData;
     type RuntimeEvent = RuntimeEvent;
     type SeasonDuration = SeasonDuration;
-    type Smuggler = ();
     type WeightInfo = ();
 }
 

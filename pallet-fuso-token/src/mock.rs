@@ -95,7 +95,6 @@ impl pallet_fuso_token::Config for Test {
     type NativeTokenId = NativeTokenId;
     type NearChainId = NearChainId;
     type RuntimeEvent = RuntimeEvent;
-    type Smuggler = ();
     type TokenId = u32;
     type Weight = ();
 }
