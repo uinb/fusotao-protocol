@@ -28,6 +28,7 @@ pub mod pallet {
     use crate::weights::WeightInfo;
     use ascii::AsciiStr;
     use codec::{Codec, Decode, Encode};
+    use frame_support::traits::tokens::AssetId;
     use frame_support::{
         pallet_prelude::*,
         traits::{
@@ -74,7 +75,8 @@ pub mod pallet {
             + Copy
             + Codec
             + MaybeSerializeDeserialize
-            + MaxEncodedLen;
+            + MaxEncodedLen
+            + AssetId;
 
         // TODO
         #[pallet::constant]
