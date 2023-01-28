@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use self::gen_client::Client as FusoVerifierClient;
+//pub use self::gen_client::Client as FusoVerifierClient;
 pub use fuso_verifier_runtime_api::FusoVerifierRuntimeApi;
 
 use codec::Codec;
-use jsonrpc_core::{Error as RpcError, ErrorCode, Result};
-use jsonrpc_derive::rpc;
+use jsonrpsee::{
+    core::{Error as RpcError, RpcResult},
+    proc_macros::rpc,
+    types::error::{CallError, ErrorCode, ErrorObject},
+};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_rpc::number::NumberOrHex;
@@ -27,22 +30,22 @@ use sp_runtime::{
 };
 use std::sync::Arc;
 
-#[rpc]
+#[rpc(client, server)]
 pub trait FusoVerifierApi<BlockHash, AccountId, Balance> {
-    #[rpc(name = "verifier_currentSeasonOfDominator")]
+    #[method(name = "verifier_currentSeasonOfDominator")]
     fn current_season_of_dominator(
         &self,
         dominator: AccountId,
         at: Option<BlockHash>,
-    ) -> Result<u32>;
+    ) -> RpcResult<u32>;
 
-    #[rpc(name = "verifier_pendingSharesOfDominator")]
+    #[method(name = "verifier_pendingSharesOfDominator")]
     fn pending_shares_of_dominator(
         &self,
         dominator: AccountId,
         who: AccountId,
         at: Option<BlockHash>,
-    ) -> Result<NumberOrHex>;
+    ) -> RpcResult<NumberOrHex>;
 }
 
 pub struct FusoVerifier<C, B> {
@@ -59,7 +62,8 @@ impl<C, B> FusoVerifier<C, B> {
     }
 }
 
-impl<C, Block, AccountId, Balance> FusoVerifierApi<<Block as BlockT>::Hash, AccountId, Balance>
+impl<C, Block, AccountId, Balance>
+    FusoVerifierApiServer<<Block as BlockT>::Hash, AccountId, Balance>
     for FusoVerifier<C, (Block, AccountId, Balance)>
 where
     Block: BlockT,
@@ -72,14 +76,17 @@ where
         &self,
         dominator: AccountId,
         at: Option<<Block as BlockT>::Hash>,
-    ) -> Result<u32> {
+    ) -> RpcResult<u32> {
         let api = self.client.runtime_api();
         let block_hash = BlockId::hash(at.unwrap_or_else(|| self.client.info().best_hash));
         api.current_season_of_dominator(&block_hash, dominator)
-            .map_err(|e| RpcError {
-                code: ErrorCode::ServerError(0),
-                message: "Unable to query current season".into(),
-                data: Some(format!("{:?}", e).into()),
+            .map_err(|e| {
+                CallError::Custom(ErrorObject::owned(
+                    ErrorCode::ServerError(101i32).code(),
+                    "Unable to query current season",
+                    Some(format!("{:?}", e)),
+                ))
+                .into()
             })
     }
 
@@ -88,20 +95,25 @@ where
         dominator: AccountId,
         who: AccountId,
         at: Option<<Block as BlockT>::Hash>,
-    ) -> Result<NumberOrHex> {
+    ) -> RpcResult<NumberOrHex> {
         let api = self.client.runtime_api();
         let block_hash = BlockId::hash(at.unwrap_or_else(|| self.client.info().best_hash));
         let shares = api
             .pending_shares_of_dominator(&block_hash, dominator, who)
-            .map_err(|e| RpcError {
-                code: ErrorCode::ServerError(1),
-                message: "Unable to query pending shares".into(),
-                data: Some(format!("{:?}", e).into()),
+            .map_err(|e| {
+                CallError::Custom(ErrorObject::owned(
+                    ErrorCode::ServerError(100i32).code(),
+                    "Unable to query pending shares",
+                    Some(format!("{:?}", e)),
+                ))
             })?;
-        shares.try_into().map_err(|_| RpcError {
-            code: ErrorCode::InvalidParams,
-            message: "doesn't fit in NumberOrHex representation".into(),
-            data: None,
+        shares.try_into().map_err(|_| {
+            CallError::Custom(ErrorObject::owned(
+                ErrorCode::InvalidParams.code(),
+                "doesn't fit in NumberOrHex representation",
+                None::<()>,
+            ))
+            .into()
         })
     }
 }
