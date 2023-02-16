@@ -81,13 +81,14 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const ETHChainId: u16 = 1;
+    pub const MainOrTestnet: u16 = 1;
     pub const TransactionByteFee: u128 = 100_000_000_000;
 }
 
 impl crate::Config<crate::EthInstance> for Test {
     type Currency = Balances;
-    type ExternalChainId = ETHChainId;
     type ExternalSignWrapper = crate::EthPersonalSignWrapper;
+    type MainOrTestnet = MainOrTestnet;
     type RuntimeEvent = RuntimeEvent;
     type Transaction = RuntimeCall;
     type TransactionByteFee = TransactionByteFee;

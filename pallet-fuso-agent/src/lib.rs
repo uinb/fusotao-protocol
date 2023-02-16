@@ -109,7 +109,7 @@ pub mod pallet {
 
         type ExternalSignWrapper: ExternalSignWrapper<Self>;
 
-        type ExternalChainId: Get<ChainId>;
+        type MainOrTestnet: Get<u16>;
     }
 
     #[pallet::event]
@@ -170,7 +170,7 @@ pub mod pallet {
                     let pubkey = sp_io::crypto::secp256k1_ecdsa_recover(signature, &digest)
                         .map_err(|_| Error::<T, I>::InvalidSignature)?;
                     let address = sp_io::hashing::keccak_256(&pubkey)[12..].to_vec();
-                    let h = (b"-*-#fusotao#-*-", T::ExternalChainId::get(), address)
+                    let h = (b"-*-#fusotao#-*-", T::MainOrTestnet::get(), address)
                         .using_encoded(sp_io::hashing::blake2_256);
                     Decode::decode(&mut TrailingZeroInput::new(h.as_ref()))
                         .map_err(|_| Error::<T, I>::InvalidSignature.into())
