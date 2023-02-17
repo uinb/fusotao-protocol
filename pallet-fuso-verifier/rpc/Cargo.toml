@@ -14,10 +14,10 @@ jsonrpc-core = "18.0.0"
 jsonrpc-core-client = "18.0.0"
 jsonrpc-derive = "18.0.0"
 serde = { version = "1.0", features = ["derive"] }
-
-sp-api = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
-sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
-sp-rpc = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
-sp-blockchain = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.18"  }
+jsonrpsee = {version = "0.15.1", features = ["server", "macros"]}
+sp-api = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
+sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
+sp-rpc = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
+sp-blockchain = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
 
 fuso-verifier-runtime-api = { path = "../runtime-api"}

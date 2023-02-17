@@ -33,7 +33,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_balances::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         type Duration: Get<Self::BlockNumber>;
     }
@@ -149,16 +149,16 @@ pub mod pallet {
         fn initialize(now: T::BlockNumber) -> Weight {
             let duration: T::BlockNumber = T::Duration::get();
             if now % duration != Zero::zero() {
-                0
+                Weight::from_ref_time(0u64)
             } else {
                 Self::unlock_fund(now.into() / duration.into())
             }
         }
 
         fn unlock_fund(now: u32) -> Weight {
-            let mut weight: Weight = 100_000_000u64;
+            let mut weight: Weight = Weight::from_ref_time(100_000_000u64);
             for item in Foundation::<T>::iter() {
-                weight = weight.saturating_add(T::DbWeight::get().reads(1 as Weight));
+                weight = weight.saturating_add(T::DbWeight::get().reads(1u64));
                 let account = item.0;
                 let mut balance: FoundationData<BalanceOf<T>> = item.1;
 
@@ -177,7 +177,7 @@ pub mod pallet {
                     } else {
                         Foundation::<T>::insert(account, balance);
                     }
-                    weight = weight.saturating_add(T::DbWeight::get().writes(1 as Weight));
+                    weight = weight.saturating_add(T::DbWeight::get().writes(1u64));
                 } else if (now == balance.delay_durations)
                     && (now.saturating_sub(balance.delay_durations) % balance.interval_durations
                         == 0u32)
@@ -188,7 +188,7 @@ pub mod pallet {
                         account.clone(),
                         balance.first_amount,
                     ));
-                    weight = weight.saturating_add(T::DbWeight::get().writes(1 as Weight));
+                    weight = weight.saturating_add(T::DbWeight::get().writes(1u64));
                 }
             }
             weight

@@ -42,9 +42,7 @@ impl frame_system::Config for Test {
     type BlockLength = ();
     type BlockNumber = BlockNumber;
     type BlockWeights = ();
-    type Call = Call;
     type DbWeight = ();
-    type Event = Event;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
     type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -54,8 +52,10 @@ impl frame_system::Config for Test {
     type OnKilledAccount = ();
     type OnNewAccount = ();
     type OnSetCode = ();
-    type Origin = Origin;
     type PalletInfo = PalletInfo;
+    type RuntimeCall = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeOrigin = RuntimeOrigin;
     type SS58Prefix = SS58Prefix;
     type SystemWeightInfo = ();
     type Version = ();
@@ -71,25 +71,26 @@ impl pallet_balances::Config for Test {
     type AccountStore = System;
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
     type ExistentialDeposit = ExistentialDeposit;
     type MaxLocks = MaxLocks;
     type MaxReserves = MaxReserves;
     type ReserveIdentifier = [u8; 8];
+    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
 }
 
 parameter_types! {
     pub const ETHChainId: u16 = 1;
+    pub const MainOrTestnet: u16 = 1;
     pub const TransactionByteFee: u128 = 100_000_000_000;
 }
 
 impl crate::Config<crate::EthInstance> for Test {
     type Currency = Balances;
-    type Event = Event;
-    type ExternalChainId = ETHChainId;
     type ExternalSignWrapper = crate::EthPersonalSignWrapper;
-    type Transaction = Call;
+    type MainOrTestnet = MainOrTestnet;
+    type RuntimeEvent = RuntimeEvent;
+    type Transaction = RuntimeCall;
     type TransactionByteFee = TransactionByteFee;
     type WeightToFee = IdentityFee<Balance>;
 }

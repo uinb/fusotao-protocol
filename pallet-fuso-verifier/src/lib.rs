@@ -31,15 +31,15 @@ pub mod pallet {
     use ascii::AsciiStr;
     use codec::{Compact, Decode, Encode, EncodeLike};
     use frame_support::{
-        dispatch::Dispatchable,
-        weights::{constants::RocksDbWeight, GetDispatchInfo, PostDispatchInfo},
+        dispatch::{Dispatchable, GetDispatchInfo, PostDispatchInfo},
+        weights::constants::RocksDbWeight,
         {pallet_prelude::*, transactional},
     };
     use frame_system::pallet_prelude::*;
     use fuso_support::constants::RESERVE_FOR_AUTHORIZING_STASH;
     use fuso_support::{
         constants::*,
-        traits::{ReservableToken, Rewarding, Smuggler, Token},
+        traits::{ReservableToken, Rewarding, Token},
     };
     use scale_info::TypeInfo;
     use sp_io::hashing::blake2_256 as hashing;
@@ -242,7 +242,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         type Asset: ReservableToken<Self::AccountId>;
 
@@ -251,11 +251,9 @@ pub mod pallet {
         type WeightInfo: WeightInfo;
 
         type Callback: Parameter
-            + Dispatchable<Origin = Self::Origin, PostInfo = PostDispatchInfo>
+            + Dispatchable<RuntimeOrigin = Self::RuntimeOrigin, PostInfo = PostDispatchInfo>
             + EncodeLike
             + GetDispatchInfo;
-
-        type Smuggler: Smuggler<Self::AccountId>;
 
         #[pallet::constant]
         type DominatorOnlineThreshold: Get<Balance<Self>>;
@@ -407,7 +405,7 @@ pub mod pallet {
     {
         /// save total staking of previous season
         fn on_initialize(now: T::BlockNumber) -> Weight {
-            let mut weight: Weight = 0u64 as Weight;
+            let mut weight: Weight = Weight::from_ref_time(0u64);
             if now % T::DominatorCheckGracePeriod::get() != Zero::zero() {
                 return weight;
             }
@@ -416,11 +414,11 @@ pub mod pallet {
                 if now == start {
                     continue;
                 }
-                weight = weight.saturating_add(RocksDbWeight::get().reads(1 as Weight));
+                weight = weight.saturating_add(RocksDbWeight::get().reads(1u64));
                 if (now - start) % T::SeasonDuration::get() == Zero::zero() {
                     let prv_season = ((now - start) / T::SeasonDuration::get()).into() - 1;
                     Bonuses::<T>::mutate(id, prv_season, |b| b.staked = dominator.staked);
-                    weight = weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+                    weight = weight.saturating_add(RocksDbWeight::get().writes(1u64))
                 }
             }
             for (staker, amount) in PendingUnstakings::<T>::drain_prefix(&now) {
@@ -431,7 +429,7 @@ pub mod pallet {
                     amount,
                     &Self::system_account(),
                 );
-                weight = weight.saturating_add(RocksDbWeight::get().writes(2 as Weight));
+                weight = weight.saturating_add(RocksDbWeight::get().writes(2u64));
                 if r.is_err() {
                     log::error!(
                         "No enough tokens of {:?} to unlock, check onchain storage.",
@@ -441,7 +439,7 @@ pub mod pallet {
                     Self::deposit_event(Event::TaoUnstakeUnlock(staker.clone(), amount.clone()));
                 }
             }
-            weight.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+            weight.saturating_add(RocksDbWeight::get().writes(1u64))
         }
     }
 
@@ -619,9 +617,6 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let fund_owner = ensure_signed(origin)?;
             let dex = T::Lookup::lookup(dominator)?;
-            if T::Smuggler::repatriate_if_wanted(&fund_owner) {
-                return Ok(().into());
-            }
             Self::authorize_to(fund_owner, dex, token_id, amount)?;
             Ok(().into())
         }
@@ -678,7 +673,7 @@ pub mod pallet {
         T::BlockNumber: From<u32> + Into<u32>,
     {
         pub fn system_account() -> T::AccountId {
-            PALLET_ID.into_account()
+            PALLET_ID.try_into_account().unwrap()
         }
 
         #[transactional]

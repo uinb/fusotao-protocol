@@ -28,6 +28,7 @@ pub mod pallet {
     use crate::weights::WeightInfo;
     use ascii::AsciiStr;
     use codec::{Codec, Decode, Encode};
+    use frame_support::traits::tokens::AssetId;
     use frame_support::{
         pallet_prelude::*,
         traits::{
@@ -42,7 +43,7 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use fuso_support::{
         constants::*,
-        traits::{ReservableToken, Smuggler, Token},
+        traits::{ReservableToken, Token},
         ChainId, XToken,
     };
     use pallet_octopus_support::traits::TokenIdAndAssetIdProvider;
@@ -64,7 +65,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_balances::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         type TokenId: Member
             + Parameter
@@ -73,9 +74,9 @@ pub mod pallet {
             + PartialEq
             + Copy
             + Codec
-            + MaybeSerializeDeserialize;
-
-        type Smuggler: Smuggler<Self::AccountId>;
+            + MaybeSerializeDeserialize
+            + MaxEncodedLen
+            + AssetId;
 
         // TODO
         #[pallet::constant]
@@ -199,7 +200,6 @@ pub mod pallet {
             amount: BalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            ensure!(!T::Smuggler::is_wanted(&who), Error::<T>::TooManyReserves);
             ensure!(!amount.is_zero(), Error::<T>::BalanceZero);
             let target = T::Lookup::lookup(target)?;
             Self::transfer_token(&who, token, amount, &target)?;
@@ -285,7 +285,6 @@ pub mod pallet {
             _maybe_check_admin: Option<T::AccountId>,
         ) -> Result<BalanceOf<T>, DispatchError> {
             ensure!(!amount.is_zero(), Error::<T>::AmountZero);
-            ensure!(!T::Smuggler::is_wanted(target), Error::<T>::TooManyReserves);
             Tokens::<T>::try_mutate_exists(&token, |token_info| -> DispatchResult {
                 ensure!(token_info.is_some(), Error::<T>::BalanceZero);
                 let mut info = token_info.take().unwrap();
@@ -353,6 +352,7 @@ pub mod pallet {
             _asset: Self::AssetId,
             _who: &T::AccountId,
             _amount: Self::Balance,
+            _mint: bool,
         ) -> DepositConsequence {
             DepositConsequence::Success
         }

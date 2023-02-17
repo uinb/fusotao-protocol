@@ -1,7 +1,5 @@
 use super::*;
 use crate::Pallet as Verifier;
-use codec::Decode;
-use frame_benchmarking::vec;
 pub use frame_benchmarking::{account, benchmarks};
 use frame_system::RawOrigin;
 use fuso_support::constants::*;
@@ -9,7 +7,6 @@ use fuso_support::external_chain::XToken;
 use sp_runtime::traits::CheckedAdd;
 use sp_runtime::traits::StaticLookup;
 use sp_runtime::DispatchResult;
-use sp_std::vec::*;
 
 pub type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
 
@@ -40,13 +37,13 @@ benchmarks! {
         frame_system::Pallet::<T>::set_block_number(3000.into());
         let ben: T::AccountId = account("Ben", 0, SEED);
         Verifier::<T>::register(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             b"cool".to_vec()
         )?;
         let dominator = T::Lookup::unlookup(ben.clone());
-        Verifier::<T>::launch(<T as frame_system::Config>::Origin::from(RawOrigin::Root), dominator.clone())?;
+        Verifier::<T>::launch(<T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Root), dominator.clone())?;
         Verifier::<T>::stake(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             dominator.clone(),
             (100_000 * DOLLARS).into()
         )?;
@@ -56,7 +53,7 @@ benchmarks! {
         frame_system::Pallet::<T>::set_block_number(3000.into());
         let ben: T::AccountId = account("Ben", 0, SEED);
         Verifier::<T>::register(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             b"cool".to_vec()
         )?;
         let dominator = T::Lookup::unlookup(ben.clone());
@@ -66,24 +63,24 @@ benchmarks! {
         frame_system::Pallet::<T>::set_block_number(3000.into());
         let ben: T::AccountId = account("Ben", 0, SEED);
         Verifier::<T>::register(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             b"cool".to_vec()
         )?;
         let dominator = T::Lookup::unlookup(ben.clone());
-        Verifier::<T>::launch(<T as frame_system::Config>::Origin::from(RawOrigin::Root), dominator.clone())?;
+        Verifier::<T>::launch(<T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Root), dominator.clone())?;
     } :_(RawOrigin::Signed(ben), dominator, (100_000 * DOLLARS).into())
 
     unstake {
         frame_system::Pallet::<T>::set_block_number(3000.into());
         let ben: T::AccountId = account("Ben", 0, SEED);
         let _ = Verifier::<T>::register(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             b"cool".to_vec()
         )?;
         let dominator = T::Lookup::unlookup(ben.clone());
-        Verifier::<T>::launch(<T as frame_system::Config>::Origin::from(RawOrigin::Root), dominator.clone())?;
+        Verifier::<T>::launch(<T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Root), dominator.clone())?;
         Verifier::<T>::stake(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             dominator.clone(),
             (100_000 * DOLLARS).into()
         )?;
@@ -94,18 +91,18 @@ benchmarks! {
         let ben: T::AccountId = account("Ben", 0, SEED);
         let lance: T::AccountId = account("Lance", 0, SEED);
         let _ = Verifier::<T>::register(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             b"cool".to_vec()
         )?;
         let dominator = T::Lookup::unlookup(ben.clone());
-        Verifier::<T>::launch(<T as frame_system::Config>::Origin::from(RawOrigin::Root), dominator.clone())?;
+        Verifier::<T>::launch(<T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Root), dominator.clone())?;
         Verifier::<T>::stake(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             dominator.clone(),
             (100_000 * DOLLARS).into()
         )?;
         Verifier::<T>::stake(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(lance.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(lance.clone())),
             dominator.clone(),
             (50_000 * DOLLARS).into()
         )?;
@@ -116,12 +113,12 @@ benchmarks! {
         let ben: T::AccountId = account("Ben", 0, SEED);
         let lance: T::AccountId = account("Lance", 0, SEED);
         Verifier::<T>::register(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             b"cool".to_vec()
         )?;
         let dominator = T::Lookup::unlookup(ben.clone());
         pallet_fuso_token::Pallet::<T>::issue(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(lance.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(lance.clone())),
             XToken::NEP141(
                 br#"USDT"#.to_vec(),
                 br#"usdt.testnet"#.to_vec(),
@@ -136,9 +133,9 @@ benchmarks! {
             (100_000 * DOLLARS).into(),
             None
         )?;
-        Verifier::<T>::launch(<T as frame_system::Config>::Origin::from(RawOrigin::Root), dominator.clone())?;
+        Verifier::<T>::launch(<T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Root), dominator.clone())?;
         Verifier::<T>::stake(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             dominator.clone(),
             (100_000 * DOLLARS).into()
         )?;
@@ -149,13 +146,13 @@ benchmarks! {
         let ben: T::AccountId = account("Ben", 0, SEED);
         let lance: T::AccountId = account("Lance", 0, SEED);
         Verifier::<T>::register(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             b"cool".to_vec()
         )?;
         let dominator = T::Lookup::unlookup(ben.clone());
-        Verifier::<T>::launch(<T as frame_system::Config>::Origin::from(RawOrigin::Root), dominator.clone())?;
+        Verifier::<T>::launch(<T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Root), dominator.clone())?;
         pallet_fuso_token::Pallet::<T>::issue(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(lance.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(lance.clone())),
                XToken::NEP141(
                 br#"USDT"#.to_vec(),
                 br#"usdt.testnet"#.to_vec(),
@@ -171,12 +168,12 @@ benchmarks! {
             None
         )?;
         Verifier::<T>::stake(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(ben.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(ben.clone())),
             dominator.clone(),
             (100_000 * DOLLARS).into()
         )?;
         Verifier::<T>::authorize(
-            <T as frame_system::Config>::Origin::from(RawOrigin::Signed(lance.clone())),
+            <T as frame_system::Config>::RuntimeOrigin::from(RawOrigin::Signed(lance.clone())),
             dominator.clone(),
             1u32.into(),
             (60_000 * DOLLARS).into(),

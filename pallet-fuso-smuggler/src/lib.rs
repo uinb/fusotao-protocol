@@ -32,9 +32,9 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-        type EnsureAdmin: EnsureOrigin<Self::Origin>;
+        type EnsureAdmin: EnsureOrigin<Self::RuntimeOrigin>;
 
         #[pallet::constant]
         type Admin: Get<Self::AccountId>;
@@ -112,13 +112,13 @@ pub struct EnsureAdmin<T>(sp_std::marker::PhantomData<T>);
 
 use frame_support::traits::Get;
 
-impl<T: Config> frame_support::pallet_prelude::EnsureOrigin<T::Origin> for EnsureAdmin<T> {
+impl<T: Config> frame_support::pallet_prelude::EnsureOrigin<T::RuntimeOrigin> for EnsureAdmin<T> {
     type Success = T::AccountId;
 
-    fn try_origin(o: T::Origin) -> Result<Self::Success, T::Origin> {
+    fn try_origin(o: T::RuntimeOrigin) -> Result<Self::Success, T::RuntimeOrigin> {
         o.into().and_then(|o| match o {
             frame_system::RawOrigin::Signed(who) if who.clone() == T::Admin::get() => Ok(who),
-            r => Err(T::Origin::from(r)),
+            r => Err(T::RuntimeOrigin::from(r)),
         })
     }
 
