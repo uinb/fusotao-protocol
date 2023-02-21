@@ -232,9 +232,9 @@ pub trait PriceOracle<TokenId, Balance, BlockNumber> {
 }
 
 impl<TokenId, Balance, BlockNumber> PriceOracle<TokenId, Balance, BlockNumber> for () {
-    fn get_price(token_id: &TokenId) -> Perquintill {
+    fn get_price(_token_id: &TokenId) -> Perquintill {
         Perquintill::zero()
     }
 
-    fn set_price(token_id: TokenId, amount: Balance, volume: Balance, at: BlockNumber) {}
+    fn set_price(_token_id: TokenId, _amount: Balance, _volume: Balance, _at: BlockNumber) {}
 }

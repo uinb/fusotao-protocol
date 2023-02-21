@@ -559,16 +559,7 @@ pub mod pallet {
             let proofs: Vec<Proof<T::AccountId>> =
                 Decode::decode(&mut TrailingZeroInput::new(uncompress_proofs.as_ref()))
                     .map_err(|_| Error::<T>::ProofFormatError)?;
-            let mut known_root = dominator.merkle_root;
-            for proof in proofs.into_iter() {
-                known_root = Self::verify_and_update(
-                    &dominator_id,
-                    known_root,
-                    dominator.start_from.clone(),
-                    proof,
-                )?;
-            }
-            Ok(().into())
+            Self::verify_batch(dominator_id, &dominator, proofs)
         }
 
         #[pallet::weight((<T as Config>::WeightInfo::verify(), DispatchClass::Normal, Pays::No))]
@@ -583,30 +574,7 @@ pub mod pallet {
                 dominator.status == DOMINATOR_ACTIVE,
                 Error::<T>::DominatorInactive
             );
-            let mut known_root = dominator.merkle_root;
-            let mut incr: BTreeMap<TokenId<T>, (Balance<T>, Balance<T>)> = BTreeMap::new();
-            for proof in proofs.into_iter() {
-                let trade = Self::verify_and_update(
-                    &dominator_id,
-                    known_root,
-                    dominator.start_from.clone(),
-                    proof,
-                )?;
-                known_root = trade.root;
-                if trade.amount != Zero::zero() && trade.vol != Zero::zero() {
-                    incr.entry(trade.token_id)
-                        .and_modify(|(b, q)| {
-                            *b += trade.amount;
-                            *q += trade.vol;
-                        })
-                        .or_insert((trade.amount, trade.vol));
-                }
-            }
-            let current_block = frame_system::Pallet::<T>::block_number();
-            for (token_id, trade) in incr.into_iter() {
-                T::Indicator::set_price(token_id, trade.0, trade.1, current_block);
-            }
-            Ok(().into())
+            Self::verify_batch(dominator_id, &dominator, proofs)
         }
 
         #[transactional]
@@ -834,6 +802,37 @@ pub mod pallet {
                 amount,
             ));
             Ok(())
+        }
+
+        fn verify_batch(
+            dominator_id: T::AccountId,
+            dominator: &Dominator<Balance<T>, BlockNumberFor<T>>,
+            proofs: Vec<Proof<T::AccountId>>,
+        ) -> DispatchResultWithPostInfo {
+            let mut known_root = dominator.merkle_root;
+            let mut incr: BTreeMap<TokenId<T>, (Balance<T>, Balance<T>)> = BTreeMap::new();
+            for proof in proofs.into_iter() {
+                let trade = Self::verify_and_update(
+                    &dominator_id,
+                    known_root,
+                    dominator.start_from.clone(),
+                    proof,
+                )?;
+                known_root = trade.root;
+                if trade.amount != Zero::zero() && trade.vol != Zero::zero() {
+                    incr.entry(trade.token_id)
+                        .and_modify(|(b, q)| {
+                            *b += trade.amount;
+                            *q += trade.vol;
+                        })
+                        .or_insert((trade.amount, trade.vol));
+                }
+            }
+            let current_block = frame_system::Pallet::<T>::block_number();
+            for (token_id, trade) in incr.into_iter() {
+                T::Indicator::set_price(token_id, trade.0, trade.1, current_block);
+            }
+            Ok(().into())
         }
 
         #[transactional]
