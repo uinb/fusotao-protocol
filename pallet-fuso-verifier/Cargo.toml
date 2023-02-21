@@ -30,6 +30,7 @@ smt = { git = "https://github.com/uinb/sparse-merkle-tree", tag = "v0.1.7", pack
 hex = { version = "0.4", default-features = false, optional = true }
 log = { version = "0.4.14", default-features = false }
 syn = "= 1.0.107"
+lz4_flex = { version = "0.10.0", default-features = false }
 [dev-dependencies]
 sp-core = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
 pallet-fuso-token = { path = "../pallet-fuso-token", default-features = false }
@@ -37,21 +38,6 @@ pallet-balances = { git = "https://github.com/paritytech/substrate.git", default
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
 
 [features]
-runtime-benchmarks = [
-    'frame-benchmarking/runtime-benchmarks',
-    'frame-support/runtime-benchmarks',
-    'frame-system/runtime-benchmarks',
-    'pallet-fuso-token/runtime-benchmarks',
-    'pallet-balances/runtime-benchmarks',
-]
+runtime-benchmarks = ['frame-benchmarking/runtime-benchmarks', 'frame-support/runtime-benchmarks', 'frame-system/runtime-benchmarks', 'pallet-fuso-token/runtime-benchmarks', 'pallet-balances/runtime-benchmarks']
 default = ["std"]
-std = [
-    "codec/std",
-    "sp-std/std",
-    "sp-io/std",
-    "sp-runtime/std",
-    "frame-support/std",
-    "frame-system/std",
-    "frame-benchmarking/std",
-	'pallet-balances/std',
-]
+std = ["codec/std", "sp-std/std", "sp-io/std", "sp-runtime/std", "frame-support/std", "frame-system/std", "frame-benchmarking/std", 'pallet-balances/std']
