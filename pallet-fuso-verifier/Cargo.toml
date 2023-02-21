@@ -38,6 +38,20 @@ pallet-balances = { git = "https://github.com/paritytech/substrate.git", default
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
 
 [features]
-runtime-benchmarks = ['frame-benchmarking/runtime-benchmarks', 'frame-support/runtime-benchmarks', 'frame-system/runtime-benchmarks', 'pallet-fuso-token/runtime-benchmarks', 'pallet-balances/runtime-benchmarks']
+runtime-benchmarks = [
+	'frame-benchmarking/runtime-benchmarks',
+	'frame-support/runtime-benchmarks',
+	'frame-system/runtime-benchmarks',
+	'pallet-fuso-token/runtime-benchmarks',
+	'pallet-balances/runtime-benchmarks'
+]
 default = ["std"]
-std = ["codec/std", "sp-std/std", "sp-io/std", "sp-runtime/std", "frame-support/std", "frame-system/std", "frame-benchmarking/std", 'pallet-balances/std']
+std = [
+	"codec/std",
+	"sp-std/std",
+	"sp-io/std",
+	"sp-runtime/std",
+	"frame-support/std",
+	"frame-system/std",
+	"frame-benchmarking/std",
+	'pallet-balances/std']
