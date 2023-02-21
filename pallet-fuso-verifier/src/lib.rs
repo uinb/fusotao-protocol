@@ -43,6 +43,7 @@ pub mod pallet {
     };
     use scale_info::TypeInfo;
     use sp_io::hashing::blake2_256 as hashing;
+    use sp_runtime::traits::TrailingZeroInput;
     use sp_runtime::{
         traits::{AccountIdConversion, CheckedAdd, CheckedSub, StaticLookup, Zero},
         Permill, Perquintill, RuntimeDebug,
@@ -389,6 +390,8 @@ pub mod pallet {
         DominatorEvicted,
         DominatorStatusInvalid,
         FeesTooHigh,
+        ProofDecompressError,
+        ProofFormatError,
     }
 
     #[pallet::pallet]
@@ -526,6 +529,36 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::DominatorInactive(dominator));
+            Ok(().into())
+        }
+
+        #[pallet::weight((<T as Config>::WeightInfo::verify(), DispatchClass::Normal, Pays::No))]
+        pub fn verify_compress(
+            origin: OriginFor<T>,
+            compressed_proofs: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            let dominator_id = ensure_signed(origin)?;
+            let dominator = Dominators::<T>::try_get(&dominator_id)
+                .map_err(|_| Error::<T>::DominatorNotFound)?;
+            ensure!(
+                dominator.status == DOMINATOR_ACTIVE,
+                Error::<T>::DominatorInactive
+            );
+            let uncompress_proofs =
+                lz4_flex::decompress_size_prepended(&*compressed_proofs.as_ref())
+                    .map_err(|_| Error::<T>::ProofDecompressError)?;
+            let proofs: Vec<Proof<T::AccountId>> =
+                Decode::decode(&mut TrailingZeroInput::new(uncompress_proofs.as_ref()))
+                    .map_err(|_| Error::<T>::ProofFormatError)?;
+            let mut known_root = dominator.merkle_root;
+            for proof in proofs.into_iter() {
+                known_root = Self::verify_and_update(
+                    &dominator_id,
+                    known_root,
+                    dominator.start_from.clone(),
+                    proof,
+                )?;
+            }
             Ok(().into())
         }
 
