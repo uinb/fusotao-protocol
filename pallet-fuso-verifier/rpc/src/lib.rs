@@ -17,7 +17,7 @@ pub use fuso_verifier_runtime_api::FusoVerifierRuntimeApi;
 
 use codec::Codec;
 use jsonrpsee::{
-    core::{Error as RpcError, RpcResult},
+    core::RpcResult,
     proc_macros::rpc,
     types::error::{CallError, ErrorCode, ErrorObject},
 };
