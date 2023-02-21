@@ -63,6 +63,7 @@ pub mod pallet {
     pub type Price = (u128, Perquintill);
     pub const PALLET_ID: frame_support::PalletId = frame_support::PalletId(*b"fuso/vrf");
     const UNSTAKE_DELAY_BLOCKS: u32 = 14400 * 4u32;
+    const MAX_PROOF_SIZE: usize = 10 * 1024 * 1024usize;
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
@@ -392,6 +393,7 @@ pub mod pallet {
         FeesTooHigh,
         ProofDecompressError,
         ProofFormatError,
+        ProofTooLarge,
     }
 
     #[pallet::pallet]
@@ -544,9 +546,12 @@ pub mod pallet {
                 dominator.status == DOMINATOR_ACTIVE,
                 Error::<T>::DominatorInactive
             );
-            let uncompress_proofs =
-                lz4_flex::decompress_size_prepended(&*compressed_proofs.as_ref())
+            let (uncompress_size, input) =
+                lz4_flex::block::uncompressed_size(compressed_proofs.as_ref())
                     .map_err(|_| Error::<T>::ProofDecompressError)?;
+            ensure!(uncompress_size < MAX_PROOF_SIZE, Error::<T>::ProofTooLarge);
+            let uncompress_proofs = lz4_flex::decompress(input, uncompress_size)
+                .map_err(|_| Error::<T>::ProofDecompressError)?;
             let proofs: Vec<Proof<T::AccountId>> =
                 Decode::decode(&mut TrailingZeroInput::new(uncompress_proofs.as_ref()))
                     .map_err(|_| Error::<T>::ProofFormatError)?;
