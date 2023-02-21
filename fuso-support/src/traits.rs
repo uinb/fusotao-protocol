@@ -1,4 +1,4 @@
-// Copyright 2021-2022 UINB Technologies Pte. Ltd.
+// Copyright 2021-2023 UINB Technologies Pte. Ltd.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ use codec::{Codec, EncodeLike, MaxEncodedLen};
 use frame_support::{traits::BalanceStatus, Parameter};
 use sp_runtime::{
     traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member},
-    DispatchError, DispatchResult,
+    DispatchError, DispatchResult, Perquintill,
 };
 
 pub trait Token<AccountId> {
@@ -223,4 +223,18 @@ impl<T> Smuggler<T> for () {
     fn repatriate_if_wanted(_: &T) -> bool {
         false
     }
+}
+
+pub trait PriceOracle<TokenId, Balance, BlockNumber> {
+    fn get_price(token_id: &TokenId) -> Perquintill;
+
+    fn set_price(token_id: TokenId, amount: Balance, volume: Balance, at: BlockNumber);
+}
+
+impl<TokenId, Balance, BlockNumber> PriceOracle<TokenId, Balance, BlockNumber> for () {
+    fn get_price(token_id: &TokenId) -> Perquintill {
+        Perquintill::zero()
+    }
+
+    fn set_price(token_id: TokenId, amount: Balance, volume: Balance, at: BlockNumber) {}
 }
