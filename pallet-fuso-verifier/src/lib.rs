@@ -537,13 +537,29 @@ pub mod pallet {
             origin: OriginFor<T>,
             compressed_proofs: Vec<u8>,
         ) -> DispatchResultWithPostInfo {
+            let dominator_id = ensure_signed(origin)?;
+            let dominator = Dominators::<T>::try_get(&dominator_id)
+                .map_err(|_| Error::<T>::DominatorNotFound)?;
+            ensure!(
+                dominator.status == DOMINATOR_ACTIVE,
+                Error::<T>::DominatorInactive
+            );
             let uncompress_proofs =
                 lz4_flex::decompress_size_prepended(&*compressed_proofs.as_ref())
                     .map_err(|_| Error::<T>::ProofDecompressError)?;
             let proofs: Vec<Proof<T::AccountId>> =
                 Decode::decode(&mut TrailingZeroInput::new(uncompress_proofs.as_ref()))
                     .map_err(|_| Error::<T>::ProofFormatError)?;
-            Self::verify(origin, proofs)
+            let mut known_root = dominator.merkle_root;
+            for proof in proofs.into_iter() {
+                known_root = Self::verify_and_update(
+                    &dominator_id,
+                    known_root,
+                    dominator.start_from.clone(),
+                    proof,
+                )?;
+            }
+            Ok(().into())
         }
 
         #[pallet::weight((<T as Config>::WeightInfo::verify(), DispatchClass::Normal, Pays::No))]
