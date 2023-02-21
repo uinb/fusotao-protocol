@@ -16,11 +16,6 @@
 
 pub use pallet::*;
 
-// #[cfg(test)]
-// pub mod mock;
-// #[cfg(test)]
-// pub mod tests;
-
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::pallet_prelude::*;
@@ -30,6 +25,7 @@ pub mod pallet {
 
     pub type TokenId<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::TokenId;
+
     pub type Balance<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
 
