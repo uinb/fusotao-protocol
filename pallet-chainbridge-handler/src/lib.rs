@@ -17,13 +17,21 @@ pub mod pallet {
         dispatch::GetDispatchInfo,
         pallet_prelude::*,
         traits::{fungibles::Mutate, tokens::BalanceConversion, EnsureOrigin, Get, StorageVersion},
+        transactional,
     };
     use frame_system::{ensure_signed, pallet_prelude::*};
-    use fuso_support::{chainbridge::*, traits::Token, ChainId};
+    use fuso_support::{
+        chainbridge::*,
+        traits::{PriceOracle, Token},
+        ChainId,
+    };
     use pallet_chainbridge as bridge;
     use pallet_fuso_verifier as verifier;
     use sp_core::U256;
-    use sp_runtime::traits::{Dispatchable, SaturatedConversion, Zero};
+    use sp_runtime::{
+        traits::{Dispatchable, SaturatedConversion, Zero},
+        Perquintill,
+    };
     use sp_std::{convert::From, prelude::*};
 
     type Depositer = EthAddress;
@@ -35,6 +43,8 @@ pub mod pallet {
         <<T as Config>::Fungibles as Token<<T as frame_system::Config>::AccountId>>::Balance;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
+    const QUINTILL: u128 = 1_000_000_000_000_000_000;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub (super) trait Store)]
@@ -66,6 +76,8 @@ pub mod pallet {
         type Fungibles: Mutate<Self::AccountId, AssetId = AssetId<Self>, Balance = BalanceOf<Self>>
             + Token<Self::AccountId>;
 
+        type Oracle: PriceOracle<AssetId<Self>, BalanceOf<Self>, Self::BlockNumber>;
+
         /// Map of cross-chain asset ID & name
         type AssetIdByName: AssetIdResourceIdProvider<AssetId<Self>>;
 
@@ -77,11 +89,22 @@ pub mod pallet {
         type DonorAccount: Get<Self::AccountId>;
 
         type DonationForAgent: Get<BalanceOf<Self>>;
+
+        type TreasuryAccount: Get<Self::AccountId>;
     }
 
     #[pallet::storage]
     #[pallet::getter(fn native_check)]
     pub type NativeCheck<T> = StorageValue<_, bool, ValueQuery>;
+
+    #[pallet::type_value]
+    pub fn DefaultBridgingFee<T: Config>() -> u128 {
+        QUINTILL * 2
+    }
+
+    #[pallet::storage]
+    #[pallet::getter(fn bridging_fee)]
+    pub type BridgingFeeInUSD<T> = StorageValue<_, u128, ValueQuery, DefaultBridgingFee<T>>;
 
     #[pallet::storage]
     #[pallet::getter(fn associated_dominator)]
@@ -120,6 +143,8 @@ pub mod pallet {
         InvalidCallMessage,
         RegisterAgentFailed,
         DepositerNotFound,
+        PriceOverflow,
+        LessThanBridgingThreshold,
     }
 
     #[pallet::hooks]
@@ -159,8 +184,6 @@ pub mod pallet {
                 <bridge::Pallet<T>>::chain_whitelisted(dest_id),
                 <Error<T>>::InvalidTransfer
             );
-            // TODO
-            // check recipient address is verify
             match Self::is_native_resource(r_id) {
                 true => Self::do_lock(source, amount, r_id, recipient, dest_id)?,
                 false => Self::do_burn_assets(source, amount, r_id, recipient, dest_id)?,
@@ -171,7 +194,6 @@ pub mod pallet {
         /// Executes a simple currency transfer using the bridge account as the source
         /// Triggered by a initial transfer on source chain, executed by relayer when proposal was
         /// resolved. this function by bridge triggered transfer
-        /// TODO add callback function
         #[pallet::weight(195_000_0000)]
         pub fn transfer_in(
             origin: OriginFor<T>,
@@ -260,25 +282,14 @@ pub mod pallet {
             _r_id: ResourceId,
         ) -> DispatchResult {
             T::BridgeOrigin::ensure_origin(origin)?;
-            // let message_length = message.len();
-            // ensure!(message_length > 4, Error::<T>::InvalidCallMessage);
-            // let nonce: u32 = Decode::decode(&mut &message[0..4]).unwrap();
-            // let c = <T as Config>::Redirect::decode(&mut &message[4..])
-            //     .map_err(|_| <Error<T>>::InvalidCallMessage)?;
-            // let controller = (b"ETH".to_vec(), depositer);
-            // Self::execute_tx(controller, c)?;
-            // Agents::<T>::try_mutate_exists(depositer, |v| -> Result<(), DispatchError> {
-            //     ensure!(v.is_some(), Error::<T>::DepositerNotFound);
-            //     let mut map = v.take().unwrap();
-            //     map.1 = nonce;
-            //     v.replace(map);
-            //     Ok(())
-            // })?;
             Ok(())
         }
     }
 
-    impl<T: Config> Pallet<T> {
+    impl<T: Config> Pallet<T>
+    where
+        BalanceOf<T>: Into<u128> + From<u128>,
+    {
         fn is_native_resource(r_id: ResourceId) -> bool {
             let (origin, _, p) = decode_resource_id(r_id);
             let (native, _, p0) = decode_resource_id(T::NativeResourceId::get());
@@ -294,6 +305,20 @@ pub mod pallet {
             AssociatedDominator::<T>::insert(idx, dominator);
         }
 
+        pub(crate) fn calculate_bridging_fee(token_id: &AssetId<T>) -> BalanceOf<T> {
+            let price: u128 = T::Oracle::get_price(&token_id).into();
+            // the oracle is not working
+            if price.is_zero() {
+                Zero::zero()
+            } else {
+                let usd = BridgingFeeInUSD::<T>::get();
+                (usd / price * QUINTILL
+                    + Perquintill::from_rational::<u128>(usd % price, price).deconstruct() as u128)
+                    .into()
+            }
+        }
+
+        #[transactional]
         pub(crate) fn do_lock(
             sender: T::AccountId,
             amount: BalanceOf<T>,
@@ -307,23 +332,27 @@ pub mod pallet {
             if NativeCheck::<T>::get() {
                 let free_balance = T::Fungibles::free_balance(&native_token_id, &bridge_id);
                 let total_balance = free_balance + amount;
-
                 let right_balance = T::NativeTokenMaxValue::get() / 3u8.into();
                 if total_balance > right_balance {
                     return Err(Error::<T>::OverTransferLimit)?;
                 }
             }
-
-            T::Fungibles::transfer_token(&sender, native_token_id, amount, &bridge_id)?;
-
+            let fee = Self::calculate_bridging_fee(&native_token_id);
+            ensure!(amount > fee + fee, Error::<T>::LessThanBridgingThreshold);
+            T::Fungibles::transfer_token(
+                &sender,
+                native_token_id,
+                fee,
+                &T::TreasuryAccount::get(),
+            )?;
+            T::Fungibles::transfer_token(&sender, native_token_id, amount - fee, &bridge_id)?;
             log::info!("transfer native token successful");
             bridge::Pallet::<T>::transfer_fungible(
                 dest_id,
                 r_id,
                 recipient.clone(),
-                U256::from(amount.saturated_into::<u128>()),
+                U256::from((amount - fee).saturated_into::<u128>()),
             )?;
-
             Ok(())
         }
 
@@ -337,6 +366,7 @@ pub mod pallet {
             Ok(())
         }
 
+        #[transactional]
         pub(crate) fn do_burn_assets(
             who: T::AccountId,
             amount: BalanceOf<T>,
@@ -347,12 +377,15 @@ pub mod pallet {
             let (chain_id, _, maybe_contract) = decode_resource_id(r_id);
             let token_id = T::AssetIdByName::try_get_asset_id(chain_id, maybe_contract)
                 .map_err(|_| Error::<T>::InvalidResourceId)?;
-            T::Fungibles::burn_from(token_id, &who, amount)?;
+            let fee = Self::calculate_bridging_fee(&token_id);
+            ensure!(amount > fee + fee, Error::<T>::LessThanBridgingThreshold);
+            T::Fungibles::transfer_token(&who, token_id, fee, &T::TreasuryAccount::get())?;
+            T::Fungibles::burn_from(token_id, &who, amount - fee)?;
             bridge::Pallet::<T>::transfer_fungible(
                 dest_id,
                 r_id,
                 recipient.clone(),
-                U256::from(amount.saturated_into::<u128>()),
+                U256::from((amount - fee).saturated_into::<u128>()),
             )?;
             Ok(())
         }
