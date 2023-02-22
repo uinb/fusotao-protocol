@@ -28,7 +28,7 @@ pub type Index = u64;
 pub type Hash = sp_core::H256;
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
-pub const MILLICENTS: Balance = 10_000_000_000;
+pub const MILLICENTS: Balance = 10_000_000_000_000;
 pub const CENTS: Balance = 1_000 * MILLICENTS;
 pub const DOLLARS: Balance = 100 * CENTS;
 
@@ -78,6 +78,7 @@ construct_runtime!(
         Balances: pallet_balances,
         Bridge: pallet_chainbridge,
         Verifier: pallet_fuso_verifier,
+        Indicator: pallet_fuso_indicator,
         ChainBridgeTransfer: pallet_chainbridge_transfer,
     }
 );
@@ -136,6 +137,7 @@ parameter_types! {
     pub NativeResourceId: ResourceId = derive_resource_id(42, 0, b"TAO").unwrap(); // native token id
     pub NativeTokenMaxValue : Balance = 1000_000_000_000_000_0000u128; // need to set correct value
     pub DonorAccount: AccountId32 = AccountId32::new([0u8; 32]);
+    pub TreasuryAccount: AccountId32 = AccountId32::new([1u8; 32]);
     pub DonationForAgent : Balance = 100_000_000_000_000_000u128; // need to set correct value
 }
 
@@ -192,6 +194,11 @@ impl pallet_fuso_verifier::Config for Test {
 pub type AssetBalance = u128;
 pub type AssetId = u32;
 
+impl pallet_fuso_indicator::Config for Test {
+    type Asset = Assets;
+    type RuntimeEvent = RuntimeEvent;
+}
+
 impl crate::Config for Test {
     type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type AssetIdByName = Assets;
@@ -202,13 +209,16 @@ impl crate::Config for Test {
     type Fungibles = Assets;
     type NativeResourceId = NativeResourceId;
     type NativeTokenMaxValue = NativeTokenMaxValue;
+    type Oracle = Indicator;
     type Redirect = RuntimeCall;
     type RuntimeEvent = RuntimeEvent;
+    type TreasuryAccount = TreasuryAccount;
 }
 
 pub const RELAYER_A: AccountId32 = AccountId32::new([2u8; 32]);
 pub const RELAYER_B: AccountId32 = AccountId32::new([3u8; 32]);
 pub const RELAYER_C: AccountId32 = AccountId32::new([4u8; 32]);
+pub const TREASURY: AccountId32 = AccountId32::new([1u8; 32]);
 pub const ENDOWED_BALANCE: Balance = 100 * DOLLARS;
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

@@ -17,7 +17,7 @@ use codec::{Codec, EncodeLike, MaxEncodedLen};
 use frame_support::{traits::BalanceStatus, Parameter};
 use sp_runtime::{
     traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member},
-    DispatchError, DispatchResult, Perquintill,
+    DispatchError, DispatchResult,
 };
 
 pub trait Token<AccountId> {
@@ -225,15 +225,15 @@ impl<T> Smuggler<T> for () {
     }
 }
 
-pub trait PriceOracle<TokenId, Balance, BlockNumber> {
-    fn get_price(token_id: &TokenId) -> Perquintill;
+pub trait PriceOracle<TokenId, Balance: Default, BlockNumber> {
+    fn get_price(token_id: &TokenId) -> Balance;
 
     fn set_price(token_id: TokenId, amount: Balance, volume: Balance, at: BlockNumber);
 }
 
-impl<TokenId, Balance, BlockNumber> PriceOracle<TokenId, Balance, BlockNumber> for () {
-    fn get_price(_token_id: &TokenId) -> Perquintill {
-        Perquintill::zero()
+impl<TokenId, Balance: Default, BlockNumber> PriceOracle<TokenId, Balance, BlockNumber> for () {
+    fn get_price(_token_id: &TokenId) -> Balance {
+        Default::default()
     }
 
     fn set_price(_token_id: TokenId, _amount: Balance, _volume: Balance, _at: BlockNumber) {}

@@ -29,6 +29,8 @@ pub mod pallet {
     pub type Balance<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
 
+    const QUINTILL: u128 = 1_000_000_000_000_000_000;
+
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
@@ -50,7 +52,7 @@ pub mod pallet {
 
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Default, TypeInfo, Debug)]
     pub struct Price<Balance, BlockNumber> {
-        pub price: Perquintill,
+        pub price: Balance,
         pub recent_matched_amount: Balance,
         pub recent_matched_vol: Balance,
         pub updated_at: BlockNumber,
@@ -78,9 +80,9 @@ pub mod pallet {
     where
         Balance<T>: From<u128> + From<u64> + Into<u128>,
     {
-        fn get_price(token_id: &TokenId<T>) -> Perquintill {
+        fn get_price(token_id: &TokenId<T>) -> Balance<T> {
             if T::Asset::is_stable(token_id) {
-                Perquintill::one()
+                QUINTILL.into()
             } else {
                 Self::prices(token_id).price
             }
@@ -95,9 +97,12 @@ pub mod pallet {
             OnChainPrices::<T>::mutate(&token_id, |p| {
                 if !volume.is_zero() && !amount.is_zero() {
                     p.updated_at = at;
-                    p.price = Perquintill::from_rational(volume, amount);
                     p.recent_matched_amount = amount;
                     p.recent_matched_vol = volume;
+                    p.price = volume / amount * QUINTILL.into()
+                        + (Perquintill::from_rational(volume % amount, amount).deconstruct()
+                            as u128)
+                            .into();
                 }
             });
         }

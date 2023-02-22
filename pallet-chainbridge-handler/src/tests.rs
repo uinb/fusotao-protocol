@@ -1,17 +1,18 @@
 #![cfg(test)]
-use crate::{
-    mock::{
-        assert_events, expect_event, new_test_ext, AccountId, Assets, Balance, Balances, Bridge,
-        ChainBridgeTransfer, NativeResourceId, ProposalLifetime, RuntimeEvent, RuntimeOrigin, Test,
-        Verifier, DOLLARS, ENDOWED_BALANCE, RELAYER_A, RELAYER_B, RELAYER_C,
-    },
-    *,
+use crate::mock::{
+    assert_events, expect_event, new_test_ext, AccountId, Assets, Balance, Balances, Bridge,
+    ChainBridgeTransfer, Indicator, NativeResourceId, ProposalLifetime, RuntimeCall, RuntimeEvent,
+    RuntimeOrigin, Test, Verifier, DOLLARS, ENDOWED_BALANCE, RELAYER_A, RELAYER_B, RELAYER_C,
+    TREASURY,
 };
 use codec::Encode;
 use frame_support::{assert_noop, assert_ok, dispatch::DispatchError, traits::fungibles::Inspect};
 use frame_system::RawOrigin;
 use fuso_support::chainbridge::*;
-use fuso_support::{traits::Token, XToken};
+use fuso_support::{
+    traits::{PriceOracle, Token},
+    XToken,
+};
 use pallet_chainbridge as bridge;
 use pallet_fuso_token as assets;
 use sp_core::{blake2_256, crypto::AccountId32, H256};
@@ -21,21 +22,17 @@ use sp_runtime::MultiAddress;
 
 const TEST_THRESHOLD: u32 = 2;
 
-fn make_remark_proposal(call: Vec<u8>) -> mock::RuntimeCall {
+fn make_remark_proposal(call: Vec<u8>) -> RuntimeCall {
     let depositer = [0u8; 20];
-    mock::RuntimeCall::ChainBridgeTransfer(crate::Call::remark {
+    RuntimeCall::ChainBridgeTransfer(crate::Call::remark {
         message: call,
         depositer,
         r_id: Default::default(),
     })
 }
 
-fn make_transfer_proposal(
-    resource_id: ResourceId,
-    to: AccountId32,
-    amount: u64,
-) -> mock::RuntimeCall {
-    mock::RuntimeCall::ChainBridgeTransfer(crate::Call::transfer_in {
+fn make_transfer_proposal(resource_id: ResourceId, to: AccountId32, amount: u64) -> RuntimeCall {
+    RuntimeCall::ChainBridgeTransfer(crate::Call::transfer_in {
         to,
         amount: amount.into(),
         r_id: resource_id,
@@ -83,7 +80,7 @@ fn transfer_out_non_native() {
             br#"DENOM"#.to_vec(),
             hex::decode(contract_address).unwrap(),
             Zero::zero(),
-            true,
+            false,
             18,
         );
         let resource_id = derive_resource_id(
@@ -471,7 +468,7 @@ fn authorize_and_revoke_in_remote() {
         assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::root(), src_id));
         assert_ok!(Bridge::set_resource(RuntimeOrigin::root(), r_id, resource));
 
-        let proposal = mock::RuntimeCall::ChainBridgeTransfer(crate::Call::transfer_in {
+        let proposal = RuntimeCall::ChainBridgeTransfer(crate::Call::transfer_in {
             to: alice.clone(),
             amount: amount.into(),
             r_id: dominator_specified,
@@ -496,15 +493,11 @@ fn authorize_and_revoke_in_remote() {
         ));
         assert_eq!(
             Verifier::receipts(bob.clone(), alice.clone()),
-            Some(pallet_fuso_verifier::Receipt::Authorize(
-                1,
-                1000000000000000,
-                1
-            ))
+            Some(pallet_fuso_verifier::Receipt::Authorize(1, 1 * DOLLARS, 1))
         );
 
         // create a transfer_in call without dominator specified
-        let proposal = mock::RuntimeCall::ChainBridgeTransfer(crate::Call::transfer_in {
+        let proposal = RuntimeCall::ChainBridgeTransfer(crate::Call::transfer_in {
             to: ferdie.clone(),
             amount: amount.into(),
             r_id,
@@ -528,5 +521,166 @@ fn authorize_and_revoke_in_remote() {
             Box::new(proposal.clone())
         ));
         assert_eq!(Verifier::receipts(ferdie.clone(), alice.clone()), None);
+    })
+}
+
+#[test]
+fn transfer_out_charge_stable_non_native() {
+    new_test_ext().execute_with(|| {
+        let dest_chain = 1;
+        let ferdie: AccountId = AccountKeyring::Ferdie.into();
+        let recipient = vec![99];
+        let contract_address = "304203995023530303420592059205902501";
+        let denom = XToken::ERC20(
+            br#"DENOM"#.to_vec(),
+            hex::decode(contract_address).unwrap(),
+            Zero::zero(),
+            true,
+            18,
+        );
+        let resource_id = derive_resource_id(
+            dest_chain,
+            0,
+            hex::decode(contract_address).unwrap().as_slice(),
+        )
+        .unwrap();
+        let resource = b"ChainBridgeHandler.transfer_in".to_vec();
+        assert_ok!(Bridge::set_resource(
+            RuntimeOrigin::root(),
+            resource_id,
+            resource
+        ));
+        assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom));
+        let amount: Balance = 5 * DOLLARS;
+        assert_ok!(Assets::do_mint(1, &ferdie, amount, None));
+        assert_ok!(Bridge::whitelist_chain(
+            RuntimeOrigin::root(),
+            dest_chain.clone()
+        ));
+        assert_eq!(ChainBridgeTransfer::calculate_bridging_fee(&1), 2 * DOLLARS);
+        assert_ok!(ChainBridgeTransfer::transfer_out(
+            RuntimeOrigin::signed(ferdie.clone()),
+            amount,
+            resource_id,
+            recipient.clone(),
+            dest_chain,
+        ));
+
+        // make sure transfer have 0 amount
+        assert_eq!(Assets::free_balance(&1, &ferdie), 0);
+        assert_eq!(Assets::free_balance(&1, &TREASURY), 2 * DOLLARS);
+        assert_events(vec![RuntimeEvent::Bridge(bridge::Event::FungibleTransfer(
+            dest_chain,
+            1,
+            resource_id,
+            sp_core::U256::from(3 * DOLLARS),
+            recipient,
+        ))]);
+    })
+}
+
+#[test]
+fn transfer_out_charge_unstable_non_native() {
+    new_test_ext().execute_with(|| {
+        let dest_chain = 1;
+        let ferdie: AccountId = AccountKeyring::Ferdie.into();
+        let recipient = vec![99];
+        let contract_address = "304203995023530303420592059205902501";
+        let denom = XToken::ERC20(
+            br#"DENOM"#.to_vec(),
+            hex::decode(contract_address).unwrap(),
+            Zero::zero(),
+            false,
+            18,
+        );
+        let resource_id = derive_resource_id(
+            dest_chain,
+            0,
+            hex::decode(contract_address).unwrap().as_slice(),
+        )
+        .unwrap();
+        let resource = b"ChainBridgeHandler.transfer_in".to_vec();
+        assert_ok!(Bridge::set_resource(
+            RuntimeOrigin::root(),
+            resource_id,
+            resource
+        ));
+        assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom));
+        let amount: Balance = 5 * DOLLARS;
+        assert_ok!(Assets::do_mint(1, &ferdie, amount, None));
+        assert_ok!(Bridge::whitelist_chain(
+            RuntimeOrigin::root(),
+            dest_chain.clone()
+        ));
+        assert_ok!(ChainBridgeTransfer::transfer_out(
+            RuntimeOrigin::signed(ferdie.clone()),
+            amount,
+            resource_id,
+            recipient.clone(),
+            dest_chain,
+        ));
+
+        // make sure transfer have 0 amount
+        assert_eq!(Assets::free_balance(&1, &ferdie), 0);
+        assert_events(vec![RuntimeEvent::Bridge(bridge::Event::FungibleTransfer(
+            dest_chain,
+            1,
+            resource_id,
+            sp_core::U256::from(5 * DOLLARS),
+            recipient.clone(),
+        ))]);
+
+        // price = 3 * DOLLARS
+        Indicator::set_price(1, DOLLARS, 3 * DOLLARS, 1);
+        assert_ok!(Assets::do_mint(1, &ferdie, 10 * DOLLARS, None));
+        assert_eq!(
+            ChainBridgeTransfer::calculate_bridging_fee(&1),
+            666_666_666_666_666_666
+        );
+        assert_ok!(ChainBridgeTransfer::transfer_out(
+            RuntimeOrigin::signed(ferdie.clone()),
+            10 * DOLLARS,
+            resource_id,
+            recipient.clone(),
+            dest_chain,
+        ));
+        assert_eq!(Assets::free_balance(&1, &ferdie), 0);
+        // charge 2/3 = 0.666_666_666_666_666_666
+        assert_eq!(Assets::free_balance(&1, &TREASURY), 666_666_666_666_666_666);
+        assert_events(vec![RuntimeEvent::Bridge(bridge::Event::FungibleTransfer(
+            dest_chain,
+            2,
+            resource_id,
+            sp_core::U256::from(10 * DOLLARS - 666_666_666_666_666_666),
+            recipient.clone(),
+        ))]);
+
+        // price = 0.333333333333333333 * DOLLARS
+        Indicator::set_price(1, 3 * DOLLARS, DOLLARS, 1);
+        assert_ok!(Assets::do_mint(1, &ferdie, 100 * DOLLARS, None));
+        // charge = 2 / 0.333333333333333333 * DOLLARS
+        assert_eq!(
+            ChainBridgeTransfer::calculate_bridging_fee(&1),
+            6 * DOLLARS + 6
+        );
+        assert_ok!(ChainBridgeTransfer::transfer_out(
+            RuntimeOrigin::signed(ferdie.clone()),
+            100 * DOLLARS,
+            resource_id,
+            recipient.clone(),
+            dest_chain,
+        ));
+        assert_eq!(Assets::free_balance(&1, &ferdie), 0);
+        assert_eq!(
+            Assets::free_balance(&1, &TREASURY),
+            666_666_666_666_666_666 + 6 * DOLLARS + 6
+        );
+        assert_events(vec![RuntimeEvent::Bridge(bridge::Event::FungibleTransfer(
+            dest_chain,
+            3,
+            resource_id,
+            sp_core::U256::from(100 * DOLLARS - 6 * DOLLARS - 6),
+            recipient,
+        ))]);
     })
 }
