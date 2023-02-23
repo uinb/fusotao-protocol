@@ -134,11 +134,17 @@ impl fuso_support::traits::Rewarding<AccountId, Balance, BlockNumber> for Phanto
     }
 }
 
+impl pallet_fuso_indicator::Config for Test {
+    type Asset = TokenModule;
+    type RuntimeEvent = RuntimeEvent;
+}
+
 impl pallet_fuso_verifier::Config for Test {
     type Asset = TokenModule;
     type Callback = RuntimeCall;
     type DominatorCheckGracePeriod = DominatorCheckGracePeriod;
     type DominatorOnlineThreshold = DominatorOnlineThreshold;
+    type Indicator = Indicator;
     type MaxMakerFee = MaxMakerFee;
     type MaxTakerFee = MaxTakerFee;
     type MinimalStakingAmount = MinimalStakingAmount;
@@ -158,6 +164,7 @@ construct_runtime!(
         System: frame_system,
         Balances: pallet_balances,
         TokenModule: pallet_fuso_token,
+        Indicator: pallet_fuso_indicator,
         Verifier: pallet_fuso_verifier
     }
 );

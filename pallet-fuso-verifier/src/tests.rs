@@ -211,7 +211,7 @@ pub fn test_stake_unstake_should_work() {
 }
 
 #[test]
-pub fn test_authorize() {
+pub fn test_authorize_should_work() {
     new_tester().execute_with(|| {
         let alice: AccountId = AccountKeyring::Alice.into();
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
@@ -345,7 +345,7 @@ pub fn test_authorize() {
 }
 
 #[test]
-pub fn test_revoke() {
+pub fn test_revoke_should_work() {
     new_tester().execute_with(|| {
         run_to_block(100);
         let alice: AccountId = AccountKeyring::Alice.into();

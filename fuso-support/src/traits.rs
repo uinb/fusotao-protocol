@@ -1,4 +1,4 @@
-// Copyright 2021-2022 UINB Technologies Pte. Ltd.
+// Copyright 2021-2023 UINB Technologies Pte. Ltd.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -223,4 +223,18 @@ impl<T> Smuggler<T> for () {
     fn repatriate_if_wanted(_: &T) -> bool {
         false
     }
+}
+
+pub trait PriceOracle<TokenId, Balance: Default, BlockNumber> {
+    fn get_price(token_id: &TokenId) -> Balance;
+
+    fn set_price(token_id: TokenId, amount: Balance, volume: Balance, at: BlockNumber);
+}
+
+impl<TokenId, Balance: Default, BlockNumber> PriceOracle<TokenId, Balance, BlockNumber> for () {
+    fn get_price(_token_id: &TokenId) -> Balance {
+        Default::default()
+    }
+
+    fn set_price(_token_id: TokenId, _amount: Balance, _volume: Balance, _at: BlockNumber) {}
 }

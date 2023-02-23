@@ -30,6 +30,7 @@ pallet-fuso-verifier = { path = "../pallet-fuso-verifier", default-features = fa
 sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
 sp-core = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
 pallet-balances = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
+pallet-fuso-indicator = { path = "../pallet-fuso-indicator", default-features = false }
 pallet-fuso-token = { path = "../pallet-fuso-token" }
 hex-literal = { version = "0.3.4" }
 #pallet-assets = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
