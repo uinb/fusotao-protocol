@@ -1,4 +1,5 @@
-// Copyright 2021 UINB Technologies Pte. Ltd.
+// Copyright 2021-2023 UINB Technologies Pte. Ltd.
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,9 +13,6 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-
-extern crate sp_runtime;
-
 pub use pallet::*;
 pub mod weights;
 

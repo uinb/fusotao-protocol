@@ -1,4 +1,4 @@
-// Copyright 2021 UINB Technologies Pte. Ltd.
+// Copyright 2021-2023 UINB Technologies Pte. Ltd.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ pub mod pallet {
     use fuso_support::constants::RESERVE_FOR_AUTHORIZING_STASH;
     use fuso_support::{
         constants::*,
-        traits::{ReservableToken, Rewarding, Token},
+        traits::{PriceOracle, ReservableToken, Rewarding, Token},
     };
     use scale_info::TypeInfo;
     use sp_io::hashing::blake2_256 as hashing;
@@ -56,20 +56,27 @@ pub mod pallet {
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::TokenId;
     pub type Balance<T> =
         <<T as Config>::Asset as Token<<T as frame_system::Config>::AccountId>>::Balance;
-    pub type UniBalanceOf<T> = (TokenId<T>, Balance<T>);
     pub type Symbol<T> = (TokenId<T>, TokenId<T>);
     pub type Season = u32;
     pub type Amount = u128;
-    pub type Price = (u128, Perquintill);
+    pub type MerkleHash = [u8; 32];
     pub const PALLET_ID: frame_support::PalletId = frame_support::PalletId(*b"fuso/vrf");
     const UNSTAKE_DELAY_BLOCKS: u32 = 14400 * 4u32;
     const MAX_PROOF_SIZE: usize = 10 * 1024 * 1024usize;
 
+    #[derive(Clone, Eq, PartialEq, RuntimeDebug)]
+    pub struct Trade<TokenId, Balance> {
+        pub token_id: TokenId,
+        pub root: MerkleHash,
+        pub amount: Balance,
+        pub vol: Balance,
+    }
+
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct MerkleLeaf {
         pub key: Vec<u8>,
-        pub old_v: [u8; 32],
-        pub new_v: [u8; 32],
+        pub old_v: MerkleHash,
+        pub new_v: MerkleHash,
     }
 
     impl MerkleLeaf {
@@ -203,7 +210,7 @@ pub mod pallet {
         pub maker_page_delta: u8,
         pub maker_account_delta: u8,
         pub merkle_proof: Vec<u8>,
-        pub root: [u8; 32],
+        pub root: MerkleHash,
     }
 
     #[derive(Clone, Encode, Decode, RuntimeDebug, Eq, PartialEq, TypeInfo)]
@@ -256,6 +263,8 @@ pub mod pallet {
             + Dispatchable<RuntimeOrigin = Self::RuntimeOrigin, PostInfo = PostDispatchInfo>
             + EncodeLike
             + GetDispatchInfo;
+
+        type Indicator: PriceOracle<TokenId<Self>, Balance<Self>, Self::BlockNumber>;
 
         #[pallet::constant]
         type DominatorOnlineThreshold: Get<Balance<Self>>;
@@ -555,16 +564,7 @@ pub mod pallet {
             let proofs: Vec<Proof<T::AccountId>> =
                 Decode::decode(&mut TrailingZeroInput::new(uncompress_proofs.as_ref()))
                     .map_err(|_| Error::<T>::ProofFormatError)?;
-            let mut known_root = dominator.merkle_root;
-            for proof in proofs.into_iter() {
-                known_root = Self::verify_and_update(
-                    &dominator_id,
-                    known_root,
-                    dominator.start_from.clone(),
-                    proof,
-                )?;
-            }
-            Ok(().into())
+            Self::verify_batch(dominator_id, &dominator, proofs)
         }
 
         #[pallet::weight((<T as Config>::WeightInfo::verify(), DispatchClass::Normal, Pays::No))]
@@ -579,16 +579,7 @@ pub mod pallet {
                 dominator.status == DOMINATOR_ACTIVE,
                 Error::<T>::DominatorInactive
             );
-            let mut known_root = dominator.merkle_root;
-            for proof in proofs.into_iter() {
-                known_root = Self::verify_and_update(
-                    &dominator_id,
-                    known_root,
-                    dominator.start_from.clone(),
-                    proof,
-                )?;
-            }
-            Ok(().into())
+            Self::verify_batch(dominator_id, &dominator, proofs)
         }
 
         #[transactional]
@@ -818,13 +809,44 @@ pub mod pallet {
             Ok(())
         }
 
+        fn verify_batch(
+            dominator_id: T::AccountId,
+            dominator: &Dominator<Balance<T>, BlockNumberFor<T>>,
+            proofs: Vec<Proof<T::AccountId>>,
+        ) -> DispatchResultWithPostInfo {
+            let mut known_root = dominator.merkle_root;
+            let mut incr: BTreeMap<TokenId<T>, (Balance<T>, Balance<T>)> = BTreeMap::new();
+            for proof in proofs.into_iter() {
+                let trade = Self::verify_and_update(
+                    &dominator_id,
+                    known_root,
+                    dominator.start_from.clone(),
+                    proof,
+                )?;
+                known_root = trade.root;
+                if trade.amount != Zero::zero() && trade.vol != Zero::zero() {
+                    incr.entry(trade.token_id)
+                        .and_modify(|(b, q)| {
+                            *b += trade.amount;
+                            *q += trade.vol;
+                        })
+                        .or_insert((trade.amount, trade.vol));
+                }
+            }
+            let current_block = frame_system::Pallet::<T>::block_number();
+            for (token_id, trade) in incr.into_iter() {
+                T::Indicator::set_price(token_id, trade.0, trade.1, current_block);
+            }
+            Ok(().into())
+        }
+
         #[transactional]
         fn verify_and_update(
             dominator_id: &T::AccountId,
-            known_root: [u8; 32],
+            known_root: MerkleHash,
             claim_at: T::BlockNumber,
             proof: Proof<T::AccountId>,
-        ) -> Result<[u8; 32], DispatchError> {
+        ) -> Result<Trade<TokenId<T>, Balance<T>>, DispatchError> {
             let mp = smt::CompiledMerkleProof(proof.merkle_proof.clone());
             let (old, new): (Vec<_>, Vec<_>) = proof
                 .leaves
@@ -844,6 +866,12 @@ pub mod pallet {
             ensure!(r, Error::<T>::ProofsUnsatisfied);
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_season = Self::current_season(current_block, claim_at);
+            let mut trade = Trade {
+                token_id: Default::default(),
+                root: known_root,
+                amount: Zero::zero(),
+                vol: Zero::zero(),
+            };
             match proof.cmd {
                 Command::AskLimit(price, amount, maker_fee, taker_fee, base, quote) => {
                     Self::check_fee(taker_fee.into(), maker_fee.into())?;
@@ -883,6 +911,9 @@ pub mod pallet {
                             Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                             Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
                             T::Rewarding::save_trading(&d.who, d.volume, current_block)?;
+                            trade.token_id = base.into();
+                            trade.amount += d.base_value;
+                            trade.vol += d.quote_value;
                         }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
@@ -930,6 +961,9 @@ pub mod pallet {
                             Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                             Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
                             T::Rewarding::save_trading(&d.who, d.volume, current_block)?;
+                            trade.token_id = base.into();
+                            trade.amount += d.base_value;
+                            trade.vol += d.quote_value;
                         }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
@@ -1040,12 +1074,12 @@ pub mod pallet {
                     )?;
                     Receipts::<T>::remove(&dominator_id, &proof.user_id);
                     // needn't step forward
-                    return Ok(known_root);
+                    return Ok(trade);
                 }
                 Command::RejectTransferIn => {
                     let r = Receipts::<T>::get(&dominator_id, &proof.user_id);
                     if r.is_none() {
-                        return Ok(known_root);
+                        return Ok(trade);
                     }
                     let r = r.unwrap();
                     ensure!(
@@ -1053,7 +1087,7 @@ pub mod pallet {
                         Error::<T>::ReceiptNotExists
                     );
                     Receipts::<T>::remove(&dominator_id, &proof.user_id);
-                    return Ok(known_root);
+                    return Ok(trade);
                 }
             }
             Dominators::<T>::mutate(&dominator_id, |d| {
@@ -1061,7 +1095,8 @@ pub mod pallet {
                 update.merkle_root = proof.root;
                 update.sequence = (proof.event_id, current_block);
             });
-            Ok(proof.root)
+            trade.root = proof.root;
+            Ok(trade)
         }
 
         fn verify_ask_limit(
