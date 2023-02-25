@@ -41,6 +41,8 @@ pub trait WeightInfo {
 	fn stake() -> Weight;
 	fn unstake() -> Weight;
 	fn claim_shares() -> Weight;
+	fn set_pubkey() -> Weight;
+	fn set_trading_key() -> Weight;
 }
 
 /// Weight functions for `pallet_fuso_verifier`.
@@ -118,6 +120,18 @@ impl<T: frame_system::Config> WeightInfo for FusoWeight<T> {
 		Weight::from_ref_time(6_669_000_000u64)
 			.saturating_add(T::DbWeight::get().reads(15u64))
 			.saturating_add(T::DbWeight::get().writes(16u64))
+	}
+
+	fn set_pubkey() -> Weight {
+		Weight::from_ref_time(569_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(1u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
+	}
+
+	fn set_trading_key() -> Weight {
+		Weight::from_ref_time(569_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(1u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
 	}
 }
 
@@ -197,5 +211,17 @@ impl WeightInfo for () {
 		Weight::from_ref_time(6_669_000_000u64)
 			.saturating_add(RocksDbWeight::get().reads(15u64))
 			.saturating_add(RocksDbWeight::get().writes(16u64))
+	}
+
+	fn set_pubkey() -> Weight {
+		Weight::from_ref_time(569_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(1u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
+	}
+
+	fn set_trading_key() -> Weight {
+		Weight::from_ref_time(569_000_000u64)
+			.saturating_add(RocksDbWeight::get().reads(1u64))
+			.saturating_add(RocksDbWeight::get().writes(1u64))
 	}
 }

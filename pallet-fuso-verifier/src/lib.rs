@@ -308,6 +308,24 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    /// traders' key encrypted by the dominator's x25519 pubkey
+    #[pallet::storage]
+    #[pallet::getter(fn trading_keys)]
+    pub type TradingKeys<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        T::AccountId,
+        Vec<u8>,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn dominator_keys)]
+    pub type DominatorKeys<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, Vec<u8>, OptionQuery>;
+
     #[pallet::storage]
     #[pallet::getter(fn reserves)]
     pub type Reserves<T: Config> = StorageDoubleMap<
@@ -374,6 +392,8 @@ pub mod pallet {
         DominatorSlashed(T::AccountId),
         DominatorEvicted(T::AccountId),
         DominatorInactive(T::AccountId),
+        DominatorX25519KeyUpdated(T::AccountId),
+        TradingKeySet(T::AccountId, T::AccountId, Vec<u8>),
     }
 
     #[pallet::error]
@@ -518,6 +538,58 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::DominatorEvicted(dominator));
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::set_pubkey())]
+        pub fn dominator_set_pubkey(
+            origin: OriginFor<T>,
+            key: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            let dominator = ensure_signed(origin)?;
+            ensure!(
+                Dominators::<T>::contains_key(&dominator),
+                Error::<T>::DominatorNotFound
+            );
+            DominatorKeys::<T>::try_mutate(&dominator, |d| -> DispatchResult {
+                d.replace(key);
+                Ok(())
+            })?;
+            Self::deposit_event(Event::DominatorX25519KeyUpdated(dominator));
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::set_trading_key())]
+        pub fn set_trading_key(
+            origin: OriginFor<T>,
+            dominator_id: <T::Lookup as StaticLookup>::Source,
+            key: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            let trader = ensure_signed(origin)?;
+            let dominator = T::Lookup::lookup(dominator_id)?;
+            ensure!(
+                DominatorKeys::<T>::contains_key(&dominator),
+                Error::<T>::DominatorNotFound
+            );
+            TradingKeys::<T>::insert(dominator.clone(), trader.clone(), key.clone());
+            Self::deposit_event(Event::TradingKeySet(dominator, trader, key));
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::set_trading_key())]
+        pub fn dominator_set_trading_key(
+            origin: OriginFor<T>,
+            trader: <T::Lookup as StaticLookup>::Source,
+            key: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            let dominator = ensure_signed(origin)?;
+            let trader = T::Lookup::lookup(trader)?;
+            ensure!(
+                DominatorKeys::<T>::contains_key(&dominator),
+                Error::<T>::DominatorNotFound
+            );
+            TradingKeys::<T>::insert(dominator.clone(), trader.clone(), key.clone());
+            Self::deposit_event(Event::TradingKeySet(dominator, trader, key));
             Ok(().into())
         }
 
