@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::chainbridge::EthereumCompatibleAddress;
 use codec::{Codec, Decode, Encode};
 use core::fmt::Debug;
 use frame_support::dispatch::Dispatchable;
@@ -74,7 +75,7 @@ pub mod chainbridge {
     pub type DepositNonce = u64;
     pub type ResourceId = [u8; 32];
     pub type EvmHash = [u8; 32];
-    pub type EthAddress = [u8; 20];
+    pub type EthereumCompatibleAddress = [u8; 20];
 
     /// [len, ..., 01, 01, 00]
     pub fn derive_resource_id(

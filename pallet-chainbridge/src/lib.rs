@@ -97,8 +97,16 @@ const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 pub mod pallet {
     use super::*;
     use codec::EncodeLike;
+    use frame_support::traits::fungibles::Mutate;
     use frame_support::{dispatch::GetDispatchInfo, pallet_prelude::*, Blake2_128Concat};
     use frame_system::pallet_prelude::*;
+    use fuso_support::traits::{ChainBridge, Token};
+
+    type AssetId<T> =
+        <<T as Config>::Fungibles as Token<<T as frame_system::Config>::AccountId>>::TokenId;
+
+    type BalanceOf<T> =
+        <<T as Config>::Fungibles as Token<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// Configure the pallet by specifying the parameters and types on which it depends.
     #[pallet::config]
@@ -123,6 +131,16 @@ pub mod pallet {
 
         #[pallet::constant]
         type ProposalLifetime: Get<Self::BlockNumber>;
+
+        #[pallet::constant]
+        type TreasuryAccount: Get<Self::AccountId>;
+
+        /// Expose customizable associated type of asset transfer, lock and unlock
+        type Fungibles: Mutate<Self::AccountId, AssetId = AssetId<Self>, Balance = BalanceOf<Self>>
+            + Token<Self::AccountId>;
+
+        /// Map of cross-chain asset ID & name
+        type AssetIdByName: AssetIdResourceIdProvider<AssetId<Self>>;
     }
 
     #[pallet::pallet]
@@ -242,6 +260,8 @@ pub mod pallet {
         ProposalAlreadyComplete,
         /// Lifetime of proposal has been exceeded
         ProposalExpired,
+        /// TokenId not Found by ResourceId
+        ResourceIdNotMapToToken,
     }
 
     #[pallet::hooks]
@@ -278,6 +298,10 @@ pub mod pallet {
             method: Vec<u8>,
         ) -> DispatchResult {
             Self::ensure_admin(origin)?;
+            let (chain_id, dominator, contract) = decode_resource_id(id.clone());
+            //check (chainId, contract) -> token mapping is ok
+            T::AssetIdByName::try_get_asset_id(chain_id, contract)
+                .map_err(|_| Error::<T>::ResourceIdNotMapToToken);
             Self::register_resource(id, method)
         }
 

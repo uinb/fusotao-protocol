@@ -34,13 +34,16 @@ pub mod pallet {
     };
     use sp_std::{convert::From, prelude::*};
 
-    type Depositer = EthAddress;
+    type Depositer = EthereumCompatibleAddress;
+    type ContractAddress = EthereumCompatibleAddress;
 
-    type AssetId<T> =
-        <<T as Config>::Fungibles as Token<<T as frame_system::Config>::AccountId>>::TokenId;
+    type AssetId<T> = <<T as bridge::Config>::Fungibles as Token<
+        <T as frame_system::Config>::AccountId,
+    >>::TokenId;
 
-    type BalanceOf<T> =
-        <<T as Config>::Fungibles as Token<<T as frame_system::Config>::AccountId>>::Balance;
+    type BalanceOf<T> = <<T as bridge::Config>::Fungibles as Token<
+        <T as frame_system::Config>::AccountId,
+    >>::Balance;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
@@ -72,14 +75,7 @@ pub mod pallet {
             + EncodeLike
             + GetDispatchInfo;
 
-        /// Expose customizable associated type of asset transfer, lock and unlock
-        type Fungibles: Mutate<Self::AccountId, AssetId = AssetId<Self>, Balance = BalanceOf<Self>>
-            + Token<Self::AccountId>;
-
         type Oracle: PriceOracle<AssetId<Self>, BalanceOf<Self>, Self::BlockNumber>;
-
-        /// Map of cross-chain asset ID & name
-        type AssetIdByName: AssetIdResourceIdProvider<AssetId<Self>>;
 
         /// Max native token value
         type NativeTokenMaxValue: Get<BalanceOf<Self>>;
@@ -89,8 +85,6 @@ pub mod pallet {
         type DonorAccount: Get<Self::AccountId>;
 
         type DonationForAgent: Get<BalanceOf<Self>>;
-
-        type TreasuryAccount: Get<Self::AccountId>;
     }
 
     #[pallet::storage]

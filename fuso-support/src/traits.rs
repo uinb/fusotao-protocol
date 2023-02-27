@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::XToken;
+use crate::chainbridge::ResourceId;
+use crate::{ChainId, XToken};
 use codec::{Codec, EncodeLike, MaxEncodedLen};
 use frame_support::{traits::BalanceStatus, Parameter};
 use sp_runtime::{
@@ -194,6 +195,9 @@ pub trait Rewarding<AccountId, Volume: Copy, BlockNumber> {
     fn save_trading(trader: &AccountId, amount: Volume, at: BlockNumber) -> DispatchResult;
 }
 
+pub trait ChainBridge {
+    fn set_resource(id: ResourceId);
+}
 pub trait Agent<AccountId> {
     type Origin: Codec;
     type Message: EncodeLike + Codec;
@@ -237,4 +241,8 @@ impl<TokenId, Balance: Default, BlockNumber> PriceOracle<TokenId, Balance, Block
     }
 
     fn set_price(_token_id: TokenId, _amount: Balance, _volume: Balance, _at: BlockNumber) {}
+}
+
+pub trait ChainIdOf<Balance> {
+    fn chain_id_of(token_info: &XToken<Balance>) -> ChainId;
 }
