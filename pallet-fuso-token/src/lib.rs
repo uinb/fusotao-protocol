@@ -459,6 +459,7 @@ pub mod pallet {
                         Error::<T>::ContractError
                     );
                     *total = Zero::zero();
+                    TokenByName::<T>::insert(contract.clone(), id);
                 }
                 XToken::ERC20(ref symbol, ref contract, ref mut total, _, decimals)
                 | XToken::BEP20(ref symbol, ref contract, ref mut total, _, decimals) => {
