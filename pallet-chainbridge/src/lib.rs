@@ -100,7 +100,7 @@ pub mod pallet {
     use frame_support::traits::fungibles::Mutate;
     use frame_support::{dispatch::GetDispatchInfo, pallet_prelude::*, Blake2_128Concat};
     use frame_system::pallet_prelude::*;
-    use fuso_support::traits::{ChainBridge, Token};
+    use fuso_support::traits::Token;
 
     type AssetId<T> =
         <<T as Config>::Fungibles as Token<<T as frame_system::Config>::AccountId>>::TokenId;
@@ -298,10 +298,10 @@ pub mod pallet {
             method: Vec<u8>,
         ) -> DispatchResult {
             Self::ensure_admin(origin)?;
-            let (chain_id, dominator, contract) = decode_resource_id(id.clone());
+            let (chain_id, _, contract) = decode_resource_id(id.clone());
             //check (chainId, contract) -> token mapping is ok
             T::AssetIdByName::try_get_asset_id(chain_id, contract)
-                .map_err(|_| Error::<T>::ResourceIdNotMapToToken);
+                .map_err(|_| Error::<T>::ResourceIdNotMapToToken)?;
             Self::register_resource(id, method)
         }
 

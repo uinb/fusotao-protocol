@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::chainbridge::EthereumCompatibleAddress;
 use codec::{Codec, Decode, Encode};
 use core::fmt::Debug;
 use frame_support::dispatch::Dispatchable;

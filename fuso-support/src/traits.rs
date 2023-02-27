@@ -195,9 +195,6 @@ pub trait Rewarding<AccountId, Volume: Copy, BlockNumber> {
     fn save_trading(trader: &AccountId, amount: Volume, at: BlockNumber) -> DispatchResult;
 }
 
-pub trait ChainBridge {
-    fn set_resource(id: ResourceId);
-}
 pub trait Agent<AccountId> {
     type Origin: Codec;
     type Message: EncodeLike + Codec;
