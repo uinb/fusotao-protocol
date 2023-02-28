@@ -11,7 +11,6 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use crate::pallet;
     use codec::EncodeLike;
     use frame_support::{
         dispatch::GetDispatchInfo,
@@ -64,9 +63,6 @@ pub mod pallet {
         /// the bridge pallet
         type BridgeOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Self::AccountId>;
 
-        /// Origin used to administer the pallet
-        type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-
         type BalanceConversion: BalanceConversion<BalanceOf<Self>, AssetId<Self>, BalanceOf<Self>>;
 
         /// dispatchable call
@@ -79,8 +75,6 @@ pub mod pallet {
 
         /// Max native token value
         type NativeTokenMaxValue: Get<BalanceOf<Self>>;
-
-        type NativeResourceId: Get<ResourceId>;
 
         type DonorAccount: Get<Self::AccountId>;
 
@@ -291,7 +285,7 @@ pub mod pallet {
         }
 
         pub fn ensure_admin(o: T::RuntimeOrigin) -> DispatchResult {
-            <T as pallet::Config>::AdminOrigin::ensure_origin(o)?;
+            T::AdminOrigin::ensure_origin(o)?;
             Ok(().into())
         }
 

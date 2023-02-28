@@ -139,6 +139,8 @@ pub mod pallet {
         type Fungibles: Mutate<Self::AccountId, AssetId = AssetId<Self>, Balance = BalanceOf<Self>>
             + Token<Self::AccountId>;
 
+        type NativeResourceId: Get<ResourceId>;
+
         /// Map of cross-chain asset ID & name
         type AssetIdByName: AssetIdResourceIdProvider<AssetId<Self>>;
     }
@@ -298,10 +300,12 @@ pub mod pallet {
             method: Vec<u8>,
         ) -> DispatchResult {
             Self::ensure_admin(origin)?;
-            let (chain_id, _, contract) = decode_resource_id(id.clone());
-            //check (chainId, contract) -> token mapping is ok
-            T::AssetIdByName::try_get_asset_id(chain_id, contract)
-                .map_err(|_| Error::<T>::ResourceIdNotMapToToken)?;
+            if id != T::NativeResourceId::get() {
+                let (chain_id, _, contract) = decode_resource_id(id.clone());
+                //check (chainId, contract) -> token mapping is ok
+                T::AssetIdByName::try_get_asset_id(chain_id, contract)
+                    .map_err(|_| Error::<T>::ResourceIdNotMapToToken)?;
+            }
             Self::register_resource(id, method)
         }
 

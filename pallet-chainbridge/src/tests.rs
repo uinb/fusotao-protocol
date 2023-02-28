@@ -1,11 +1,12 @@
 use super::{
     mock::{
         assert_events, new_test_ext, Balances, Bridge, ProposalLifetime, RuntimeCall, RuntimeEvent,
-        RuntimeOrigin, System, Test, TestChainId, ENDOWED_BALANCE, RELAYER_A, RELAYER_B, RELAYER_C,
-        TEST_THRESHOLD,
+        RuntimeOrigin, System, Test, TestChainId, Token, ENDOWED_BALANCE, RELAYER_A, RELAYER_B,
+        RELAYER_C, TEST_THRESHOLD,
     },
     *,
 };
+use crate::mock::TREASURY;
 use crate::{mock::new_test_ext_initialized, Event as ChainBridgeEvent};
 use frame_support::{assert_noop, assert_ok};
 use fuso_support::chainbridge::{decode_resource_id, derive_resource_id};
@@ -81,22 +82,28 @@ fn setup_resources() {
         let id: ResourceId = [1; 32];
         let method = "Pallet.do_something".as_bytes().to_vec();
         let method2 = "Pallet.do_somethingElse".as_bytes().to_vec();
-
+        let (chainid, _, contract) = decode_resource_id(id);
+        assert_ok!(Token::associate_token(
+            RuntimeOrigin::signed(TREASURY),
+            chainid,
+            contract,
+            1u32
+        ));
         assert_ok!(Bridge::set_resource(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             id,
             method.clone()
         ));
         assert_eq!(Bridge::resources(id), Some(method));
 
         assert_ok!(Bridge::set_resource(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             id,
             method2.clone()
         ));
         assert_eq!(Bridge::resources(id), Some(method2));
 
-        assert_ok!(Bridge::remove_resource(RuntimeOrigin::root(), id));
+        assert_ok!(Bridge::remove_resource(RuntimeOrigin::signed(TREASURY), id));
         assert_eq!(Bridge::resources(id), None);
     })
 }
@@ -106,9 +113,9 @@ fn whitelist_chain() {
     new_test_ext().execute_with(|| {
         assert!(!Bridge::chain_whitelisted(0));
 
-        assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::root(), 0));
+        assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::signed(TREASURY), 0));
         assert_noop!(
-            Bridge::whitelist_chain(RuntimeOrigin::root(), TestChainId::get()),
+            Bridge::whitelist_chain(RuntimeOrigin::signed(TREASURY), TestChainId::get()),
             Error::<Test>::InvalidChainId
         );
 
@@ -123,10 +130,13 @@ fn set_get_threshold() {
     new_test_ext().execute_with(|| {
         assert_eq!(RelayerThreshold::<Test>::get(), 1);
 
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD));
+        assert_ok!(Bridge::set_threshold(
+            RuntimeOrigin::signed(TREASURY),
+            TEST_THRESHOLD
+        ));
         assert_eq!(RelayerThreshold::<Test>::get(), TEST_THRESHOLD);
 
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), 5));
+        assert_ok!(Bridge::set_threshold(RuntimeOrigin::signed(TREASURY), 5));
         assert_eq!(RelayerThreshold::<Test>::get(), 5);
 
         assert_events(vec![
@@ -145,11 +155,13 @@ fn asset_transfer_success() {
         let metadata = vec![];
         let amount = U256::one();
         let token_id = vec![1, 2, 3, 4];
-
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD,));
+        assert_ok!(Bridge::set_threshold(
+            RuntimeOrigin::signed(TREASURY),
+            TEST_THRESHOLD,
+        ));
 
         assert_ok!(Bridge::whitelist_chain(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             dest_id.clone()
         ));
         assert_ok!(Bridge::transfer_fungible(
@@ -204,9 +216,8 @@ fn asset_transfer_invalid_chain() {
         let chain_id = 2;
         let bad_dest_id = 3;
         let resource_id = [4; 32];
-
         assert_ok!(Bridge::whitelist_chain(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             chain_id.clone()
         ));
         assert_events(vec![RuntimeEvent::Bridge(
@@ -233,25 +244,40 @@ fn asset_transfer_invalid_chain() {
 #[test]
 fn add_remove_relayer() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD,));
+        assert_ok!(Bridge::set_threshold(
+            RuntimeOrigin::signed(TREASURY),
+            TEST_THRESHOLD,
+        ));
         assert_eq!(Bridge::relayer_count(), 0);
 
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_A));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_B));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_C));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_A
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_B
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_C
+        ));
         assert_eq!(Bridge::relayer_count(), 3);
 
         // Already exists
         assert_noop!(
-            Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_A),
+            Bridge::add_relayer(RuntimeOrigin::signed(TREASURY), RELAYER_A),
             Error::<Test>::RelayerAlreadyExists
         );
 
         // Confirm removal
-        assert_ok!(Bridge::remove_relayer(RuntimeOrigin::root(), RELAYER_B));
+        assert_ok!(Bridge::remove_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_B
+        ));
         assert_eq!(Bridge::relayer_count(), 2);
         assert_noop!(
-            Bridge::remove_relayer(RuntimeOrigin::root(), RELAYER_B),
+            Bridge::remove_relayer(RuntimeOrigin::signed(TREASURY), RELAYER_B),
             Error::<Test>::RelayerInvalid
         );
         assert_eq!(Bridge::relayer_count(), 2);
@@ -428,7 +454,6 @@ fn execute_after_threshold_change() {
     new_test_ext_initialized(src_id, r_id, b"System.remark".to_vec()).execute_with(|| {
         let prop_id = 1;
         let proposal = make_proposal(vec![11]);
-
         // Create proposal (& vote)
         assert_ok!(Bridge::acknowledge_proposal(
             RuntimeOrigin::signed(RELAYER_A),
@@ -448,7 +473,7 @@ fn execute_after_threshold_change() {
         assert_eq!(prop, expected);
 
         // Change threshold
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), 1));
+        assert_ok!(Bridge::set_threshold(RuntimeOrigin::signed(TREASURY), 1));
 
         // Attempt to execute
         assert_ok!(Bridge::eval_vote_state(
