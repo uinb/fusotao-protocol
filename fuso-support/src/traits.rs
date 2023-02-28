@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::XToken;
+use crate::{ChainId, XToken};
 use codec::{Codec, EncodeLike, MaxEncodedLen};
 use frame_support::{traits::BalanceStatus, Parameter};
 use sp_runtime::{
@@ -237,4 +237,8 @@ impl<TokenId, Balance: Default, BlockNumber> PriceOracle<TokenId, Balance, Block
     }
 
     fn set_price(_token_id: TokenId, _amount: Balance, _volume: Balance, _at: BlockNumber) {}
+}
+
+pub trait ChainIdOf<Balance> {
+    fn chain_id_of(token_info: &XToken<Balance>) -> ChainId;
 }

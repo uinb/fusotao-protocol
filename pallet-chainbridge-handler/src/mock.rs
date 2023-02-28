@@ -8,6 +8,7 @@ use sp_runtime::{
     MultiSignature,
 };
 
+use frame_support::traits::SortedMembers;
 pub use frame_support::{
     construct_runtime,
     pallet_prelude::GenesisBuild,
@@ -86,14 +87,19 @@ construct_runtime!(
 parameter_types! {
     pub const TestChainId: u8 = 42;
     pub const ProposalLifetime: u32 = 50;
+    pub const TreasuryAccount: AccountId = AccountId::new([5u8;32]);
 }
 
 impl bridge::Config for Test {
-    type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type AdminOrigin = frame_system::EnsureSignedBy<TreasuryMembers, Self::AccountId>;
+    type AssetIdByName = Assets;
     type ChainId = TestChainId;
+    type Fungibles = Assets;
+    type NativeResourceId = NativeResourceId;
     type Proposal = RuntimeCall;
     type ProposalLifetime = ProposalLifetime;
     type RuntimeEvent = RuntimeEvent;
+    type TreasuryAccount = TreasuryAccount;
 }
 
 parameter_types! {
@@ -120,10 +126,19 @@ parameter_types! {
     pub const EthChainId: ChainId = 1;
     pub const BnbChainId: ChainId = 2;
     pub const NativeChainId: ChainId = 42;
+    pub const BurnTAOwhenIssue: Balance =10_000_000_000_000_000_000;
 }
 
+pub struct TreasuryMembers;
+impl SortedMembers<AccountId> for TreasuryMembers {
+    fn sorted_members() -> Vec<AccountId> {
+        vec![TREASURY]
+    }
+}
 impl pallet_fuso_token::Config for Test {
+    type AdminOrigin = frame_system::EnsureSignedBy<TreasuryMembers, Self::AccountId>;
     type BnbChainId = BnbChainId;
+    type BurnTAOwhenIssue = BurnTAOwhenIssue;
     type EthChainId = EthChainId;
     type NativeChainId = NativeChainId;
     type NativeTokenId = NativeTokenId;
@@ -137,7 +152,6 @@ parameter_types! {
     pub NativeResourceId: ResourceId = derive_resource_id(42, 0, b"TAO").unwrap(); // native token id
     pub NativeTokenMaxValue : Balance = 1000_000_000_000_000_0000u128; // need to set correct value
     pub DonorAccount: AccountId32 = AccountId32::new([0u8; 32]);
-    pub TreasuryAccount: AccountId32 = AccountId32::new([1u8; 32]);
     pub DonationForAgent : Balance = 100_000_000_000_000_000u128; // need to set correct value
 }
 
@@ -200,25 +214,20 @@ impl pallet_fuso_indicator::Config for Test {
 }
 
 impl crate::Config for Test {
-    type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
-    type AssetIdByName = Assets;
     type BalanceConversion = Assets;
     type BridgeOrigin = bridge::EnsureBridge<Test>;
     type DonationForAgent = DonationForAgent;
     type DonorAccount = DonorAccount;
-    type Fungibles = Assets;
-    type NativeResourceId = NativeResourceId;
     type NativeTokenMaxValue = NativeTokenMaxValue;
     type Oracle = Indicator;
     type Redirect = RuntimeCall;
     type RuntimeEvent = RuntimeEvent;
-    type TreasuryAccount = TreasuryAccount;
 }
 
 pub const RELAYER_A: AccountId32 = AccountId32::new([2u8; 32]);
 pub const RELAYER_B: AccountId32 = AccountId32::new([3u8; 32]);
 pub const RELAYER_C: AccountId32 = AccountId32::new([4u8; 32]);
-pub const TREASURY: AccountId32 = AccountId32::new([1u8; 32]);
+pub const TREASURY: AccountId32 = AccountId32::new([5u8; 32]);
 pub const ENDOWED_BALANCE: Balance = 100 * DOLLARS;
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
@@ -232,6 +241,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
             (bridge_id, ENDOWED_BALANCE),
             (RELAYER_A, ENDOWED_BALANCE),
             (alice, ENDOWED_BALANCE),
+            (TREASURY, ENDOWED_BALANCE),
         ],
     }
     .assimilate_storage(&mut storage)

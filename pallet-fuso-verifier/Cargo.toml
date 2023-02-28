@@ -41,11 +41,11 @@ sp-keyring = { git = "https://github.com/paritytech/substrate.git", branch = "po
 
 [features]
 runtime-benchmarks = [
-    'frame-benchmarking/runtime-benchmarks',
-    'frame-support/runtime-benchmarks',
-    'frame-system/runtime-benchmarks',
-    'pallet-fuso-token/runtime-benchmarks',
-    'pallet-balances/runtime-benchmarks'
+	'frame-benchmarking/runtime-benchmarks',
+	'frame-support/runtime-benchmarks',
+	'frame-system/runtime-benchmarks',
+	'pallet-fuso-token/runtime-benchmarks',
+	'pallet-balances/runtime-benchmarks'
 ]
 default = ["std"]
 std = [

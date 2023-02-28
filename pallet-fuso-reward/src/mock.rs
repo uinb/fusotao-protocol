@@ -1,7 +1,8 @@
 use crate as pallet_fuso_reward;
 use frame_support::parameter_types;
-use frame_support::traits::ConstU32;
+use frame_support::traits::{ConstU32, SortedMembers};
 use frame_system as system;
+use frame_system::EnsureSignedBy;
 use fuso_support::ChainId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::{
@@ -86,10 +87,20 @@ parameter_types! {
     pub const EthChainId: ChainId = 1;
     pub const BnbChainId: ChainId = 2;
     pub const NativeChainId: ChainId = 42;
+    pub const BurnTAOwhenIssue: Balance = 10_000_000_000_000_000_000;
+}
+
+pub struct TreasuryMembers;
+impl SortedMembers<AccountId> for TreasuryMembers {
+    fn sorted_members() -> Vec<AccountId> {
+        vec![AccountId::new([5u8; 32])]
+    }
 }
 
 impl pallet_fuso_token::Config for Test {
+    type AdminOrigin = EnsureSignedBy<TreasuryMembers, Self::AccountId>;
     type BnbChainId = BnbChainId;
+    type BurnTAOwhenIssue = BurnTAOwhenIssue;
     type EthChainId = EthChainId;
     type NativeChainId = NativeChainId;
     type NativeTokenId = NativeTokenId;

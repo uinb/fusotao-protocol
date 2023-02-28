@@ -26,6 +26,7 @@ pub mod pallet {
     use crate::weights::WeightInfo;
     use ascii::AsciiStr;
     use codec::{Codec, Decode, Encode};
+    use frame_support::traits::fungible::Mutate;
     use frame_support::traits::tokens::AssetId;
     use frame_support::{
         pallet_prelude::*,
@@ -39,6 +40,7 @@ pub mod pallet {
         transactional,
     };
     use frame_system::pallet_prelude::*;
+    use fuso_support::traits::ChainIdOf;
     use fuso_support::{
         constants::*,
         traits::{ReservableToken, Token},
@@ -93,6 +95,11 @@ pub mod pallet {
         type NativeTokenId: Get<Self::TokenId>;
 
         type Weight: WeightInfo;
+
+        #[pallet::constant]
+        type BurnTAOwhenIssue: Get<BalanceOf<Self>>;
+
+        type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     #[pallet::pallet]
@@ -111,7 +118,7 @@ pub mod pallet {
         Overflow,
         TooManyReserves,
         InvalidDecimals,
-        ContractTooLong,
+        ContractError,
     }
 
     #[pallet::storage]
@@ -125,13 +132,18 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    #[pallet::getter(fn get_token_info)]
-    pub type Tokens<T: Config> =
-        StorageMap<_, Twox64Concat, T::TokenId, XToken<BalanceOf<T>>, OptionQuery>;
+    #[pallet::getter(fn try_asset_id)]
+    pub type TokenIdByChainContract<T: Config> =
+        StorageMap<_, Blake2_128Concat, (ChainId, Vec<u8>), T::TokenId, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn get_token_by_name)]
     pub type TokenByName<T: Config> = StorageMap<_, Twox64Concat, Vec<u8>, T::TokenId, OptionQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn get_token_info)]
+    pub type Tokens<T: Config> =
+        StorageMap<_, Twox64Concat, T::TokenId, XToken<BalanceOf<T>>, OptionQuery>;
 
     #[pallet::type_value]
     pub fn DefaultNextTokenId<T: Config>() -> T::TokenId {
@@ -166,7 +178,8 @@ pub mod pallet {
             origin: OriginFor<T>,
             token_info: XToken<BalanceOf<T>>,
         ) -> DispatchResultWithPostInfo {
-            let _ = ensure_root(origin)?;
+            let who = ensure_signed(origin)?;
+            pallet_balances::Pallet::<T>::burn_from(&who, T::BurnTAOwhenIssue::get())?;
             let id = Self::create(token_info.clone())?;
             Self::deposit_event(Event::<T>::TokenIssued(id, token_info.symbol()));
             Ok(().into())
@@ -203,8 +216,35 @@ pub mod pallet {
             Self::transfer_token(&who, token, amount, &target)?;
             Ok(().into())
         }
+
+        #[pallet::weight(195_000_0000)]
+        pub fn associate_token(
+            origin: OriginFor<T>,
+            chain_id: ChainId,
+            contract_id: Vec<u8>,
+            token_id: T::TokenId,
+        ) -> DispatchResult {
+            let _ = T::AdminOrigin::ensure_origin(origin)?;
+            TokenIdByChainContract::<T>::insert((chain_id, contract_id), token_id);
+            Ok(())
+        }
     }
 
+    impl<T: Config> Pallet<T> {
+        pub fn try_token_id(
+            chain_id: ChainId,
+            contract_id: impl AsRef<[u8]>,
+        ) -> Option<T::TokenId> {
+            for (id, token) in Tokens::<T>::iter() {
+                if Self::chain_id_of(&token) == chain_id
+                    && token.contract() == contract_id.as_ref().to_vec()
+                {
+                    return Some(id);
+                }
+            }
+            None
+        }
+    }
     impl<T: Config> Pallet<T>
     where
         BalanceOf<T>: From<u128> + Into<u128>,
@@ -411,8 +451,12 @@ pub mod pallet {
                         Error::<T>::InvalidTokenName
                     );
                     ensure!(
+                        contract.len() < 120 && contract.len() > 2,
+                        Error::<T>::ContractError
+                    );
+                    ensure!(
                         !TokenByName::<T>::contains_key(&contract),
-                        Error::<T>::InvalidToken
+                        Error::<T>::ContractError
                     );
                     *total = Zero::zero();
                     TokenByName::<T>::insert(contract.clone(), id);
@@ -427,10 +471,7 @@ pub mod pallet {
                         name.len() >= 2 && name.len() <= 8,
                         Error::<T>::InvalidTokenName
                     );
-                    ensure!(
-                        !TokenByName::<T>::contains_key(&contract),
-                        Error::<T>::InvalidToken
-                    );
+                    ensure!(contract.len() == 20, Error::<T>::ContractError);
                     *total = Zero::zero();
                 }
                 XToken::FND10(ref symbol, ref mut total) => {
@@ -785,12 +826,14 @@ pub mod pallet {
         }
     }
 
-    pub fn chain_id_of<T: Config>(token_info: &XToken<BalanceOf<T>>) -> ChainId {
-        match token_info {
-            XToken::NEP141(..) => T::NearChainId::get(),
-            XToken::ERC20(..) => T::EthChainId::get(),
-            XToken::BEP20(..) => T::BnbChainId::get(),
-            XToken::FND10(..) => T::NativeChainId::get(),
+    impl<T: Config> ChainIdOf<BalanceOf<T>> for Pallet<T> {
+        fn chain_id_of(token_info: &XToken<BalanceOf<T>>) -> ChainId {
+            match token_info {
+                XToken::NEP141(..) => T::NearChainId::get(),
+                XToken::ERC20(..) => T::EthChainId::get(),
+                XToken::BEP20(..) => T::BnbChainId::get(),
+                XToken::FND10(..) => T::NativeChainId::get(),
+            }
         }
     }
 
@@ -801,14 +844,7 @@ pub mod pallet {
             chain_id: ChainId,
             contract_id: impl AsRef<[u8]>,
         ) -> Result<T::TokenId, Self::Err> {
-            for (id, token) in Tokens::<T>::iter() {
-                if chain_id_of::<T>(&token) == chain_id
-                    && token.contract() == contract_id.as_ref().to_vec()
-                {
-                    return Ok(id);
-                }
-            }
-            Err(())
+            Self::try_asset_id((chain_id, contract_id.as_ref().to_vec())).ok_or(())
         }
     }
 }

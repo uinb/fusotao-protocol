@@ -224,7 +224,7 @@ pub fn test_authorize_should_work() {
             6,
         );
 
-        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt,));
+        assert_ok!(Token::issue(RawOrigin::Signed(TREASURY).into(), usdt,));
         assert_ok!(Token::do_mint(1, &ferdie, 10000000, None));
         // assert_ok!(Token::issue(
         //     RuntimeOrigin::signed(ferdie.clone()),
@@ -360,7 +360,7 @@ pub fn test_revoke_should_work() {
             6,
         );
 
-        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt,));
+        assert_ok!(Token::issue(RawOrigin::Signed(TREASURY).into(), usdt,));
         assert_ok!(Token::do_mint(1, &ferdie, 10000000, None));
         // assert_ok!(Token::issue(
         //     RuntimeOrigin::signed(ferdie.clone()),
