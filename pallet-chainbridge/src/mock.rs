@@ -2,6 +2,7 @@
 
 use super::*;
 
+use frame_support::traits::SortedMembers;
 use frame_support::{assert_ok, parameter_types};
 pub use frame_support::{
     construct_runtime,
@@ -88,14 +89,45 @@ impl pallet_balances::Config for Test {
 parameter_types! {
     pub const TestChainId: ChainId = 5;
     pub const ProposalLifetime: u32 = 50;
+    pub const NativeTokenId: u32 = 0;
+    pub const NearChainId: ChainId = 255;
+    pub const EthChainId: ChainId = 1;
+    pub const BnbChainId: ChainId = 2;
+    pub const NativeChainId: ChainId = 42;
+    pub NativeResourceId: ResourceId = derive_resource_id(42, 0, b"TAO").unwrap(); // native token id
+    pub const TreasuryAccount: AccountId = AccountId::new([5u8; 32]);
+    pub const BurnTAOwhenIssue: Balance = 10_000_000_000_000_000_000;
+}
+
+pub struct TreasuryMembers;
+impl SortedMembers<AccountId> for TreasuryMembers {
+    fn sorted_members() -> Vec<AccountId> {
+        vec![TREASURY]
+    }
+}
+impl pallet_fuso_token::Config for Test {
+    type AdminOrigin = frame_system::EnsureSignedBy<TreasuryMembers, Self::AccountId>;
+    type BnbChainId = BnbChainId;
+    type BurnTAOwhenIssue = BurnTAOwhenIssue;
+    type EthChainId = EthChainId;
+    type NativeChainId = NativeChainId;
+    type NativeTokenId = NativeTokenId;
+    type NearChainId = NearChainId;
+    type RuntimeEvent = RuntimeEvent;
+    type TokenId = u32;
+    type Weight = ();
 }
 
 impl Config for Test {
-    type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type AdminOrigin = frame_system::EnsureSignedBy<TreasuryMembers, Self::AccountId>;
+    type AssetIdByName = Token;
     type ChainId = TestChainId;
+    type Fungibles = Token;
+    type NativeResourceId = NativeResourceId;
     type Proposal = RuntimeCall;
     type ProposalLifetime = ProposalLifetime;
     type RuntimeEvent = RuntimeEvent;
+    type TreasuryAccount = TreasuryAccount;
 }
 
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -110,12 +142,14 @@ construct_runtime!(
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
         Bridge: pallet_chainbridge::{Pallet, Call, Storage, Event<T>},
+        Token: pallet_fuso_token::{Pallet, Call, Storage, Event<T>},
     }
 );
 
 pub const RELAYER_A: AccountId32 = AccountId32::new([2u8; 32]);
 pub const RELAYER_B: AccountId32 = AccountId32::new([3u8; 32]);
 pub const RELAYER_C: AccountId32 = AccountId32::new([4u8; 32]);
+pub const TREASURY: AccountId32 = AccountId32::new([5u8; 32]);
 pub const ENDOWED_BALANCE: Balance = 100 * DOLLARS;
 pub const TEST_THRESHOLD: u32 = 2;
 
@@ -141,17 +175,44 @@ pub fn new_test_ext_initialized(
 ) -> sp_io::TestExternalities {
     let mut t = new_test_ext();
     t.execute_with(|| {
+        let treasury: AccountId = AccountId::new([5u8; 32]);
         // Set and check threshold
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD));
+        assert_ok!(Bridge::set_threshold(
+            RuntimeOrigin::signed(treasury.clone()),
+            TEST_THRESHOLD
+        ));
         assert_eq!(Bridge::relayer_threshold(), TEST_THRESHOLD);
         // Add relayers
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_A));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_B));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_C));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(treasury.clone()),
+            RELAYER_A
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(treasury.clone()),
+            RELAYER_B
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(treasury.clone()),
+            RELAYER_C
+        ));
         // Whitelist chain
-        assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::root(), src_id));
+        assert_ok!(Bridge::whitelist_chain(
+            RuntimeOrigin::signed(treasury.clone()),
+            src_id
+        ));
+        let (chainid, _, contract) = decode_resource_id(r_id);
+        assert_ok!(Token::associate_token(
+            RuntimeOrigin::signed(treasury.clone()),
+            chainid,
+            contract,
+            1u32
+        ));
         // Set and check resource ID mapped to some junk data
-        assert_ok!(Bridge::set_resource(RuntimeOrigin::root(), r_id, resource));
+        assert_ok!(Bridge::set_resource(
+            RuntimeOrigin::signed(treasury.clone()),
+            r_id,
+            resource
+        ));
         assert_eq!(Bridge::resource_exists(r_id), true);
     });
     t

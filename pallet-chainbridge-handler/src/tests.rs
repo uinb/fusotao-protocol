@@ -48,7 +48,7 @@ fn transfer_native() {
         let recipient = b"davirain.xyz".to_vec(); // recipient account
 
         assert_ok!(Bridge::whitelist_chain(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             dest_chain.clone()
         ));
         assert_ok!(ChainBridgeTransfer::transfer_out(
@@ -75,7 +75,7 @@ fn transfer_out_non_native() {
         let dest_chain = 1;
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
         let recipient = vec![99];
-        let contract_address = "304203995023530303420592059205902501";
+        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e";
         let denom = XToken::ERC20(
             br#"DENOM"#.to_vec(),
             hex::decode(contract_address).unwrap(),
@@ -90,12 +90,19 @@ fn transfer_out_non_native() {
         )
         .unwrap();
         let resource = b"ChainBridgeHandler.transfer_in".to_vec();
+        let (chainid, _, contract) = decode_resource_id(resource_id);
+        assert_ok!(Assets::associate_token(
+            RuntimeOrigin::signed(TREASURY),
+            chainid,
+            contract,
+            1u32
+        ));
         assert_ok!(Bridge::set_resource(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             resource_id,
             resource
         ));
-        assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom));
+        assert_ok!(Assets::issue(RuntimeOrigin::signed(TREASURY), denom));
         let amount: Balance = 1 * DOLLARS;
         assert_ok!(Assets::do_mint(1, &ferdie, amount, None));
 
@@ -106,7 +113,7 @@ fn transfer_out_non_native() {
             Ok(1)
         );
         assert_ok!(Bridge::whitelist_chain(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             dest_chain.clone()
         ));
         assert_ok!(ChainBridgeTransfer::transfer_out(
@@ -138,7 +145,7 @@ fn transfer() {
         let resource_id = NativeResourceId::get();
         let resource = b"ChainBridgeHandler.transfer_in".to_vec();
         assert_ok!(Bridge::set_resource(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             resource_id,
             resource
         ));
@@ -175,11 +182,34 @@ fn execute_remark() {
         let r_id = derive_resource_id(src_id, 0, b"hash").unwrap();
         let resource = b"Example.remark".to_vec();
 
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD,));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_A));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_B));
-        assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::root(), src_id));
-        assert_ok!(Bridge::set_resource(RuntimeOrigin::root(), r_id, resource));
+        assert_ok!(Bridge::set_threshold(
+            RuntimeOrigin::signed(TREASURY),
+            TEST_THRESHOLD,
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_A
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_B
+        ));
+        assert_ok!(Bridge::whitelist_chain(
+            RuntimeOrigin::signed(TREASURY),
+            src_id
+        ));
+        let (chainid, _, contract) = decode_resource_id(r_id);
+        assert_ok!(Assets::associate_token(
+            RuntimeOrigin::signed(TREASURY),
+            chainid,
+            contract,
+            1u32
+        ));
+        assert_ok!(Bridge::set_resource(
+            RuntimeOrigin::signed(TREASURY),
+            r_id,
+            resource
+        ));
 
         assert_ok!(Bridge::acknowledge_proposal(
             RuntimeOrigin::signed(RELAYER_A),
@@ -219,7 +249,7 @@ fn execute_remark_bad_origin() {
         // Don't allow root calls
         assert_noop!(
             ChainBridgeTransfer::remark(
-                RuntimeOrigin::root(),
+                RuntimeOrigin::signed(TREASURY),
                 hash.as_bytes().to_vec(),
                 depositer,
                 Default::default(),
@@ -234,7 +264,7 @@ fn create_sucessful_transfer_proposal_non_native_token() {
     new_test_ext().execute_with(|| {
         let prop_id = 1;
         let src_id = 1;
-        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2";
+        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e";
         let r_id = derive_resource_id(src_id, 0, hex::decode(contract_address).unwrap().as_slice())
             .unwrap();
         let (chain, associated, contract) = decode_resource_id(r_id);
@@ -251,14 +281,40 @@ fn create_sucessful_transfer_proposal_non_native_token() {
             true,
             18,
         );
-        assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom,));
+        assert_ok!(Assets::issue(RuntimeOrigin::signed(TREASURY), denom,));
 
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD,));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_A));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_B));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_C));
-        assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::root(), src_id));
-        assert_ok!(Bridge::set_resource(RuntimeOrigin::root(), r_id, resource));
+        assert_ok!(Bridge::set_threshold(
+            RuntimeOrigin::signed(TREASURY),
+            TEST_THRESHOLD,
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_A
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_B
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_C
+        ));
+        assert_ok!(Bridge::whitelist_chain(
+            RuntimeOrigin::signed(TREASURY),
+            src_id
+        ));
+        let (chainid, _, contract) = decode_resource_id(r_id);
+        assert_ok!(Assets::associate_token(
+            RuntimeOrigin::signed(TREASURY),
+            chainid,
+            contract,
+            1u32
+        ));
+        assert_ok!(Bridge::set_resource(
+            RuntimeOrigin::signed(TREASURY),
+            r_id,
+            resource
+        ));
 
         // Create proposal (& vote)
         assert_ok!(Bridge::acknowledge_proposal(
@@ -339,12 +395,31 @@ fn create_sucessful_transfer_proposal_native_token() {
         let r_id = NativeResourceId::get();
         let proposal = make_transfer_proposal(r_id, RELAYER_A, 10);
 
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_A));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_B));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_C));
-        assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::root(), src_id));
-        assert_ok!(Bridge::set_resource(RuntimeOrigin::root(), r_id, resource));
+        assert_ok!(Bridge::set_threshold(
+            RuntimeOrigin::signed(TREASURY),
+            TEST_THRESHOLD
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_A
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_B
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_C
+        ));
+        assert_ok!(Bridge::whitelist_chain(
+            RuntimeOrigin::signed(TREASURY),
+            src_id
+        ));
+        assert_ok!(Bridge::set_resource(
+            RuntimeOrigin::signed(TREASURY),
+            r_id,
+            resource
+        ));
 
         // Create proposal (& vote)
         assert_ok!(Bridge::acknowledge_proposal(
@@ -427,7 +502,7 @@ fn authorize_and_revoke_in_remote() {
         let prop_id = 1;
         let src_id = 1;
         let resource = b"ChainBridgeTransfer.transfer".to_vec();
-        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e82de1fa2";
+        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e";
         let r_id = derive_resource_id(src_id, 0, hex::decode(contract_address).unwrap().as_slice())
             .unwrap();
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
@@ -441,7 +516,7 @@ fn authorize_and_revoke_in_remote() {
             true,
             18,
         );
-        assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom,));
+        assert_ok!(Assets::issue(RuntimeOrigin::signed(TREASURY), denom,));
         assert_ok!(Verifier::register(
             RuntimeOrigin::signed(bob.clone()),
             b"cool".to_vec()
@@ -461,12 +536,38 @@ fn authorize_and_revoke_in_remote() {
                 .unwrap();
 
         let amount: Balance = 1 * DOLLARS;
-        assert_ok!(Bridge::set_threshold(RuntimeOrigin::root(), TEST_THRESHOLD,));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_A));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_B));
-        assert_ok!(Bridge::add_relayer(RuntimeOrigin::root(), RELAYER_C));
-        assert_ok!(Bridge::whitelist_chain(RuntimeOrigin::root(), src_id));
-        assert_ok!(Bridge::set_resource(RuntimeOrigin::root(), r_id, resource));
+        assert_ok!(Bridge::set_threshold(
+            RuntimeOrigin::signed(TREASURY),
+            TEST_THRESHOLD,
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_A
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_B
+        ));
+        assert_ok!(Bridge::add_relayer(
+            RuntimeOrigin::signed(TREASURY),
+            RELAYER_C
+        ));
+        assert_ok!(Bridge::whitelist_chain(
+            RuntimeOrigin::signed(TREASURY),
+            src_id
+        ));
+        let (chainid, _, contract) = decode_resource_id(r_id);
+        assert_ok!(Assets::associate_token(
+            RuntimeOrigin::signed(TREASURY),
+            chainid,
+            contract,
+            1u32
+        ));
+        assert_ok!(Bridge::set_resource(
+            RuntimeOrigin::signed(TREASURY),
+            r_id,
+            resource
+        ));
 
         let proposal = RuntimeCall::ChainBridgeTransfer(crate::Call::transfer_in {
             to: alice.clone(),
@@ -530,7 +631,7 @@ fn transfer_out_charge_stable_non_native() {
         let dest_chain = 1;
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
         let recipient = vec![99];
-        let contract_address = "304203995023530303420592059205902501";
+        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e";
         let denom = XToken::ERC20(
             br#"DENOM"#.to_vec(),
             hex::decode(contract_address).unwrap(),
@@ -545,16 +646,23 @@ fn transfer_out_charge_stable_non_native() {
         )
         .unwrap();
         let resource = b"ChainBridgeHandler.transfer_in".to_vec();
+        let (chainid, _, contract) = decode_resource_id(resource_id);
+        assert_ok!(Assets::associate_token(
+            RuntimeOrigin::signed(TREASURY),
+            chainid,
+            contract,
+            1u32
+        ));
         assert_ok!(Bridge::set_resource(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             resource_id,
             resource
         ));
-        assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom));
+        assert_ok!(Assets::issue(RuntimeOrigin::signed(TREASURY), denom));
         let amount: Balance = 5 * DOLLARS;
         assert_ok!(Assets::do_mint(1, &ferdie, amount, None));
         assert_ok!(Bridge::whitelist_chain(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             dest_chain.clone()
         ));
         assert_eq!(ChainBridgeTransfer::calculate_bridging_fee(&1), 2 * DOLLARS);
@@ -585,7 +693,7 @@ fn transfer_out_charge_unstable_non_native() {
         let dest_chain = 1;
         let ferdie: AccountId = AccountKeyring::Ferdie.into();
         let recipient = vec![99];
-        let contract_address = "304203995023530303420592059205902501";
+        let contract_address = "b20f54288947a89a4891d181b10fe04560b55c5e";
         let denom = XToken::ERC20(
             br#"DENOM"#.to_vec(),
             hex::decode(contract_address).unwrap(),
@@ -600,16 +708,23 @@ fn transfer_out_charge_unstable_non_native() {
         )
         .unwrap();
         let resource = b"ChainBridgeHandler.transfer_in".to_vec();
+        let (chainid, _, contract) = decode_resource_id(resource_id);
+        assert_ok!(Assets::associate_token(
+            RuntimeOrigin::signed(TREASURY),
+            chainid,
+            contract,
+            1u32
+        ));
         assert_ok!(Bridge::set_resource(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             resource_id,
             resource
         ));
-        assert_ok!(Assets::issue(frame_system::RawOrigin::Root.into(), denom));
+        assert_ok!(Assets::issue(RuntimeOrigin::signed(TREASURY), denom));
         let amount: Balance = 5 * DOLLARS;
         assert_ok!(Assets::do_mint(1, &ferdie, amount, None));
         assert_ok!(Bridge::whitelist_chain(
-            RuntimeOrigin::root(),
+            RuntimeOrigin::signed(TREASURY),
             dest_chain.clone()
         ));
         assert_ok!(ChainBridgeTransfer::transfer_out(

@@ -678,6 +678,12 @@ pub mod pallet {
             Self::revoke_from(fund_owner, dominator, token_id, amount, Some(*callback))?;
             Ok(().into())
         }
+
+        #[transactional]
+        #[pallet::weight(100_000)]
+        pub fn listing(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+            Ok(().into())
+        }
     }
 
     #[derive(Clone)]

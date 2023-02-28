@@ -26,7 +26,7 @@ fn issuing_token_and_transfer_should_work() {
         6,
     );
     new_test_ext().execute_with(|| {
-        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt,));
+        assert_ok!(Token::issue(RuntimeOrigin::signed(TREASURY), usdt,));
         let id = 1u32;
         assert_eq!(
             Token::get_token_info(&id),
@@ -85,7 +85,7 @@ fn reservable_token_should_work() {
         6,
     );
     new_test_ext().execute_with(|| {
-        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt,));
+        assert_ok!(Token::issue(RawOrigin::Signed(TREASURY).into(), usdt,));
         let id = 1u32;
         assert_ok!(Token::do_mint(id, &ferdie, 1000000, None));
         assert_eq!(Token::can_reserve(&id, &ferdie, ONE), true);
@@ -186,10 +186,13 @@ fn test_xtoken_should_work() {
             true,
             6,
         );
-        assert_ok!(Token::issue(RawOrigin::Root.into(), usdt.clone(),));
+        assert_ok!(Token::issue(
+            RawOrigin::Signed(TREASURY).into(),
+            usdt.clone(),
+        ));
         assert_noop!(
-            Token::issue(RawOrigin::Root.into(), usdt.clone()),
-            Error::<Test>::InvalidToken
+            Token::issue(RawOrigin::Signed(TREASURY).into(), usdt.clone()),
+            Error::<Test>::ContractError
         );
         let usdc = XToken::NEP141(
             br#"USDC"#.to_vec(),
@@ -198,7 +201,7 @@ fn test_xtoken_should_work() {
             true,
             6,
         );
-        assert_ok!(Token::issue(RawOrigin::Root.into(), usdc,));
+        assert_ok!(Token::issue(RawOrigin::Signed(TREASURY).into(), usdc,));
         let token_info: XToken<u128> = Token::get_token_info(1).unwrap();
         assert_eq!(
             token_info,
@@ -286,9 +289,15 @@ fn alter_total_issuance_should_work() {
             Ok(())
         })
         .unwrap();
-        assert_eq!(1000000000, Token::total_issuance(&Token::native_token_id()));
+        assert_eq!(
+            100000000001000000000,
+            Token::total_issuance(&Token::native_token_id())
+        );
         let bob: AccountId = AccountKeyring::Bob.into();
         pallet_balances::Pallet::<Test>::make_free_balance_be(&bob, 1000000000);
-        assert_eq!(2000000000, Token::total_issuance(&Token::native_token_id()));
+        assert_eq!(
+            100000000002000000000,
+            Token::total_issuance(&Token::native_token_id())
+        );
     });
 }

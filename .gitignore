@@ -12,4 +12,4 @@ Cargo.lock
 # The cache for chain data in container
 .local
 .idea
-
+pallet-fuso-selflisting
