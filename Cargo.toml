@@ -16,5 +16,6 @@ members = [
     'fuso-support',
     'rpc/verifier',
     'rpc/broker',
+    'rpc/token',
     'runtime-api/verifier',
 ]
