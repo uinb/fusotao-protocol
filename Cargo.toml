@@ -5,8 +5,6 @@ panic = 'unwind'
 members = [
     'pallet-fuso-token',
     'pallet-fuso-verifier',
-    'pallet-fuso-verifier',
-    'pallet-fuso-verifier',
     'pallet-fuso-foundation',
     'pallet-fuso-reward',
     'pallet-fuso-agent',
