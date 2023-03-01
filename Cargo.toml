@@ -5,8 +5,6 @@ panic = 'unwind'
 members = [
     'pallet-fuso-token',
     'pallet-fuso-verifier',
-    'pallet-fuso-verifier/runtime-api',
-    'pallet-fuso-verifier/rpc',
     'pallet-fuso-foundation',
     'pallet-fuso-reward',
     'pallet-fuso-agent',
@@ -14,4 +12,8 @@ members = [
     'pallet-chainbridge',
     'pallet-chainbridge-handler',
     'fuso-support',
+    'rpc/verifier',
+    'rpc/broker',
+    'rpc/token',
+    'runtime-api/verifier',
 ]
