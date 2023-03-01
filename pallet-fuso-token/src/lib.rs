@@ -132,15 +132,6 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    #[pallet::getter(fn try_asset_id)]
-    pub type TokenIdByChainContract<T: Config> =
-        StorageMap<_, Blake2_128Concat, (ChainId, Vec<u8>), T::TokenId, OptionQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn get_token_by_name)]
-    pub type TokenByName<T: Config> = StorageMap<_, Twox64Concat, Vec<u8>, T::TokenId, OptionQuery>;
-
-    #[pallet::storage]
     #[pallet::getter(fn get_token_info)]
     pub type Tokens<T: Config> =
         StorageMap<_, Twox64Concat, T::TokenId, XToken<BalanceOf<T>>, OptionQuery>;
@@ -154,6 +145,17 @@ pub mod pallet {
     #[pallet::getter(fn next_token_id)]
     pub type NextTokenId<T: Config> =
         StorageValue<_, T::TokenId, ValueQuery, DefaultNextTokenId<T>>;
+
+    /// used by the octbridge. the chainid is omited. avoid to use the storage directly in case mess everything
+    #[pallet::storage]
+    #[pallet::getter(fn get_token_from_octopus)]
+    pub type TokenByName<T: Config> = StorageMap<_, Twox64Concat, Vec<u8>, T::TokenId, OptionQuery>;
+
+    /// used by the chainbridge. avoid to use the storage directly in case mess everything
+    #[pallet::storage]
+    #[pallet::getter(fn get_token_from_chainbridge)]
+    pub type TokenByContract<T: Config> =
+        StorageMap<_, Blake2_128Concat, (ChainId, Vec<u8>), T::TokenId, OptionQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
@@ -225,26 +227,11 @@ pub mod pallet {
             token_id: T::TokenId,
         ) -> DispatchResult {
             let _ = T::AdminOrigin::ensure_origin(origin)?;
-            TokenIdByChainContract::<T>::insert((chain_id, contract_id), token_id);
+            TokenByContract::<T>::insert((chain_id, contract_id), token_id);
             Ok(())
         }
     }
 
-    impl<T: Config> Pallet<T> {
-        pub fn try_token_id(
-            chain_id: ChainId,
-            contract_id: impl AsRef<[u8]>,
-        ) -> Option<T::TokenId> {
-            for (id, token) in Tokens::<T>::iter() {
-                if Self::chain_id_of(&token) == chain_id
-                    && token.contract() == contract_id.as_ref().to_vec()
-                {
-                    return Some(id);
-                }
-            }
-            None
-        }
-    }
     impl<T: Config> Pallet<T>
     where
         BalanceOf<T>: From<u128> + Into<u128>,
@@ -366,41 +353,50 @@ pub mod pallet {
         type AssetId = T::TokenId;
         type Balance = BalanceOf<T>;
 
-        fn total_issuance(_asset: Self::AssetId) -> Self::Balance {
-            Self::Balance::default()
+        fn total_issuance(asset: Self::AssetId) -> Self::Balance {
+            <Self as Token<T::AccountId>>::total_issuance(&asset)
         }
 
         fn minimum_balance(_asset: Self::AssetId) -> Self::Balance {
-            Self::Balance::default()
+            // TODO sybil attack
+            One::one()
         }
 
-        fn balance(_asset: Self::AssetId, _who: &T::AccountId) -> Self::Balance {
-            Self::Balance::default()
+        fn balance(asset: Self::AssetId, who: &T::AccountId) -> Self::Balance {
+            let balance = Balances::<T>::get((asset, who));
+            balance.free + balance.reserved
         }
 
         fn reducible_balance(
-            _asset: Self::AssetId,
-            _who: &T::AccountId,
+            asset: Self::AssetId,
+            who: &T::AccountId,
             _keep_alive: bool,
         ) -> Self::Balance {
-            Self::Balance::default()
+            <Self as Token<T::AccountId>>::free_balance(&asset, &who)
         }
 
         fn can_deposit(
-            _asset: Self::AssetId,
+            asset: Self::AssetId,
             _who: &T::AccountId,
             _amount: Self::Balance,
             _mint: bool,
         ) -> DepositConsequence {
-            DepositConsequence::Success
+            match Self::get_token_info(asset) {
+                Some(_) => DepositConsequence::Success,
+                None => DepositConsequence::UnknownAsset,
+            }
         }
 
         fn can_withdraw(
-            _asset: Self::AssetId,
-            _who: &T::AccountId,
-            _amount: Self::Balance,
+            asset: Self::AssetId,
+            who: &T::AccountId,
+            amount: Self::Balance,
         ) -> WithdrawConsequence<Self::Balance> {
-            WithdrawConsequence::Success
+            let free = <Self as Token<T::AccountId>>::free_balance(&asset, who);
+            match free >= amount {
+                true => WithdrawConsequence::Success,
+                false => WithdrawConsequence::NoFunds,
+            }
         }
     }
 
@@ -598,12 +594,9 @@ pub mod pallet {
             if *token == Self::native_token_id() {
                 false
             } else {
-                let token: Option<XToken<BalanceOf<T>>> = Self::get_token_info(token);
-                return if token.is_some() {
-                    token.unwrap().is_stable()
-                } else {
-                    false
-                };
+                Self::get_token_info(token)
+                    .map(|t| t.is_stable())
+                    .unwrap_or(false)
             }
         }
 
@@ -784,11 +777,12 @@ pub mod pallet {
         }
     }
 
+    /// used by the octopus bridge, asset_id means NEP-141 contract
     impl<T: Config> TokenIdAndAssetIdProvider<T::TokenId> for Pallet<T> {
         type Err = ();
 
         fn try_get_asset_id(token_id: impl AsRef<[u8]>) -> Result<T::TokenId, Self::Err> {
-            Self::get_token_by_name(token_id.as_ref().to_vec()).ok_or(())
+            Self::get_token_from_octopus(token_id.as_ref().to_vec()).ok_or(())
         }
 
         fn try_get_token_id(asset_id: T::TokenId) -> Result<Vec<u8>, Self::Err> {
@@ -800,6 +794,18 @@ pub mod pallet {
         }
     }
 
+    /// used by the chainbridge
+    impl<T: Config> fuso_support::chainbridge::AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
+        type Err = ();
+
+        fn try_get_asset_id(
+            chain_id: ChainId,
+            contract_id: impl AsRef<[u8]>,
+        ) -> Result<T::TokenId, Self::Err> {
+            Self::get_token_from_chainbridge((chain_id, contract_id.as_ref().to_vec())).ok_or(())
+        }
+    }
+
     impl<T: Config> BalanceConversion<BalanceOf<T>, T::TokenId, BalanceOf<T>> for Pallet<T>
     where
         BalanceOf<T>: From<u128> + Into<u128>,
@@ -808,12 +814,12 @@ pub mod pallet {
 
         fn to_asset_balance(
             balance: BalanceOf<T>,
-            asset_id: T::TokenId,
+            token_id: T::TokenId,
         ) -> Result<BalanceOf<T>, Self::Error> {
-            if asset_id == Self::native_token_id() {
+            if token_id == Self::native_token_id() {
                 return Ok(balance);
             }
-            Tokens::<T>::try_get(&asset_id)
+            Tokens::<T>::try_get(&token_id)
                 .map(|info| match info {
                     XToken::NEP141(_, _, _, _, decimals)
                     | XToken::ERC20(_, _, _, _, decimals)
@@ -826,6 +832,7 @@ pub mod pallet {
         }
     }
 
+    // TODO
     impl<T: Config> ChainIdOf<BalanceOf<T>> for Pallet<T> {
         fn chain_id_of(token_info: &XToken<BalanceOf<T>>) -> ChainId {
             match token_info {
@@ -834,17 +841,6 @@ pub mod pallet {
                 XToken::BEP20(..) => T::BnbChainId::get(),
                 XToken::FND10(..) => T::NativeChainId::get(),
             }
-        }
-    }
-
-    impl<T: Config> fuso_support::chainbridge::AssetIdResourceIdProvider<T::TokenId> for Pallet<T> {
-        type Err = ();
-
-        fn try_get_asset_id(
-            chain_id: ChainId,
-            contract_id: impl AsRef<[u8]>,
-        ) -> Result<T::TokenId, Self::Err> {
-            Self::try_asset_id((chain_id, contract_id.as_ref().to_vec())).ok_or(())
         }
     }
 }

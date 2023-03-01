@@ -1,5 +1,5 @@
 [package]
-name = "fuso-verifier-rpc"
+name = "fuso-token-rpc"
 version = "4.0.2"
 authors = ["UINB Tech"]
 edition = "2021"
@@ -10,14 +10,14 @@ description = "RPC for FUSOTAO verifier pallet"
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.0.0" }
+scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 jsonrpc-core = "18.0.0"
 jsonrpc-core-client = "18.0.0"
 jsonrpc-derive = "18.0.0"
 serde = { version = "1.0", features = ["derive"] }
-jsonrpsee = {version = "0.15.1", features = ["server", "macros"]}
+serde_json = "1.0"
+jsonrpsee = {version = "0.16.2", features = ["server", "macros", "client-core"]}
 sp-api = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
 sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
 sp-rpc = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
 sp-blockchain = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
-
-fuso-verifier-runtime-api = { path = "../runtime-api"}
