@@ -694,7 +694,7 @@ pub mod pallet {
     }
 
     #[derive(Clone)]
-    struct TokenMutation<AccountId, Balance> {
+    struct TokenMutation<AccountId, Balance: Copy> {
         pub who: AccountId,
         pub volume: Balance,
         pub amount: Balance,
@@ -922,8 +922,8 @@ pub mod pallet {
                             trade.amount += d.amount;
                             trade.vol += d.volume;
                         }
-                        trade.amount += cr.clone().base_fee;
-                        trade.vol += cr.clone().quote_fee;
+                        trade.amount += cr.base_fee;
+                        trade.vol += cr.quote_fee;
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
                     if cr.base_fee != Zero::zero() {
@@ -974,8 +974,8 @@ pub mod pallet {
                             trade.amount += d.amount;
                             trade.vol += d.volume;
                         }
-                        trade.amount += cr.clone().base_fee;
-                        trade.vol += cr.clone().quote_fee;
+                        trade.amount += cr.base_fee;
+                        trade.vol += cr.quote_fee;
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
                     if cr.base_fee != Zero::zero() {
