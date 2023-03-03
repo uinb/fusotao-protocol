@@ -922,8 +922,7 @@ pub mod pallet {
                             trade.amount += d.amount;
                             trade.vol += d.volume;
                         }
-                        trade.amount += cr.base_fee;
-                        trade.vol += cr.quote_fee;
+                        trade.amount += 2 * cr.base_fee;
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
                     if cr.base_fee != Zero::zero() {
@@ -1240,8 +1239,8 @@ pub mod pallet {
             );
             delta.push(TokenMutation {
                 who: taker_b_id,
-                volume: tq_delta.into(),
-                amount: tb_delta.into(),
+                volume: mq_delta.into(),
+                amount: mb_delta.into(),
                 base_value: (tba1 + tbf1).into(),
                 quote_value: (tqa1 + tqf1).into(),
             });
