@@ -918,11 +918,13 @@ pub mod pallet {
                             Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                             Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
                             T::Rewarding::save_trading(&d.who, d.volume, current_block)?;
-                            trade.token_id = base.into();
-                            trade.amount += d.amount;
-                            trade.vol += d.volume;
                         }
-                        trade.amount += 2 * cr.base_fee;
+                        if let Some(t) = cr.users_mutation.last() {
+                            trade.token_id = base.into();
+                            trade.amount += t.amount;
+                            trade.vol += t.volume;
+                            trade.amount += cr.base_fee;
+                        }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
                     if cr.base_fee != Zero::zero() {
@@ -970,11 +972,13 @@ pub mod pallet {
                             Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
                             T::Rewarding::save_trading(&d.who, d.volume, current_block)?;
                             trade.token_id = base.into();
-                            trade.amount += d.amount;
-                            trade.vol += d.volume;
                         }
-                        trade.amount += cr.base_fee;
-                        trade.vol += cr.quote_fee;
+                        if let Some(t) = cr.users_mutation.last() {
+                            trade.token_id = base.into();
+                            trade.amount += t.amount;
+                            trade.vol += t.volume;
+                            trade.amount += cr.base_fee;
+                        }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
                     if cr.base_fee != Zero::zero() {
