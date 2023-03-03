@@ -1240,8 +1240,8 @@ pub mod pallet {
             );
             delta.push(TokenMutation {
                 who: taker_b_id,
-                volume: mq_delta.into(),
-                amount: mb_delta.into(),
+                volume: tq_delta.into(),
+                amount: tb_delta.into(),
                 base_value: (tba1 + tbf1).into(),
                 quote_value: (tqa1 + tqf1).into(),
             });
