@@ -362,9 +362,9 @@ pub fn test_set_price_should_work() {
         );
         assert_ok!(Token::issue(RawOrigin::Signed(TREASURY).into(), usdt,));
         assert_ok!(Token::do_mint(1, &ferdie, 10000000, None));
-        Indicator::set_price(1, 9_000_000, 3_000_000, 333333333333333333);
+        Indicator::set_price(1, 9_000_000, 3_000_000, 3333);
         let r = Indicator::get_price(&1u32.into());
-        assert_eq!(r, 1000);
+        assert_eq!(r, 333333333333333333);
     });
 }
 
