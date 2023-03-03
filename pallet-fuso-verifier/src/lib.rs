@@ -43,7 +43,7 @@ pub mod pallet {
     };
     use scale_info::TypeInfo;
     use sp_io::hashing::blake2_256 as hashing;
-    use sp_runtime::traits::{CheckedMul, TrailingZeroInput};
+    use sp_runtime::traits::TrailingZeroInput;
     use sp_runtime::{
         traits::{AccountIdConversion, CheckedAdd, CheckedSub, StaticLookup, Zero},
         Permill, Perquintill, RuntimeDebug,
