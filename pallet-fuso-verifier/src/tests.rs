@@ -6,11 +6,13 @@ use crate::Pallet;
 use frame_support::traits::{OnFinalize, OnInitialize};
 use frame_support::{assert_noop, assert_ok};
 use frame_system::RawOrigin;
+use fuso_support::traits::PriceOracle;
 use fuso_support::{constants::*, XToken};
 use sp_keyring::AccountKeyring;
 use sp_runtime::{traits::Zero, MultiAddress};
 
 type Token = pallet_fuso_token::Pallet<Test>;
+type Indicator = pallet_fuso_indicator::Pallet<Test>;
 type Verifier = Pallet<Test>;
 type Balance = pallet_balances::Pallet<Test>;
 type System = frame_system::Pallet<Test>;
@@ -341,6 +343,28 @@ pub fn test_authorize_should_work() {
             alice.clone(),
         );
         assert_eq!(t, 100000);
+    });
+}
+
+#[test]
+pub fn test_set_price_should_work() {
+    new_tester().execute_with(|| {
+        let alice: AccountId = AccountKeyring::Alice.into();
+        let bob: AccountId = AccountKeyring::Bob.into();
+        let ferdie: AccountId = AccountKeyring::Ferdie.into();
+        frame_system::Pallet::<Test>::set_block_number(15);
+        let usdt = XToken::NEP141(
+            br#"USDT"#.to_vec(),
+            br#"usdt.testnet"#.to_vec(),
+            Zero::zero(),
+            false,
+            6,
+        );
+        assert_ok!(Token::issue(RawOrigin::Signed(TREASURY).into(), usdt,));
+        assert_ok!(Token::do_mint(1, &ferdie, 10000000, None));
+        Indicator::set_price(1, 9_000_000, 3_000_000, 3333);
+        let r = Indicator::get_price(&1u32.into());
+        assert_eq!(r, 333333333333333333);
     });
 }
 
