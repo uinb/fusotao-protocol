@@ -696,8 +696,8 @@ pub mod pallet {
     #[derive(Clone)]
     struct TokenMutation<AccountId, Balance: Copy> {
         pub who: AccountId,
-        pub volume: Balance,
-        pub amount: Balance,
+        pub matched_volume: Balance,
+        pub matched_amount: Balance,
         pub base_value: Balance,
         pub quote_value: Balance,
     }
@@ -917,13 +917,12 @@ pub mod pallet {
                         for d in cr.users_mutation.iter() {
                             Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                             Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
-                            T::Rewarding::save_trading(&d.who, d.volume, current_block)?;
+                            T::Rewarding::save_trading(&d.who, d.matched_volume, current_block)?;
                         }
                         if let Some(t) = cr.users_mutation.last() {
                             trade.token_id = base.into();
-                            trade.amount += t.amount;
-                            trade.vol += t.volume;
-                            trade.amount += cr.base_fee;
+                            trade.amount += t.matched_amount;
+                            trade.vol += t.matched_volume;
                         }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
@@ -970,14 +969,13 @@ pub mod pallet {
                         for d in cr.users_mutation.iter() {
                             Self::clear(&d.who, dominator_id, base.into(), d.base_value)?;
                             Self::clear(&d.who, dominator_id, quote.into(), d.quote_value)?;
-                            T::Rewarding::save_trading(&d.who, d.volume, current_block)?;
+                            T::Rewarding::save_trading(&d.who, d.matched_volume, current_block)?;
                             trade.token_id = base.into();
                         }
                         if let Some(t) = cr.users_mutation.last() {
                             trade.token_id = base.into();
-                            trade.amount += t.amount;
-                            trade.vol += t.volume;
-                            trade.amount += cr.base_fee;
+                            trade.amount += t.matched_amount;
+                            trade.vol += t.matched_volume;
                         }
                     }
                     Self::put_profit(dominator_id, current_season, quote.into(), cr.quote_fee)?;
@@ -1220,8 +1218,8 @@ pub mod pallet {
                 ensure!(maker_b_id == maker_q_id, Error::<T>::ProofsUnsatisfied);
                 delta.push(TokenMutation {
                     who: maker_q_id,
-                    volume: quote_decr.into(),
-                    amount: base_incr.into(),
+                    matched_volume: quote_decr.into(),
+                    matched_amount: base_incr.into(),
                     base_value: mb1.into(),
                     quote_value: mq1.into(),
                 });
@@ -1243,8 +1241,8 @@ pub mod pallet {
             );
             delta.push(TokenMutation {
                 who: taker_b_id,
-                volume: mq_delta.into(),
-                amount: mb_delta.into(),
+                matched_volume: mq_delta.into(),
+                matched_amount: tb_delta.into(),
                 base_value: (tba1 + tbf1).into(),
                 quote_value: (tqa1 + tqf1).into(),
             });
@@ -1432,8 +1430,8 @@ pub mod pallet {
                     .ok_or(Error::<T>::Overflow)?;
                 delta.push(TokenMutation {
                     who: maker_b_id,
-                    volume: quote_incr.into(),
-                    amount: base_decr.into(),
+                    matched_volume: quote_incr.into(),
+                    matched_amount: base_decr.into(),
                     base_value: mb1.into(),
                     quote_value: mq1.into(),
                 });
@@ -1465,8 +1463,8 @@ pub mod pallet {
             }
             delta.push(TokenMutation {
                 who: taker_b_id,
-                volume: tq_delta.into(),
-                amount: tb_delta.into(),
+                matched_volume: tq_delta.into(),
+                matched_amount: mb_delta.into(),
                 base_value: (tba1.checked_add(tbf1).ok_or(Error::<T>::Overflow)?).into(),
                 quote_value: (tqa1.checked_add(tqf1).ok_or(Error::<T>::Overflow)?).into(),
             });
