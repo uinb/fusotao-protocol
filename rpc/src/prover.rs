@@ -1,4 +1,4 @@
-// Copyright 2021 UINB Technologies Pte. Ltd.
+// Copyright 2021-2023 UINB Technologies Pte. Ltd.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//pub use self::gen_client::Client as FusoVerifierClient;
 pub use fuso_verifier_runtime_api::FusoVerifierRuntimeApi;
 
 use codec::Codec;
 use jsonrpsee::{
-    core::RpcResult,
+    core::{error::Error as RpcError, RpcResult},
     proc_macros::rpc,
     types::error::{CallError, ErrorCode, ErrorObject},
 };
@@ -66,9 +65,9 @@ impl<C, Block, AccountId, Balance>
     FusoVerifierApiServer<<Block as BlockT>::Hash, AccountId, Balance>
     for FusoVerifier<C, (Block, AccountId, Balance)>
 where
-    Block: BlockT,
     C: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     C::Api: FusoVerifierRuntimeApi<Block, AccountId, Balance>,
+    Block: BlockT,
     AccountId: Codec + MaybeDisplay + Send + Sync + 'static,
     Balance: Codec + MaybeDisplay + TryInto<NumberOrHex> + Send + Sync + 'static,
 {
