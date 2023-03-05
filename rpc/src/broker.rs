@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use async_trait::async_trait;
 use codec::{Codec, Compact, Decode, Encode};
 use jsonrpsee::{
     core::{error::Error as RpcError, RpcResult},
@@ -29,7 +30,7 @@ use sp_core::{
     crypto::{AccountId32, CryptoTypeId, CryptoTypePublicPair, KeyTypeId},
     Bytes, H256,
 };
-use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
+use sp_keystore::CryptoStore;
 use sp_rpc::number::NumberOrHex;
 use sp_runtime::{
     generic::BlockId,
@@ -103,10 +104,10 @@ pub struct OrderState {
 #[rpc(client, server)]
 pub trait FusoBrokerApi {
     #[method(name = "broker_placeOrder")]
-    fn trade(&self, cmd: TradingCommand) -> RpcResult<String>;
+    async fn trade(&self, cmd: TradingCommand) -> RpcResult<String>;
 
     #[method(name = "broker_queryOrders")]
-    fn query_orders(
+    async fn query_orders(
         &self,
         account_id: AccountId,
         orders: Vec<(u32, u32, String)>,
@@ -124,13 +125,17 @@ pub trait FusoBrokerApi {
 pub struct FusoBroker<C, B> {
     client: Arc<C>,
     task_handle: SpawnTaskHandle,
-    keystore: SyncCryptoStorePtr,
+    keystore: Arc<dyn CryptoStore>,
     _marker: std::marker::PhantomData<B>,
     // TODO keystore and executor
 }
 
 impl<C, B> FusoBroker<C, B> {
-    pub fn new(client: Arc<C>, task_handle: SpawnTaskHandle, keystore: SyncCryptoStorePtr) -> Self {
+    pub fn new(
+        client: Arc<C>,
+        task_handle: SpawnTaskHandle,
+        keystore: Arc<dyn CryptoStore>,
+    ) -> Self {
         task_handle.spawn("broker-relayer", "fusotao", async {
             println!("===> TODO connect to prover");
         });
@@ -147,26 +152,29 @@ use sp_application_crypto::sr25519::CRYPTO_ID as Sr25519Id;
 
 impl<C, B> FusoBroker<C, B> {
     /// the keystore is very unconvenient to use, be careful
-    fn sign_request(&self, payload: &[u8]) -> Result<Vec<u8>, sp_keystore::Error> {
-        let key = SyncCryptoStore::sr25519_public_keys(&*self.keystore, RELAYER_KEY_TYPE)
+    async fn sign_request(&self, payload: &[u8]) -> Result<Vec<u8>, sp_keystore::Error> {
+        let key = CryptoStore::sr25519_public_keys(&*self.keystore, RELAYER_KEY_TYPE)
+            .await
             .iter()
             .map(|k| CryptoTypePublicPair(Sr25519Id, k.0.to_vec()))
             .last()
             .ok_or(sp_keystore::Error::Unavailable)?;
-        SyncCryptoStore::sign_with(&*self.keystore, RELAYER_KEY_TYPE, &key, payload)
+        CryptoStore::sign_with(&*self.keystore, RELAYER_KEY_TYPE, &key, payload)
+            .await
             .transpose()
             .ok_or(sp_keystore::Error::Unavailable)?
     }
 }
 
+#[async_trait]
 impl<C, Block> FusoBrokerApiServer for FusoBroker<C, Block>
 where
     C: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Block: BlockT,
 {
-    fn trade(&self, cmd: TradingCommand) -> RpcResult<String> {
+    async fn trade(&self, cmd: TradingCommand) -> RpcResult<String> {
         let payload = cmd.encode();
-        let v = self.sign_request(&payload).map_err(|e| {
+        let v = self.sign_request(&payload).await.map_err(|e| {
             RpcError::Call(CallError::Custom(ErrorObject::owned(
                 ErrorCode::ServerError(93101i32).code(),
                 "The broker hasn't register its signing key, please switch to another node.",
@@ -177,14 +185,15 @@ where
         Ok("Ni4qf".to_string())
     }
 
-    fn query_orders(
+    async fn query_orders(
         &self,
         account_id: AccountId,
         orders: Vec<(u32, u32, String)>,
         signature: Signature,
     ) -> RpcResult<Vec<Bytes>> {
+        // TODO just for testing
         let payload = (account_id, orders, signature).encode();
-        let v = self.sign_request(&payload).map_err(|e| {
+        let v = self.sign_request(&payload).await.map_err(|e| {
             RpcError::Call(CallError::Custom(ErrorObject::owned(
                 ErrorCode::ServerError(93101i32).code(),
                 "The broker didn't register its key",
