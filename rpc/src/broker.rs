@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::{
-    crypto::{AccountId32, KeyTypeId},
+    crypto::{AccountId32, CryptoTypeId, CryptoTypePublicPair, KeyTypeId},
     Bytes, H256,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
@@ -40,6 +40,8 @@ use std::sync::Arc;
 // sha256
 type Signature = H256;
 type AccountId = AccountId32;
+
+pub const RELAYER_KEY_TYPE: KeyTypeId = KeyTypeId(*b"rely");
 
 #[derive(Eq, PartialEq, Clone, TypeInfo, Encode, Decode, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -130,7 +132,7 @@ pub struct FusoBroker<C, B> {
 impl<C, B> FusoBroker<C, B> {
     pub fn new(client: Arc<C>, task_handle: SpawnTaskHandle, keystore: SyncCryptoStorePtr) -> Self {
         task_handle.spawn("broker-relayer", "fusotao", async {
-            println!("===> TODO");
+            println!("===> TODO connect to prover");
         });
         Self {
             client,
@@ -141,21 +143,19 @@ impl<C, B> FusoBroker<C, B> {
     }
 }
 
+use sp_application_crypto::sr25519::CRYPTO_ID as Sr25519Id;
+
 impl<C, B> FusoBroker<C, B> {
+    /// the keystore is very unconvenient to use, be careful
     fn sign_request(&self, payload: &[u8]) -> Result<Vec<u8>, sp_keystore::Error> {
-        SyncCryptoStore::keys(&*self.keystore, KeyTypeId(*b"rely"))
-            .map(|v| {
-                v.last()
-                    .map(|k| {
-                        println!("---> {:?}", k);
-                        SyncCryptoStore::sign_with(&*self.keystore, KeyTypeId(*b"rely"), k, payload)
-                            .transpose()
-                    })
-                    .flatten()
-            })
+        let key = SyncCryptoStore::sr25519_public_keys(&*self.keystore, RELAYER_KEY_TYPE)
+            .iter()
+            .map(|k| CryptoTypePublicPair(Sr25519Id, k.0.to_vec()))
+            .last()
+            .ok_or(sp_keystore::Error::Unavailable)?;
+        SyncCryptoStore::sign_with(&*self.keystore, RELAYER_KEY_TYPE, &key, payload)
             .transpose()
             .ok_or(sp_keystore::Error::Unavailable)?
-            .flatten()
     }
 }
 

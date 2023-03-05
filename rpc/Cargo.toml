@@ -24,4 +24,5 @@ sc-service = { git = "https://github.com/paritytech/substrate.git", branch = "po
 sp-keystore = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30" }
 sp-core = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
 sp-blockchain = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
+sp-application-crypto = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30"  }
 fuso-verifier-runtime-api = { path = "../runtime-api/verifier"}
