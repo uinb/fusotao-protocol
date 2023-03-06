@@ -21,6 +21,7 @@ use jsonrpsee::{
     types::SubscriptionResult,
     ws_server::SubscriptionSink,
 };
+use sc_client_api::{Backend, StorageProvider};
 use sc_service::SpawnTaskHandle;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::{
     crypto::{AccountId32, CryptoTypeId, CryptoTypePublicPair, KeyTypeId},
+    storage::StorageKey,
     Bytes, H256,
 };
 use sp_keystore::CryptoStore;
@@ -122,20 +124,42 @@ pub trait FusoBrokerApi {
     fn subscribe_order_events(&self, account_id: AccountId, signature: Signature);
 }
 
-pub struct FusoBroker<C, B> {
+use sp_application_crypto::sr25519::CRYPTO_ID as Sr25519Id;
+pub struct FusoBroker<C, B, S> {
     client: Arc<C>,
     task_handle: SpawnTaskHandle,
     keystore: Arc<dyn CryptoStore>,
-    _marker: std::marker::PhantomData<B>,
-    // TODO keystore and executor
+    _marker: std::marker::PhantomData<(B, S)>,
+    // TODO maintain a connection and the map prover -> rpc_endpoint
 }
 
-impl<C, B> FusoBroker<C, B> {
+impl<Client, Block, Storage> FusoBroker<Client, Block, Storage>
+where
+    Client: Send
+        + Sync
+        + ProvideRuntimeApi<Block>
+        + HeaderBackend<Block>
+        + StorageProvider<Block, Storage>
+        + 'static,
+    Storage: Backend<Block> + 'static,
+    Block: BlockT + 'static,
+{
     pub fn new(
-        client: Arc<C>,
+        client: Arc<Client>,
         task_handle: SpawnTaskHandle,
         keystore: Arc<dyn CryptoStore>,
     ) -> Self {
+        // TODO using dashmap to save the mappings
+        let v = client.storage_pairs(
+            &BlockId::Hash(client.info().best_hash),
+            &StorageKey(
+                hex_literal::hex!(
+                    "6780906036a0737931bc14669b077ae9b5f0e053995f1f3e84ade4200ebbf309"
+                )
+                .to_vec(),
+            ),
+        );
+        println!("{:?}", v);
         task_handle.spawn("broker-relayer", "fusotao", async {
             println!("===> TODO connect to prover");
         });
@@ -146,11 +170,7 @@ impl<C, B> FusoBroker<C, B> {
             _marker: Default::default(),
         }
     }
-}
 
-use sp_application_crypto::sr25519::CRYPTO_ID as Sr25519Id;
-
-impl<C, B> FusoBroker<C, B> {
     /// the keystore is very unconvenient to use, be careful
     async fn sign_request(&self, payload: &[u8]) -> Result<Vec<u8>, sp_keystore::Error> {
         let key = CryptoStore::sr25519_public_keys(&*self.keystore, RELAYER_KEY_TYPE)
@@ -167,10 +187,16 @@ impl<C, B> FusoBroker<C, B> {
 }
 
 #[async_trait]
-impl<C, Block> FusoBrokerApiServer for FusoBroker<C, Block>
+impl<Client, Block, Storage> FusoBrokerApiServer for FusoBroker<Client, Block, Storage>
 where
-    C: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Block: BlockT,
+    Client: Send
+        + Sync
+        + ProvideRuntimeApi<Block>
+        + HeaderBackend<Block>
+        + StorageProvider<Block, Storage>
+        + 'static,
+    Storage: Backend<Block> + 'static,
+    Block: BlockT + 'static,
 {
     async fn trade(&self, cmd: TradingCommand) -> RpcResult<String> {
         let payload = cmd.encode();
@@ -191,15 +217,6 @@ where
         orders: Vec<(u32, u32, String)>,
         signature: Signature,
     ) -> RpcResult<Vec<Bytes>> {
-        // TODO just for testing
-        let payload = (account_id, orders, signature).encode();
-        let v = self.sign_request(&payload).await.map_err(|e| {
-            RpcError::Call(CallError::Custom(ErrorObject::owned(
-                ErrorCode::ServerError(93101i32).code(),
-                "The broker didn't register its key",
-                Some(format!("{:?}", e)),
-            )))
-        })?;
         Ok(vec![])
     }
 

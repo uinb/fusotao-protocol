@@ -41,7 +41,7 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
-        PriceUpdatedByOracle(T::AccountId, TokenId<T>, Perquintill),
+        PriceUpdated(TokenId<T>, Balance<T>),
     }
 
     #[pallet::error]
@@ -103,6 +103,7 @@ pub mod pallet {
                         + (Perquintill::from_rational(volume % amount, amount).deconstruct()
                             as u128)
                             .into();
+                    Self::deposit_event(Event::PriceUpdated(token_id, p.price));
                 }
             });
         }

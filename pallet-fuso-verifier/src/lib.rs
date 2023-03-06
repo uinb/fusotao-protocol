@@ -36,16 +36,17 @@ pub mod pallet {
         {pallet_prelude::*, transactional},
     };
     use frame_system::pallet_prelude::*;
-    use fuso_support::constants::RESERVE_FOR_AUTHORIZING_STASH;
     use fuso_support::{
         constants::*,
         traits::{PriceOracle, ReservableToken, Rewarding, Token},
     };
     use scale_info::TypeInfo;
+    use sp_core::sr25519::{Public as Sr25519Public, Signature as Sr25519Signature};
     use sp_io::hashing::blake2_256 as hashing;
-    use sp_runtime::traits::TrailingZeroInput;
     use sp_runtime::{
-        traits::{AccountIdConversion, CheckedAdd, CheckedSub, StaticLookup, Zero},
+        traits::{
+            AccountIdConversion, CheckedAdd, CheckedSub, StaticLookup, TrailingZeroInput, Zero,
+        },
         Permill, Perquintill, RuntimeDebug,
     };
     use sp_std::{
@@ -242,6 +243,21 @@ pub mod pallet {
         pub profit: BTreeMap<TokenId, Balance>,
     }
 
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Default)]
+    pub struct DominatorSetting<AccountId> {
+        pub beneficiary: Option<AccountId>,
+        pub x25519_pubkey: Vec<u8>,
+        pub rpc_endpoint: Vec<u8>,
+    }
+
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Default)]
+    pub struct Broker<AccountId, Balance, BlockNumber> {
+        pub beneficiary: AccountId,
+        pub staked: Balance,
+        pub register_at: BlockNumber,
+        pub rpc_endpoint: Vec<u8>,
+    }
+
     #[derive(Clone, RuntimeDebug)]
     struct Distribution<T: Config> {
         from_season: Season,
@@ -268,6 +284,9 @@ pub mod pallet {
 
         #[pallet::constant]
         type DominatorOnlineThreshold: Get<Balance<Self>>;
+
+        #[pallet::constant]
+        type BrokerStakingThreshold: Get<Balance<Self>>;
 
         #[pallet::constant]
         type SeasonDuration: Get<Self::BlockNumber>;
@@ -305,6 +324,21 @@ pub mod pallet {
         Blake2_128Concat,
         T::AccountId,
         Dominator<Balance<T>, T::BlockNumber>,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn dominator_settings)]
+    pub type DominatorSettings<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, DominatorSetting<T::AccountId>, OptionQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn brokers)]
+    pub type Brokers<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Broker<T::AccountId, Balance<T>, T::BlockNumber>,
         OptionQuery,
     >;
 
@@ -374,6 +408,8 @@ pub mod pallet {
         DominatorSlashed(T::AccountId),
         DominatorEvicted(T::AccountId),
         DominatorInactive(T::AccountId),
+        DominatorX25519KeyUpdated(T::AccountId, Vec<u8>),
+        DominatorRpcEndpointUpdated(T::AccountId, Vec<u8>),
     }
 
     #[pallet::error]
@@ -403,6 +439,9 @@ pub mod pallet {
         ProofDecompressError,
         ProofFormatError,
         ProofTooLarge,
+        BrokerNotFound,
+        BrokerAlreadyRegistered,
+        InvalidBeneficiaryProof,
     }
 
     #[pallet::pallet]
@@ -540,6 +579,143 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::DominatorInactive(dominator));
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::update_setting())]
+        pub fn dominator_set_pubkey(
+            origin: OriginFor<T>,
+            key: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            let dominator = ensure_signed(origin)?;
+            ensure!(
+                Dominators::<T>::contains_key(&dominator),
+                Error::<T>::DominatorNotFound
+            );
+            DominatorSettings::<T>::try_mutate(&dominator, |d| -> DispatchResult {
+                match d {
+                    Some(setting) => {
+                        setting.x25519_pubkey = key.clone();
+                    }
+                    None => {
+                        d.replace(DominatorSetting {
+                            beneficiary: None,
+                            x25519_pubkey: key.clone(),
+                            rpc_endpoint: vec![],
+                        });
+                    }
+                }
+                Ok(())
+            })?;
+            Self::deposit_event(Event::DominatorX25519KeyUpdated(dominator, key));
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::update_setting())]
+        pub fn dominator_set_rpc_endpoint(
+            origin: OriginFor<T>,
+            rpc_endpoint: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            let dominator = ensure_signed(origin)?;
+            ensure!(
+                Dominators::<T>::contains_key(&dominator),
+                Error::<T>::DominatorNotFound
+            );
+            DominatorSettings::<T>::try_mutate(&dominator, |d| -> DispatchResult {
+                match d {
+                    Some(setting) => {
+                        setting.rpc_endpoint = rpc_endpoint.clone();
+                    }
+                    None => {
+                        d.replace(DominatorSetting {
+                            beneficiary: None,
+                            x25519_pubkey: vec![],
+                            rpc_endpoint: rpc_endpoint.clone(),
+                        });
+                    }
+                }
+                Ok(())
+            })?;
+            Self::deposit_event(Event::DominatorRpcEndpointUpdated(dominator, rpc_endpoint));
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::set_beneficiary())]
+        pub fn dominator_set_beneficiary(
+            origin: OriginFor<T>,
+            beneficiary: T::AccountId,
+            proof: Sr25519Signature,
+        ) -> DispatchResultWithPostInfo {
+            let dominator = ensure_signed(origin)?;
+            ensure!(
+                Dominators::<T>::contains_key(&dominator),
+                Error::<T>::DominatorNotFound
+            );
+            DominatorSettings::<T>::try_mutate(&dominator, |d| -> DispatchResult {
+                match d {
+                    Some(setting) => {
+                        Self::validate_beneficiary(
+                            setting.beneficiary.clone(),
+                            proof,
+                            beneficiary.clone(),
+                        )?;
+                        setting.beneficiary = Some(beneficiary);
+                    }
+                    None => {
+                        d.replace(DominatorSetting {
+                            beneficiary: Some(beneficiary.clone()),
+                            x25519_pubkey: vec![],
+                            rpc_endpoint: vec![],
+                        });
+                    }
+                }
+                Ok(())
+            })?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::register())]
+        pub fn register_broker(
+            origin: OriginFor<T>,
+            rpc_endpoint: Vec<u8>,
+            beneficiary: T::AccountId,
+        ) -> DispatchResultWithPostInfo {
+            let broker = ensure_signed(origin)?;
+            let requires = T::BrokerStakingThreshold::get();
+            T::Asset::transfer_token(
+                &broker,
+                T::Asset::native_token_id(),
+                requires,
+                &Self::system_account(),
+            )?;
+            Brokers::<T>::try_mutate(&broker, |b| -> DispatchResult {
+                ensure!(b.is_none(), Error::<T>::BrokerAlreadyRegistered);
+                let broker = Broker {
+                    beneficiary,
+                    staked: requires,
+                    register_at: frame_system::Pallet::<T>::block_number(),
+                    rpc_endpoint,
+                };
+                b.replace(broker);
+                Ok(())
+            })?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::update_setting())]
+        pub fn broker_set_rpc_endpoint(
+            origin: OriginFor<T>,
+            rpc_endpoint: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            let broker = ensure_signed(origin)?;
+            Brokers::<T>::try_mutate_exists(&broker, |b| -> DispatchResult {
+                if let Some(broker) = b {
+                    broker.rpc_endpoint = rpc_endpoint;
+                    Ok(())
+                } else {
+                    Err(Error::<T>::BrokerNotFound.into())
+                }
+            })?;
             Ok(().into())
         }
 
@@ -710,6 +886,34 @@ pub mod pallet {
     {
         pub fn system_account() -> T::AccountId {
             PALLET_ID.try_into_account().unwrap()
+        }
+
+        /// this is not associated with the runtime definitions
+        pub fn validate_beneficiary(
+            old_beneficiary: Option<T::AccountId>,
+            signature: Sr25519Signature,
+            new_beneficiary: T::AccountId,
+        ) -> DispatchResult {
+            if let Some(old_beneficiary) = old_beneficiary {
+                let nonce = frame_system::Pallet::<T>::account_nonce(&old_beneficiary);
+                let payload = (nonce, new_beneficiary).using_encoded(|v| v.to_vec());
+                let raw_old_beneficiary: [u8; 32] = old_beneficiary
+                    .encode()
+                    .try_into()
+                    .expect("AccountId32 <-> [u8; 32]; qed");
+                if sp_io::crypto::sr25519_verify(
+                    &signature,
+                    &payload,
+                    &Sr25519Public(raw_old_beneficiary),
+                ) {
+                    frame_system::Pallet::<T>::inc_account_nonce(old_beneficiary);
+                    Ok(())
+                } else {
+                    Err(Error::<T>::InvalidBeneficiaryProof.into())
+                }
+            } else {
+                Ok(())
+            }
         }
 
         #[transactional]
