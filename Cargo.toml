@@ -12,8 +12,6 @@ members = [
     'pallet-chainbridge',
     'pallet-chainbridge-handler',
     'fuso-support',
-    'rpc/verifier',
-    'rpc/broker',
-    'rpc/token',
+    'rpc',
     'runtime-api/verifier',
 ]
