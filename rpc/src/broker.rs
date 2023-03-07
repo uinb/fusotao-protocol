@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::*;
 use async_trait::async_trait;
 use codec::{Codec, Compact, Decode, Encode};
 use jsonrpsee::{
@@ -45,6 +46,13 @@ type Signature = H256;
 type AccountId = AccountId32;
 
 pub const RELAYER_KEY_TYPE: KeyTypeId = KeyTypeId(*b"rely");
+
+#[derive(Clone, Encode, Decode, Eq, PartialEq)]
+pub struct DominatorSetting {
+    pub beneficiary: Option<AccountId>,
+    pub x25519_pubkey: Vec<u8>,
+    pub rpc_endpoint: Vec<u8>,
+}
 
 #[derive(Eq, PartialEq, Clone, TypeInfo, Encode, Decode, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,11 +114,12 @@ pub struct OrderState {
 #[rpc(client, server)]
 pub trait FusoBrokerApi {
     #[method(name = "broker_placeOrder")]
-    async fn trade(&self, cmd: TradingCommand) -> RpcResult<String>;
+    async fn trade(&self, prover: AccountId, cmd: TradingCommand) -> RpcResult<String>;
 
     #[method(name = "broker_queryOrders")]
     async fn query_orders(
         &self,
+        prover: AccountId,
         account_id: AccountId,
         orders: Vec<(u32, u32, String)>,
         signature: Signature,
@@ -121,7 +130,12 @@ pub trait FusoBrokerApi {
         unsubscribe = "broker_unsubscribeOrderEvents",
         item = Bytes,
     )]
-    fn subscribe_order_events(&self, account_id: AccountId, signature: Signature);
+    fn subscribe_order_events(
+        &self,
+        prover: AccountId,
+        account_id: AccountId,
+        signature: Signature,
+    );
 }
 
 use sp_application_crypto::sr25519::CRYPTO_ID as Sr25519Id;
@@ -149,17 +163,6 @@ where
         task_handle: SpawnTaskHandle,
         keystore: Arc<dyn CryptoStore>,
     ) -> Self {
-        // TODO using dashmap to save the mappings
-        let v = client.storage_pairs(
-            &BlockId::Hash(client.info().best_hash),
-            &StorageKey(
-                hex_literal::hex!(
-                    "6780906036a0737931bc14669b077ae9b5f0e053995f1f3e84ade4200ebbf309"
-                )
-                .to_vec(),
-            ),
-        );
-        println!("{:?}", v);
         task_handle.spawn("broker-relayer", "fusotao", async {
             println!("===> TODO connect to prover");
         });
@@ -169,6 +172,20 @@ where
             keystore,
             _marker: Default::default(),
         }
+    }
+
+    fn get_prover_rpc(&self, prover: AccountId) -> Option<Vec<u8>> {
+        let key = super::blake2_128concat_storage_key(b"Verifier", b"DominatorSettings", prover);
+        self.client
+            .storage(&BlockId::Hash(self.client.info().best_hash), &key)
+            .ok()
+            .flatten()
+            .map(|v| {
+                DominatorSetting::decode(&mut v.0.as_slice())
+                    .ok()
+                    .map(|s| s.rpc_endpoint)
+            })
+            .flatten()
     }
 
     /// the keystore is very unconvenient to use, be careful
@@ -198,7 +215,7 @@ where
     Storage: Backend<Block> + 'static,
     Block: BlockT + 'static,
 {
-    async fn trade(&self, cmd: TradingCommand) -> RpcResult<String> {
+    async fn trade(&self, prover: AccountId, cmd: TradingCommand) -> RpcResult<String> {
         let payload = cmd.encode();
         let v = self.sign_request(&payload).await.map_err(|e| {
             RpcError::Call(CallError::Custom(ErrorObject::owned(
@@ -213,16 +230,20 @@ where
 
     async fn query_orders(
         &self,
+        prover: AccountId,
         account_id: AccountId,
         orders: Vec<(u32, u32, String)>,
         signature: Signature,
     ) -> RpcResult<Vec<Bytes>> {
+        let endpoint = self.get_prover_rpc(prover);
+        println!("request to {:?}", endpoint);
         Ok(vec![])
     }
 
     fn subscribe_order_events(
         &self,
         mut sink: SubscriptionSink,
+        prover: AccountId,
         account_id: AccountId,
         signature: Signature,
     ) -> SubscriptionResult {
